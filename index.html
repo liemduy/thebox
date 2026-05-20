@@ -1,0 +1,1692 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#FAFAFA" />
+  <title>Idea Box</title>
+  <style>
+    :root {
+      --core: #1A1E23;
+      --muted: #5D6064;
+      --bg: #FAFAFA;
+      --white: #FFFFFF;
+      --coral: #FF9780;
+      --coral-2: #EFA08F;
+      --blush: #FFEAE6;
+      --border: #E8E3E1;
+      --input: #CCCCCC;
+      --success: #289E43;
+      --shadow: rgba(26, 30, 35, 0.1) 0px 0px 10px 0px;
+      --lift: rgba(26, 30, 35, 0.08) 0px 4px 12px 0px;
+      --deep: rgba(26, 30, 35, 0.18) 0px 12px 28px;
+      --safe-top: env(safe-area-inset-top);
+      --safe-bottom: env(safe-area-inset-bottom);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--core);
+      font-family: "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    body { overflow-x: hidden; }
+    button { font: inherit; border: 0; cursor: pointer; }
+
+    .phone {
+      width: 100%;
+      max-width: 520px;
+      min-height: 100dvh;
+      margin: 0 auto;
+      background: var(--bg);
+      position: relative;
+    }
+
+    .screen, .editor {
+      min-height: 100dvh;
+      padding: calc(14px + var(--safe-top)) 16px calc(96px + var(--safe-bottom));
+    }
+
+    .topbar, .editorbar {
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .editorbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      margin-bottom: 10px;
+      padding-top: 2px;
+      background: linear-gradient(var(--bg) 78%, rgba(250,250,250,0));
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 20px;
+      line-height: 1;
+      font-weight: 500;
+    }
+
+    .mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--core);
+      color: var(--white);
+      display: grid;
+      place-items: center;
+      font-size: 15px;
+    }
+
+    .mode-nav {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 0 0 16px;
+      padding: 6px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--white);
+      box-shadow: var(--shadow);
+    }
+
+    .tab-btn {
+      min-height: 44px;
+      border-radius: 999px;
+      background: var(--core);
+      color: var(--white);
+      font-size: 14px;
+      transition: opacity .16s ease, background .16s ease, transform .16s ease;
+    }
+
+    .tab-btn.ghost {
+      background: transparent;
+      color: var(--core);
+      opacity: .34;
+      border: 1px solid transparent;
+    }
+
+    .tab-btn:active { transform: scale(.98); }
+
+    .icon-btn, .round-plus, .tiny-action {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--white);
+      border: 1px solid var(--border);
+      color: var(--core);
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      line-height: 1;
+      flex: 0 0 auto;
+      transition: transform .16s ease, background .16s ease, box-shadow .16s ease;
+    }
+
+    .round-plus {
+      background: var(--coral);
+      border-color: var(--coral);
+      color: var(--white);
+      font-size: 24px;
+    }
+
+    .tiny-action {
+      width: 36px;
+      height: 36px;
+      font-size: 18px;
+      background: var(--blush);
+    }
+
+    .tiny-action.danger,
+    .round-plus.danger {
+      background: var(--white);
+      border-color: var(--border);
+      color: var(--muted);
+    }
+
+    .tiny-action.danger:active,
+    .round-plus.danger:active {
+      background: #FFF3F0;
+      color: var(--core);
+    }
+
+    .icon-btn:active, .round-plus:active, .tiny-action:active { transform: scale(.94); }
+
+    .inline-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      flex: 0 0 auto;
+    }
+
+    .project-stack, .day-list, .action-project-stack { display: grid; gap: 14px; }
+    .project-stack.dragging { user-select: none; }
+
+    .project-card, .action-card {
+      min-height: 132px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 20px;
+      transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, opacity .16s ease;
+    }
+
+    .project-card:active, .action-card:active { transform: scale(.992); }
+    .project-card:hover, .action-card:hover { border-color: #D4D0CC; box-shadow: var(--lift); }
+    .project-card.dragging { opacity: .45; transform: scale(.985); box-shadow: var(--deep); }
+
+    .drag-handle {
+      width: 34px;
+      height: 44px;
+      border-radius: 14px;
+      background: var(--bg);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    .drag-handle:active { cursor: grabbing; background: var(--blush); }
+
+    .card-title-wrap {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .editable-title {
+      outline: 0;
+      color: var(--core);
+      min-width: 0;
+      flex: 1 1 auto;
+      word-break: break-word;
+      border-radius: 10px;
+    }
+
+    .editable-title:focus {
+      box-shadow: 0 0 0 3px rgba(255, 151, 128, .12);
+      background: rgba(255, 234, 230, .55);
+    }
+
+    .editable-title:empty::before,
+    .rich-editor:empty::before {
+      content: attr(data-placeholder);
+      color: #9B9B9B;
+      pointer-events: none;
+    }
+
+    .home-title {
+      font-size: 28px;
+      font-weight: 400;
+      line-height: 1.12;
+      padding: 2px 0;
+    }
+
+    .empty-card {
+      min-height: 220px;
+      border: 1px dashed var(--coral);
+      border-radius: 18px;
+      background: var(--blush);
+      color: var(--core);
+      display: grid;
+      place-items: center;
+      text-align: center;
+      font-size: 22px;
+    }
+
+    .create-today {
+      width: 100%;
+      min-height: 56px;
+      border-radius: 999px;
+      background: var(--coral);
+      color: var(--white);
+      font-size: 15px;
+      margin-bottom: 16px;
+      box-shadow: var(--lift);
+    }
+
+    .create-today.secondary {
+      background: var(--core);
+    }
+
+    .day-card, .summary-day {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+
+    .day-head, .summary-head {
+      width: 100%;
+      min-height: 58px;
+      padding: 0 16px;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--core);
+    }
+
+    .day-head span:first-child, .summary-head span:first-child {
+      font-size: 18px;
+      line-height: 24px;
+    }
+
+    .day-chev { transition: transform .16s ease; }
+    .collapsed .day-chev { transform: rotate(-90deg); }
+
+    .day-body, .summary-body {
+      padding: 0 12px 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .action-card {
+      min-height: 96px;
+      border-radius: 14px;
+      background: var(--bg);
+      padding: 18px;
+    }
+
+    .action-card .home-title { font-size: 23px; }
+
+    .editor { padding-bottom: calc(112px + var(--safe-bottom)); }
+
+    .editor-kicker {
+      font-size: 13px;
+      line-height: 18px;
+      color: var(--muted);
+      margin: -2px 0 10px;
+    }
+
+    .node-title-row, .sub-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .node-title-row { justify-content: space-between; margin-bottom: 12px; }
+    .sub-row { align-items: center; min-height: 54px; }
+
+    .editor-title {
+      font-size: clamp(34px, 10vw, 48px);
+      font-weight: 400;
+      line-height: 1.08;
+      padding: 4px 0;
+    }
+
+    .rich-editor {
+      width: 100%;
+      min-height: 42dvh;
+      outline: 0;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      color: var(--core);
+      font-size: 16px;
+      line-height: 24px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      box-shadow: none;
+    }
+
+    .rich-editor:focus {
+      border-color: var(--coral);
+      box-shadow: 0px 0px 0px 3px rgba(255, 151, 128, 0.1);
+    }
+
+    .rich-editor h2,
+    .rich-editor h3 { margin: 0 0 8px; font-weight: 500; line-height: 1.2; }
+    .rich-editor ul,
+    .rich-editor ol { padding-left: 22px; margin: 8px 0; }
+    .rich-editor p { margin: 0 0 8px; }
+
+    .children { display: grid; gap: 10px; margin-top: 14px; }
+    .sub-node { display: grid; gap: 8px; }
+
+    .sub-shell {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px;
+      transition: border-color .16s ease, box-shadow .16s ease;
+    }
+
+    .sub-shell.open {
+      border-color: var(--coral);
+      box-shadow: 0px 0px 0px 3px rgba(255, 151, 128, 0.07);
+    }
+
+    .chev {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--blush);
+      color: var(--core);
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      transform: rotate(0deg);
+      transition: transform .16s ease, background .16s ease, color .16s ease;
+    }
+
+    .sub-shell.open .chev {
+      transform: rotate(90deg);
+      background: var(--coral);
+      color: var(--white);
+    }
+
+    .sub-title {
+      font-size: 18px;
+      line-height: 23px;
+      font-weight: 400;
+      padding: 5px 2px;
+    }
+
+    .sub-body { margin-top: 10px; }
+
+    .sub-body .rich-editor {
+      min-height: 126px;
+      border-radius: 14px;
+      background: #FFFFFF;
+      font-size: 15px;
+      line-height: 22px;
+      padding: 14px;
+    }
+
+    .sub-children {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+      padding-left: 12px;
+      border-left: 1px solid var(--border);
+    }
+
+    .box-summary {
+      margin-top: 22px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .section-label {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 18px;
+      padding: 0 2px;
+    }
+
+    .snapshot-tree {
+      display: grid;
+      gap: 8px;
+      padding: 4px 2px 0;
+    }
+
+    .snapshot-row {
+      border-left: 1px solid var(--border);
+      padding-left: 10px;
+      margin-left: calc(var(--depth, 0) * 12px);
+    }
+
+    .snapshot-title {
+      font-size: 14px;
+      line-height: 19px;
+      color: var(--core);
+    }
+
+    .snapshot-content {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 18px;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .format-bar {
+      position: fixed;
+      left: 50%;
+      bottom: calc(10px + var(--safe-bottom));
+      transform: translate(-50%, 120%);
+      width: min(488px, calc(100% - 24px));
+      min-height: 58px;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, .94);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      box-shadow: var(--deep);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform .18s ease, opacity .18s ease;
+    }
+
+    .format-bar.show {
+      transform: translate(-50%, 0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .format-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      background: var(--bg);
+      color: var(--core);
+      display: grid;
+      place-items: center;
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    .format-btn:active { background: var(--blush); transform: scale(.96); }
+    .format-btn.primary { background: var(--coral); color: var(--white); }
+    .format-spacer { flex: 1; }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      top: calc(12px + var(--safe-top));
+      transform: translateX(-50%);
+      z-index: 70;
+      min-height: 36px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(26, 30, 35, .86);
+      color: var(--white);
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .16s ease;
+    }
+
+    .toast.show { opacity: 1; }
+
+
+    .auth-screen, .boot-screen {
+      min-height: 100dvh;
+      padding: calc(24px + var(--safe-top)) 16px calc(24px + var(--safe-bottom));
+      display: grid;
+      place-items: center;
+    }
+
+    .auth-card {
+      width: 100%;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .auth-title {
+      margin: 28px 0 6px;
+      font-size: 42px;
+      font-weight: 400;
+      line-height: 1.08;
+      color: var(--core);
+    }
+
+    .auth-copy {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 22px;
+    }
+
+    .auth-form {
+      display: grid;
+      gap: 12px;
+    }
+
+    .auth-input {
+      width: 100%;
+      height: 48px;
+      border: 1px solid var(--input);
+      border-radius: 8px;
+      background: var(--white);
+      color: var(--core);
+      padding: 0 14px;
+      font: inherit;
+      font-size: 15px;
+      outline: 0;
+    }
+
+    .auth-input:focus {
+      border-color: var(--coral);
+      box-shadow: 0 0 0 3px rgba(255, 151, 128, .1);
+    }
+
+    .auth-actions {
+      display: grid;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .auth-primary, .auth-secondary {
+      width: 100%;
+      min-height: 48px;
+      border-radius: 999px;
+      color: var(--white);
+      font-size: 14px;
+    }
+
+    .auth-primary { background: var(--coral); }
+    .auth-secondary { background: var(--core); }
+    .auth-primary:disabled, .auth-secondary:disabled { opacity: .5; cursor: not-allowed; }
+
+    .auth-message {
+      min-height: 21px;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 21px;
+      word-break: break-word;
+    }
+
+    .top-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .logout-btn {
+      min-width: 52px;
+      height: 44px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--white);
+      color: var(--muted);
+      font-size: 13px;
+      padding: 0 12px;
+    }
+
+    .sync-note {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+
+    @media (min-width: 768px) {
+      body { background: #F2F0EF; }
+      .phone { box-shadow: rgba(26, 30, 35, 0.12) 0px 24px 48px; }
+      .screen, .editor { padding-left: 24px; padding-right: 24px; }
+      .project-card { min-height: 148px; }
+    }
+
+    @media (max-width: 374px) {
+      .home-title { font-size: 24px; }
+      .editor-title { font-size: 32px; }
+      .project-card { padding: 18px; }
+      .format-btn { width: 36px; }
+      .drag-handle { width: 30px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="phone" id="app"></main>
+
+  <div class="format-bar" id="formatBar" aria-hidden="true">
+    <button class="format-btn" type="button" data-cmd="formatBlock" data-value="h3">Aa</button>
+    <button class="format-btn" type="button" data-cmd="bold"><strong>B</strong></button>
+    <button class="format-btn" type="button" data-cmd="italic"><em>I</em></button>
+    <button class="format-btn" type="button" data-cmd="underline"><u>U</u></button>
+    <button class="format-btn" type="button" data-cmd="insertUnorderedList">•</button>
+    <button class="format-btn" type="button" data-cmd="insertOrderedList">1.</button>
+    <span class="format-spacer"></span>
+    <button class="format-btn primary" type="button" data-done>✓</button>
+  </div>
+
+  <div class="toast" id="toast">Đã lưu</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    const SUPABASE_URL = "https://mmtvezpwflqbpkilkooy.supabase.co";
+    const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_bvZguwM4vs7ZNPr9XRCcxw_gMm1DZpU";
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    });
+
+    const STORAGE_KEY = "idea-box-html-v7-supabase";
+    const LEGACY_KEYS = [
+      "idea-box-html-v6-actions",
+      "idea-box-html-v4-clean-box",
+      "idea-box-html-v3-inline-delete",
+      "idea-box-html-v2-inline-format"
+    ];
+    const app = document.getElementById("app");
+    const formatBar = document.getElementById("formatBar");
+    const toast = document.getElementById("toast");
+
+    const uid = () => (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : "id_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+    const now = () => new Date().toISOString();
+
+    let db = seed();
+    let currentUser = null;
+    let booting = true;
+    let authBusy = false;
+    let authMessage = "";
+    let expanded = new Set();
+    let activeEditor = null;
+    let savedRange = null;
+    let saveTimer = null;
+    let cloudSaveTimer = null;
+    let cloudSaving = false;
+    let cloudPending = false;
+    let toastTimer = null;
+    let dragState = null;
+    let suppressOpenUntil = 0;
+
+    function seed() {
+      const t = now();
+      const p1 = uid();
+      const p2 = uid();
+      const s1 = uid();
+      const s2 = uid();
+      return {
+        boxNodes: [
+          { id: p1, parentId: null, level: 1, title: "App bán hàng", contentHtml: "", sort: 1, createdAt: t, updatedAt: t },
+          { id: p2, parentId: null, level: 1, title: "Content plan", contentHtml: "", sort: 2, createdAt: t, updatedAt: t },
+          { id: s1, parentId: p1, level: 2, title: "UI", contentHtml: "", sort: 1, createdAt: t, updatedAt: t },
+          { id: s2, parentId: s1, level: 3, title: "Home", contentHtml: "", sort: 1, createdAt: t, updatedAt: t }
+        ],
+        actionDays: [],
+        ui: { collapsedDays: [], collapsedSummaries: [] }
+      };
+    }
+
+    function normalizeState(parsed) {
+      if (parsed && Array.isArray(parsed.boxNodes)) {
+        parsed.boxNodes = parsed.boxNodes.map(n => ({ ...n, contentHtml: typeof n.contentHtml === "string" ? n.contentHtml : escapeHtml(n.content || "").replace(/\n/g, "<br>") }));
+        parsed.actionDays = Array.isArray(parsed.actionDays) ? parsed.actionDays : [];
+        parsed.actionDays = parsed.actionDays.map(day => ({
+          ...day,
+          nodes: Array.isArray(day.nodes) ? day.nodes.map(n => ({ ...n, contentHtml: typeof n.contentHtml === "string" ? n.contentHtml : escapeHtml(n.content || "").replace(/\n/g, "<br>") })) : []
+        }));
+        parsed.ui = parsed.ui || { collapsedDays: [], collapsedSummaries: [] };
+        parsed.ui.collapsedDays = parsed.ui.collapsedDays || [];
+        parsed.ui.collapsedSummaries = parsed.ui.collapsedSummaries || [];
+        return parsed;
+      }
+      if (parsed && Array.isArray(parsed.nodes)) {
+        return {
+          boxNodes: parsed.nodes.map(n => ({ ...n, contentHtml: typeof n.contentHtml === "string" ? n.contentHtml : escapeHtml(n.content || "").replace(/\n/g, "<br>") })),
+          actionDays: [],
+          ui: { collapsedDays: [], collapsedSummaries: [] }
+        };
+      }
+      return seed();
+    }
+
+    function localKey(userId = currentUser?.id) {
+      return userId ? `${STORAGE_KEY}:${userId}` : `${STORAGE_KEY}:guest`;
+    }
+
+    function loadLocalForUser(userId) {
+      try {
+        const raw = localStorage.getItem(localKey(userId));
+        return raw ? normalizeState(JSON.parse(raw)) : null;
+      } catch { return null; }
+    }
+
+    function loadLegacyLocal() {
+      for (const key of LEGACY_KEYS) {
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw) return normalizeState(JSON.parse(raw));
+        } catch {}
+      }
+      return null;
+    }
+
+    function cacheLocal() {
+      try { localStorage.setItem(localKey(), JSON.stringify(db)); } catch {}
+    }
+
+    function persist(silent = false) {
+      db.ui = db.ui || {};
+      db.ui.collapsedDays = db.ui.collapsedDays || [];
+      db.ui.collapsedSummaries = db.ui.collapsedSummaries || [];
+      cacheLocal();
+      queueCloudSave();
+      if (!silent) showToast("Đã lưu");
+    }
+
+    function scheduleSave() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => persist(true), 160);
+    }
+
+    function queueCloudSave() {
+      if (!currentUser) return;
+      clearTimeout(cloudSaveTimer);
+      cloudSaveTimer = setTimeout(pushCloudState, 350);
+    }
+
+    async function pushCloudState() {
+      if (!currentUser) return;
+      if (cloudSaving) {
+        cloudPending = true;
+        return;
+      }
+      cloudSaving = true;
+      const payload = {
+        user_id: currentUser.id,
+        data: db,
+        updated_at: now()
+      };
+      const { error } = await sb.from("idea_box_states").upsert(payload, { onConflict: "user_id" });
+      cloudSaving = false;
+      if (error) {
+        showToast(error.code === "42P01" ? "Chưa chạy SQL" : "Lỗi sync");
+        console.error(error);
+        return;
+      }
+      if (cloudPending) {
+        cloudPending = false;
+        queueCloudSave();
+      }
+    }
+
+    async function hydrateUserState() {
+      if (!currentUser) return;
+      booting = true;
+      renderBoot();
+
+      const { data, error } = await sb
+        .from("idea_box_states")
+        .select("data")
+        .eq("user_id", currentUser.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error(error);
+        db = loadLocalForUser(currentUser.id) || loadLegacyLocal() || seed();
+        booting = false;
+        render();
+        showToast(error.code === "42P01" ? "Chưa chạy SQL" : "Đang dùng cache");
+        return;
+      }
+
+      if (data?.data) db = normalizeState(data.data);
+      else {
+        db = loadLocalForUser(currentUser.id) || loadLegacyLocal() || seed();
+        await pushCloudState();
+      }
+
+      cacheLocal();
+      booting = false;
+      render();
+    }
+
+    async function bootstrap() {
+      if (!location.hash) location.hash = "/box";
+      renderBoot();
+      const { data, error } = await sb.auth.getSession();
+      if (error) console.error(error);
+      if (data.session?.user) {
+        currentUser = data.session.user;
+        await hydrateUserState();
+      } else {
+        booting = false;
+        renderAuth();
+      }
+
+      sb.auth.onAuthStateChange(async (event, session) => {
+        if (event === "SIGNED_IN" && session?.user && session.user.id !== currentUser?.id) {
+          currentUser = session.user;
+          await hydrateUserState();
+        }
+        if (event === "SIGNED_OUT") {
+          currentUser = null;
+          db = seed();
+          expanded.clear();
+          booting = false;
+          authMessage = "Đã logout";
+          renderAuth();
+        }
+      });
+    }
+
+    async function handleAuth(action) {
+      if (authBusy) return;
+      const email = document.getElementById("authEmail")?.value.trim();
+      const password = document.getElementById("authPassword")?.value;
+      if (!email || !password) {
+        authMessage = "Nhập email và password";
+        renderAuth();
+        return;
+      }
+      if (password.length < 6) {
+        authMessage = "Password tối thiểu 6 ký tự";
+        renderAuth();
+        return;
+      }
+
+      authBusy = true;
+      authMessage = action === "signup" ? "Đang sign up..." : "Đang login...";
+      renderAuth();
+
+      const result = action === "signup"
+        ? await sb.auth.signUp({ email, password })
+        : await sb.auth.signInWithPassword({ email, password });
+
+      authBusy = false;
+
+      if (result.error) {
+        authMessage = result.error.message;
+        renderAuth();
+        return;
+      }
+
+      const session = result.data?.session || (await sb.auth.getSession()).data.session;
+      if (session?.user) {
+        currentUser = session.user;
+        await hydrateUserState();
+        return;
+      }
+
+      authMessage = "Check email để xác nhận, rồi login lại";
+      renderAuth();
+    }
+
+    async function signOut() {
+      await sb.auth.signOut();
+    }
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("show"), 900);
+    }
+
+    function collapsedSet(key) {
+      db.ui = db.ui || { collapsedDays: [], collapsedSummaries: [] };
+      db.ui[key] = db.ui[key] || [];
+      return new Set(db.ui[key]);
+    }
+
+    function setCollapsed(key, set) {
+      db.ui = db.ui || {};
+      db.ui[key] = [...set];
+      persist(true);
+    }
+
+    function route() {
+      const hash = decodeURIComponent(location.hash.replace("#", "")) || "/box";
+      const parts = hash.split("/").filter(Boolean);
+      if (!parts.length) return { name: "home", tab: "box" };
+      if (parts[0] === "actions" && parts.length === 1) return { name: "home", tab: "actions" };
+      if (parts[0] === "box" && parts.length === 1) return { name: "home", tab: "box" };
+      if (parts[0] === "box" && parts[1]) return { name: "editor", mode: "box", nodeId: parts[1] };
+      if (parts[0] === "action" && parts[1] && parts[2]) return { name: "editor", mode: "action", dayId: parts[1], nodeId: parts[2] };
+      return { name: "home", tab: "box" };
+    }
+
+    function goBoxHome() { location.hash = "/box"; }
+    function goActionsHome() { location.hash = "/actions"; }
+    function openBox(id) { location.hash = "/box/" + encodeURIComponent(id); }
+    function openAction(dayId, nodeId) { location.hash = "/action/" + encodeURIComponent(dayId) + "/" + encodeURIComponent(nodeId); }
+
+    function getDay(dayId) { return db.actionDays.find(day => day.id === dayId); }
+
+    function nodesFor(context) {
+      if (context.mode === "action") return getDay(context.dayId)?.nodes || [];
+      return db.boxNodes;
+    }
+
+    function getNode(id, context = { mode: "box" }) {
+      return nodesFor(context).find(n => n.id === id);
+    }
+
+    function childrenOf(parentId, nodes) {
+      return nodes
+        .filter(n => n.parentId === parentId)
+        .sort((a, b) => (a.sort || 0) - (b.sort || 0));
+    }
+
+    function boxProjects() { return childrenOf(null, db.boxNodes); }
+
+    function descendantsOf(id, nodes) {
+      const out = [];
+      function walk(nodeId) {
+        childrenOf(nodeId, nodes).forEach(child => {
+          out.push(child);
+          walk(child.id);
+        });
+      }
+      walk(id);
+      return out;
+    }
+
+    function rootOf(node, nodes) {
+      let cur = node;
+      while (cur && cur.parentId) cur = nodes.find(n => n.id === cur.parentId);
+      return cur;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function htmlToText(html) {
+      const div = document.createElement("div");
+      div.innerHTML = html || "";
+      return (div.textContent || "").replace(/\s+/g, " ").trim();
+    }
+
+    function contentOf(node) {
+      if (typeof node.contentHtml === "string") return node.contentHtml;
+      return escapeHtml(node.content || "").replace(/\n/g, "<br>");
+    }
+
+    function todayYMD() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+
+    function displayDate(ymd) {
+      if (ymd === todayYMD()) return "Today";
+      const [y, m, d] = ymd.split("-");
+      return `${d}/${m}/${y}`;
+    }
+
+
+    function renderBoot() {
+      app.innerHTML = `
+        <section class="boot-screen">
+          <div class="auth-card">
+            <div class="brand"><span class="mark">I</span><span>IdeaBox</span></div>
+            <h1 class="auth-title">Loading</h1>
+            <p class="auth-copy">Đang mở workspace...</p>
+          </div>
+        </section>
+      `;
+    }
+
+    function renderAuth() {
+      app.innerHTML = `
+        <section class="auth-screen">
+          <div class="auth-card">
+            <div class="brand"><span class="mark">I</span><span>IdeaBox</span></div>
+            <h1 class="auth-title">Login</h1>
+            <p class="auth-copy">Box + Actions sync qua Supabase.</p>
+            <form class="auth-form" data-auth-form>
+              <input class="auth-input" id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="Email" data-auth-input />
+              <input class="auth-input" id="authPassword" type="password" autocomplete="current-password" placeholder="Password" data-auth-input />
+              <div class="auth-actions">
+                <button class="auth-primary" type="submit" data-auth-action="login" ${authBusy ? "disabled" : ""}>Login</button>
+                <button class="auth-secondary" type="submit" data-auth-action="signup" ${authBusy ? "disabled" : ""}>Sign up</button>
+              </div>
+            </form>
+            <div class="auth-message">${escapeHtml(authMessage || "")}</div>
+            <div class="sync-note">Dữ liệu lưu theo tài khoản.</div>
+          </div>
+        </section>
+      `;
+    }
+
+    function render() {
+      if (booting) return renderBoot();
+      if (!currentUser) return renderAuth();
+      hideFormatBar();
+      const r = route();
+      if (r.name === "editor") {
+        const context = r.mode === "action" ? { mode: "action", dayId: r.dayId } : { mode: "box" };
+        const node = getNode(r.nodeId, context);
+        if (node) return renderEditor(context, r.nodeId);
+      }
+      if (r.tab === "actions") renderActionsHome();
+      else renderBoxHome();
+    }
+
+    function renderHeader(tab) {
+      return `
+        <div class="topbar">
+          <div class="brand"><span class="mark">I</span><span>IdeaBox</span></div>
+          <div class="top-actions">
+            ${tab === "box" ? `<button class="round-plus" type="button" data-create-project aria-label="Thêm project">+</button>` : ``}
+            <button class="logout-btn" type="button" data-sign-out>Out</button>
+          </div>
+        </div>
+        <nav class="mode-nav" aria-label="Mode">
+          <button class="tab-btn ${tab === "box" ? "" : "ghost"}" type="button" data-tab="box">Box</button>
+          <button class="tab-btn ${tab === "actions" ? "" : "ghost"}" type="button" data-tab="actions">Actions</button>
+        </nav>
+      `;
+    }
+
+    function renderBoxHome() {
+      const items = boxProjects();
+      app.innerHTML = `
+        <section class="screen">
+          ${renderHeader("box")}
+          <div class="project-stack" id="projectStack">
+            ${items.length ? items.map(projectCard).join("") : `<button class="empty-card" type="button" data-create-project>+</button>`}
+          </div>
+        </section>
+      `;
+    }
+
+    function projectCard(node) {
+      return `
+        <article class="project-card" draggable="false" data-open-box="${node.id}">
+          <button class="drag-handle" type="button" data-drag-handle aria-label="Kéo sắp xếp">☰</button>
+          <div class="card-title-wrap">
+            <div class="editable-title home-title" contenteditable="true" spellcheck="false" data-field="title" data-node-id="${node.id}" data-mode="box" data-placeholder="Tên box">${escapeHtml(node.title)}</div>
+            <div class="inline-actions">
+              ${node.level < 5 ? `<button class="round-plus" type="button" data-add-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
+              <button class="round-plus danger" type="button" data-delete="${node.id}" aria-label="Xóa box">×</button>
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderActionsHome() {
+      const days = [...db.actionDays].sort((a, b) => b.date.localeCompare(a.date));
+      const today = todayYMD();
+      const todayDay = db.actionDays.find(day => day.date === today);
+      app.innerHTML = `
+        <section class="screen">
+          ${renderHeader("actions")}
+          <button class="create-today ${todayDay ? "secondary" : ""}" type="button" data-create-today-actions>
+            ${todayDay ? "Open today actions" : "Create today actions"}
+          </button>
+          <div class="day-list">
+            ${days.length ? days.map(renderActionDay).join("") : `<button class="empty-card" type="button" data-create-today-actions>+</button>`}
+          </div>
+        </section>
+      `;
+    }
+
+    function renderActionDay(day) {
+      const collapsed = collapsedSet("collapsedDays").has(day.id);
+      const roots = childrenOf(null, day.nodes);
+      return `
+        <section class="day-card ${collapsed ? "collapsed" : ""}">
+          <button class="day-head" type="button" data-toggle-day="${day.id}">
+            <span>${displayDate(day.date)}</span>
+            <span class="day-chev">⌄</span>
+          </button>
+          ${collapsed ? "" : `
+            <div class="day-body">
+              <div class="action-project-stack">
+                ${roots.length ? roots.map(root => actionProjectCard(day, root)).join("") : `<div class="section-label">Không có box</div>`}
+              </div>
+            </div>
+          `}
+        </section>
+      `;
+    }
+
+    function actionProjectCard(day, node) {
+      return `
+        <article class="action-card" data-open-action-day="${day.id}" data-open-action-node="${node.id}">
+          <div class="card-title-wrap">
+            <div class="home-title">${escapeHtml(node.title)}</div>
+            <span class="chev">›</span>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderEditor(context, id) {
+      const nodes = nodesFor(context);
+      const node = getNode(id, context);
+      const kids = childrenOf(node.id, nodes);
+      const root = rootOf(node, nodes);
+      const isBox = context.mode === "box";
+      const day = context.mode === "action" ? getDay(context.dayId) : null;
+      const backTarget = isBox ? "box" : "actions";
+
+      app.innerHTML = `
+        <section class="editor">
+          <div class="editorbar">
+            <button class="icon-btn" type="button" data-back-home="${backTarget}" aria-label="Back">‹</button>
+            <div class="editor-kicker">${isBox ? "Box" : displayDate(day.date)}</div>
+            <span></span>
+          </div>
+
+          <div class="node-title-row">
+            <div class="editable-title editor-title" contenteditable="true" spellcheck="false" data-field="title" data-node-id="${node.id}" data-mode="${context.mode}" ${day ? `data-day-id="${day.id}"` : ""} data-placeholder="Tên box">${escapeHtml(node.title)}</div>
+            <div class="inline-actions">
+              ${node.level < 5 ? `<button class="round-plus" type="button" data-add-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
+              <button class="round-plus danger" type="button" data-delete="${node.id}" aria-label="Xóa">×</button>
+            </div>
+          </div>
+
+          <div class="rich-editor" contenteditable="true" spellcheck="true" data-field="contentHtml" data-node-id="${node.id}" data-mode="${context.mode}" ${day ? `data-day-id="${day.id}"` : ""} data-placeholder="Viết ở đây...">${contentOf(node)}</div>
+
+          <div class="children">
+            ${kids.map(child => renderSub(context, child)).join("")}
+          </div>
+
+          ${isBox && node.parentId === null ? renderBoxActionSummary(node.id) : ""}
+        </section>
+      `;
+    }
+
+    function renderSub(context, node) {
+      const nodes = nodesFor(context);
+      const open = expanded.has(node.id);
+      const kids = childrenOf(node.id, nodes);
+      const dayAttr = context.mode === "action" ? `data-day-id="${context.dayId}"` : "";
+      return `
+        <div class="sub-node" data-node="${node.id}">
+          <div class="sub-shell ${open ? "open" : ""}">
+            <div class="sub-row" data-toggle="${node.id}">
+              <span class="chev">›</span>
+              <div class="editable-title sub-title" contenteditable="true" spellcheck="false" data-field="title" data-node-id="${node.id}" data-mode="${context.mode}" ${dayAttr} data-placeholder="Tên sub">${escapeHtml(node.title)}</div>
+              <div class="inline-actions">
+                ${node.level < 5 ? `<button class="tiny-action" type="button" data-add-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
+                <button class="tiny-action danger" type="button" data-delete="${node.id}" aria-label="Xóa sub">×</button>
+              </div>
+            </div>
+            ${open ? `
+              <div class="sub-body">
+                <div class="rich-editor" contenteditable="true" spellcheck="true" data-field="contentHtml" data-node-id="${node.id}" data-mode="${context.mode}" ${dayAttr} data-placeholder="Nội dung...">${contentOf(node)}</div>
+              </div>
+              ${kids.length ? `<div class="sub-children">${kids.map(child => renderSub(context, child)).join("")}</div>` : ""}
+            ` : ""}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderBoxActionSummary(templateRootId) {
+      const summaries = [...db.actionDays]
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .map(day => ({ day, root: day.nodes.find(n => n.parentId === null && n.templateId === templateRootId) }))
+        .filter(item => item.root);
+
+      if (!summaries.length) return "";
+      return `
+        <section class="box-summary">
+          <div class="section-label">Actions</div>
+          ${summaries.map(({ day, root }) => renderSummaryDay(day, root)).join("")}
+        </section>
+      `;
+    }
+
+    function renderSummaryDay(day, root) {
+      const key = `${root.templateId}:${day.id}`;
+      const collapsed = collapsedSet("collapsedSummaries").has(key);
+      return `
+        <section class="summary-day ${collapsed ? "collapsed" : ""}">
+          <button class="summary-head" type="button" data-toggle-summary="${key}">
+            <span>${displayDate(day.date)}</span>
+            <span class="day-chev">⌄</span>
+          </button>
+          ${collapsed ? "" : `
+            <div class="summary-body">
+              <div class="snapshot-tree">
+                ${renderSnapshot(root, day.nodes, 0)}
+              </div>
+            </div>
+          `}
+        </section>
+      `;
+    }
+
+    function renderSnapshot(node, nodes, depth) {
+      const text = htmlToText(contentOf(node));
+      const kids = childrenOf(node.id, nodes);
+      return `
+        <div class="snapshot-row" style="--depth:${depth}">
+          <div class="snapshot-title">${escapeHtml(node.title)}</div>
+          ${text ? `<p class="snapshot-content">${escapeHtml(text)}</p>` : ""}
+        </div>
+        ${kids.map(child => renderSnapshot(child, nodes, depth + 1)).join("")}
+      `;
+    }
+
+    function createProject() {
+      const t = now();
+      const node = {
+        id: uid(), parentId: null, level: 1, title: "Untitled", contentHtml: "",
+        sort: boxProjects().length + 1, createdAt: t, updatedAt: t
+      };
+      db.boxNodes.push(node);
+      persist();
+      openBox(node.id);
+      setTimeout(() => focusTitle(node.id), 30);
+    }
+
+    function createChild(parentId) {
+      const r = route();
+      const context = r.mode === "action" ? { mode: "action", dayId: r.dayId } : { mode: "box" };
+      const nodes = nodesFor(context);
+      const parent = nodes.find(n => n.id === parentId);
+      if (!parent || parent.level >= 5) return;
+      const t = now();
+      const child = {
+        id: uid(), parentId: parent.id, level: parent.level + 1, title: "Untitled", contentHtml: "",
+        sort: childrenOf(parent.id, nodes).length + 1, createdAt: t, updatedAt: t,
+        templateId: context.mode === "action" ? null : undefined
+      };
+      parent.updatedAt = t;
+      nodes.push(child);
+      expanded.add(parent.id);
+      expanded.add(child.id);
+      persist();
+
+      const root = rootOf(parent, nodes);
+      if (context.mode === "action") openAction(context.dayId, root.id);
+      else openBox(root.id);
+      render();
+      setTimeout(() => focusTitle(child.id), 30);
+    }
+
+    function createTodayActions() {
+      const today = todayYMD();
+      const existing = db.actionDays.find(day => day.date === today);
+      if (existing) {
+        const first = childrenOf(null, existing.nodes)[0];
+        if (first) openAction(existing.id, first.id);
+        else goActionsHome();
+        return;
+      }
+
+      const roots = boxProjects();
+      if (!roots.length) {
+        showToast("Chưa có box");
+        goBoxHome();
+        return;
+      }
+
+      const t = now();
+      const day = { id: uid(), date: today, createdAt: t, updatedAt: t, nodes: [] };
+      function cloneNode(original, parentId) {
+        const clone = {
+          id: uid(), parentId, level: original.level, title: original.title, contentHtml: "",
+          sort: original.sort || 1, createdAt: t, updatedAt: t, templateId: original.id
+        };
+        day.nodes.push(clone);
+        childrenOf(original.id, db.boxNodes).forEach(child => cloneNode(child, clone.id));
+        return clone;
+      }
+      roots.forEach(root => cloneNode(root, null));
+      db.actionDays.push(day);
+      persist();
+      const first = childrenOf(null, day.nodes)[0];
+      if (first) openAction(day.id, first.id);
+      else goActionsHome();
+    }
+
+    function deleteNode(id) {
+      const r = route();
+      const context = r.mode === "action" ? { mode: "action", dayId: r.dayId } : { mode: "box" };
+      const nodes = nodesFor(context);
+      const node = nodes.find(n => n.id === id);
+      if (!node) return;
+      const isRoot = node.parentId === null;
+      if (!confirm(isRoot ? "Xóa box này?" : "Xóa sub này?")) return;
+
+      const ids = new Set([id, ...descendantsOf(id, nodes).map(n => n.id)]);
+      if (context.mode === "action") {
+        const day = getDay(context.dayId);
+        day.nodes = day.nodes.filter(n => !ids.has(n.id));
+      } else {
+        db.boxNodes = db.boxNodes.filter(n => !ids.has(n.id));
+      }
+      ids.forEach(item => expanded.delete(item));
+      persist();
+
+      if (isRoot) {
+        context.mode === "action" ? goActionsHome() : goBoxHome();
+      } else {
+        const root = rootOf(node, nodes.filter(n => !ids.has(n.id))) || childrenOf(null, nodes)[0];
+        if (context.mode === "action") openAction(context.dayId, root?.id || "");
+        else openBox(root?.id || "");
+        render();
+      }
+    }
+
+    function toggleSub(id) {
+      expanded.has(id) ? expanded.delete(id) : expanded.add(id);
+      render();
+    }
+
+    function toggleDay(dayId) {
+      const set = collapsedSet("collapsedDays");
+      set.has(dayId) ? set.delete(dayId) : set.add(dayId);
+      setCollapsed("collapsedDays", set);
+      renderActionsHome();
+    }
+
+    function toggleSummary(key) {
+      const set = collapsedSet("collapsedSummaries");
+      set.has(key) ? set.delete(key) : set.add(key);
+      setCollapsed("collapsedSummaries", set);
+      render();
+    }
+
+    function focusTitle(id) {
+      const el = document.querySelector(`[data-field="title"][data-node-id="${CSS.escape(id)}"]`);
+      if (!el) return;
+      el.focus();
+      selectAll(el);
+    }
+
+    function selectAll(el) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+
+
+    app.addEventListener("submit", event => {
+      const form = event.target.closest("[data-auth-form]");
+      if (!form) return;
+      event.preventDefault();
+      const action = event.submitter?.dataset?.authAction || "login";
+      handleAuth(action);
+    });
+
+    app.addEventListener("click", event => {
+      if (Date.now() < suppressOpenUntil) return;
+      const target = event.target;
+
+      if (target.closest("[data-sign-out]")) {
+        signOut();
+        return;
+      }
+
+      const tab = target.closest("[data-tab]");
+      if (tab) {
+        tab.dataset.tab === "actions" ? goActionsHome() : goBoxHome();
+        return;
+      }
+
+      if (target.closest("[data-create-project]")) {
+        createProject();
+        return;
+      }
+
+      if (target.closest("[data-create-today-actions]")) {
+        createTodayActions();
+        return;
+      }
+
+      const back = target.closest("[data-back-home]");
+      if (back) {
+        back.dataset.backHome === "actions" ? goActionsHome() : goBoxHome();
+        return;
+      }
+
+      const add = target.closest("[data-add-child]");
+      if (add) {
+        event.stopPropagation();
+        createChild(add.dataset.addChild);
+        return;
+      }
+
+      const del = target.closest("[data-delete]");
+      if (del) {
+        event.stopPropagation();
+        deleteNode(del.dataset.delete);
+        return;
+      }
+
+      const dayToggle = target.closest("[data-toggle-day]");
+      if (dayToggle) {
+        toggleDay(dayToggle.dataset.toggleDay);
+        return;
+      }
+
+      const summaryToggle = target.closest("[data-toggle-summary]");
+      if (summaryToggle) {
+        toggleSummary(summaryToggle.dataset.toggleSummary);
+        return;
+      }
+
+      const toggle = target.closest("[data-toggle]");
+      if (toggle && !target.closest("[contenteditable], button")) {
+        toggleSub(toggle.dataset.toggle);
+        return;
+      }
+
+      const actionCard = target.closest("[data-open-action-day][data-open-action-node]");
+      if (actionCard) {
+        openAction(actionCard.dataset.openActionDay, actionCard.dataset.openActionNode);
+        return;
+      }
+
+      const card = target.closest("[data-open-box]");
+      if (card && !target.closest("[contenteditable], button")) {
+        openBox(card.dataset.openBox);
+      }
+    });
+
+    app.addEventListener("input", event => {
+      const el = event.target.closest("[data-field][data-node-id]");
+      if (!el) return;
+      const context = el.dataset.mode === "action" ? { mode: "action", dayId: el.dataset.dayId } : { mode: "box" };
+      const node = getNode(el.dataset.nodeId, context);
+      if (!node) return;
+
+      if (el.dataset.field === "title") node.title = el.textContent.replace(/\s+/g, " ").trim();
+      else if (el.dataset.field === "contentHtml") node.contentHtml = el.innerHTML;
+      node.updatedAt = now();
+      if (context.mode === "action") {
+        const day = getDay(context.dayId);
+        if (day) day.updatedAt = now();
+      }
+      scheduleSave();
+    });
+
+    app.addEventListener("keydown", event => {
+      const title = event.target.closest('[data-field="title"]');
+      if (title && event.key === "Enter") {
+        event.preventDefault();
+        title.blur();
+      }
+    });
+
+    app.addEventListener("paste", event => {
+      const title = event.target.closest('[data-field="title"]');
+      const editor = event.target.closest(".rich-editor");
+      if (!title && !editor) return;
+      event.preventDefault();
+      const text = (event.clipboardData || window.clipboardData).getData("text/plain");
+      document.execCommand("insertText", false, title ? text.replace(/\s+/g, " ") : text);
+    });
+
+    app.addEventListener("focusin", event => {
+      const editor = event.target.closest(".rich-editor");
+      if (editor) {
+        activeEditor = editor;
+        captureSelection();
+        showFormatBar();
+      }
+    });
+
+    app.addEventListener("focusout", event => {
+      if (!event.target.closest(".rich-editor")) return;
+      setTimeout(() => {
+        const active = document.activeElement;
+        if (!active || (!active.closest(".rich-editor") && !active.closest("#formatBar"))) hideFormatBar();
+      }, 160);
+    });
+
+    app.addEventListener("pointerdown", event => {
+      const handle = event.target.closest("[data-drag-handle]");
+      if (!handle) return;
+      const card = handle.closest(".project-card");
+      const stack = document.getElementById("projectStack");
+      if (!card || !stack) return;
+      event.preventDefault();
+      dragState = { card, stack, startY: event.clientY, moved: false, pointerId: event.pointerId };
+      stack.classList.add("dragging");
+      card.classList.add("dragging");
+      try { handle.setPointerCapture(event.pointerId); } catch {}
+    });
+
+    document.addEventListener("pointermove", event => {
+      if (!dragState) return;
+      event.preventDefault();
+      if (Math.abs(event.clientY - dragState.startY) > 4) dragState.moved = true;
+      const after = getDragAfterElement(dragState.stack, event.clientY);
+      if (!after) dragState.stack.appendChild(dragState.card);
+      else dragState.stack.insertBefore(dragState.card, after);
+    }, { passive: false });
+
+    document.addEventListener("pointerup", () => finishDrag());
+    document.addEventListener("pointercancel", () => finishDrag());
+
+    function finishDrag() {
+      if (!dragState) return;
+      dragState.card.classList.remove("dragging");
+      dragState.stack.classList.remove("dragging");
+      if (dragState.moved) {
+        suppressOpenUntil = Date.now() + 350;
+        saveProjectOrderFromDom(dragState.stack);
+      }
+      dragState = null;
+    }
+
+    function getDragAfterElement(container, y) {
+      const items = [...container.querySelectorAll(".project-card:not(.dragging)")];
+      return items.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) return { offset, element: child };
+        return closest;
+      }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+    }
+
+    function saveProjectOrderFromDom(stack) {
+      [...stack.querySelectorAll("[data-open-box]")].forEach((el, index) => {
+        const node = db.boxNodes.find(n => n.id === el.dataset.openBox);
+        if (node) node.sort = index + 1;
+      });
+      persist(true);
+    }
+
+    document.addEventListener("selectionchange", () => {
+      if (!activeEditor) return;
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const node = sel.anchorNode;
+      if (node && activeEditor.contains(node)) savedRange = sel.getRangeAt(0).cloneRange();
+    });
+
+    formatBar.addEventListener("pointerdown", event => event.preventDefault());
+
+    formatBar.addEventListener("click", event => {
+      const done = event.target.closest("[data-done]");
+      if (done) {
+        activeEditor?.blur();
+        hideFormatBar();
+        return;
+      }
+
+      const btn = event.target.closest("[data-cmd]");
+      if (!btn || !activeEditor) return;
+      restoreSelection();
+      const cmd = btn.dataset.cmd;
+      let value = btn.dataset.value || null;
+      if (cmd === "formatBlock") {
+        const current = selectionBlockTag();
+        value = current === "H3" ? "p" : "h3";
+      }
+      document.execCommand(cmd, false, value);
+      activeEditor.focus();
+      captureSelection();
+      const context = activeEditor.dataset.mode === "action" ? { mode: "action", dayId: activeEditor.dataset.dayId } : { mode: "box" };
+      const node = getNode(activeEditor.dataset.nodeId, context);
+      if (node) {
+        node.contentHtml = activeEditor.innerHTML;
+        node.updatedAt = now();
+        scheduleSave();
+      }
+    });
+
+    function showFormatBar() {
+      formatBar.classList.add("show");
+      formatBar.setAttribute("aria-hidden", "false");
+    }
+
+    function hideFormatBar() {
+      formatBar.classList.remove("show");
+      formatBar.setAttribute("aria-hidden", "true");
+      activeEditor = null;
+      savedRange = null;
+    }
+
+    function captureSelection() {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount) savedRange = sel.getRangeAt(0).cloneRange();
+    }
+
+    function restoreSelection() {
+      if (!savedRange) return;
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    }
+
+    function selectionBlockTag() {
+      const sel = window.getSelection();
+      if (!sel || !sel.anchorNode) return "";
+      let node = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+      while (node && node !== activeEditor) {
+        if (/^(H1|H2|H3|P|DIV)$/.test(node.tagName)) return node.tagName;
+        node = node.parentElement;
+      }
+      return "";
+    }
+
+    window.addEventListener("hashchange", render);
+    window.addEventListener("DOMContentLoaded", bootstrap);
+  </script>
+</body>
+</html>
