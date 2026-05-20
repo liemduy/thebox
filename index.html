@@ -2310,7 +2310,66 @@
     const snackbarText = document.getElementById("snackbarText");
     const snackbarAction = document.getElementById("snackbarAction");
 
-    const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : "id_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    let idSequence = 0;
+    const runtimeUsedIds = new Set();
+    function currentDb() { try { return db || null; } catch { return null; } }
+    function idTimestampToken() {
+      const d = new Date();
+      const pad = (value, size = 2) => String(value).padStart(size, "0");
+      return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}_${pad(d.getMilliseconds(), 3)}`;
+    }
+    function idRandomToken() {
+      if (window.crypto?.getRandomValues) {
+        const bytes = new Uint8Array(8);
+        window.crypto.getRandomValues(bytes);
+        return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+      }
+      return Math.random().toString(36).slice(2, 14);
+    }
+    function collectIdsFromState(state) {
+      const ids = new Set(runtimeUsedIds);
+      (state?.meta?.usedIds || []).forEach(id => id && ids.add(String(id)));
+      (state?.boxNodes || []).forEach(node => node?.id && ids.add(String(node.id)));
+      (state?.actionDays || []).forEach(day => {
+        if (day?.id) ids.add(String(day.id));
+        (day?.nodes || []).forEach(node => {
+          if (node?.id) ids.add(String(node.id));
+          (node?.entries || []).forEach(entry => entry?.id && ids.add(String(entry.id)));
+        });
+      });
+      return ids;
+    }
+    function rememberId(id, state = null) {
+      if (!id) return id;
+      const value = String(id);
+      runtimeUsedIds.add(value);
+      const target = state || currentDb();
+      if (target && typeof target === "object") {
+        target.meta = target.meta || {};
+        target.meta.usedIds = Array.isArray(target.meta.usedIds) ? target.meta.usedIds : [];
+        if (!target.meta.usedIds.includes(value)) target.meta.usedIds.push(value);
+      }
+      return value;
+    }
+    function uid(prefix = "id", state = null) {
+      const safePrefix = String(prefix || "id").replace(/[^a-z0-9_-]/gi, "").toLowerCase() || "id";
+      const used = collectIdsFromState(state || currentDb());
+      let id = "";
+      do {
+        idSequence = (idSequence + 1) % 1000000;
+        const seq = String(idSequence).padStart(6, "0");
+        id = `${safePrefix}_${idTimestampToken()}_${seq}_${idRandomToken()}`;
+      } while (used.has(id));
+      return rememberId(id, state);
+    }
+    function normalizeIdLedger(state) {
+      state.meta = state.meta || {};
+      state.meta.usedIds = Array.isArray(state.meta.usedIds) ? state.meta.usedIds.map(String) : [];
+      const ids = collectIdsFromState(state);
+      state.meta.usedIds = Array.from(ids);
+      ids.forEach(id => runtimeUsedIds.add(id));
+      return state;
+    }
     const now = () => new Date().toISOString();
 
     let db = seed();
@@ -2341,9 +2400,10 @@
 
     function seed() {
       const t = now();
-      const p1 = uid(), p2 = uid(), s1 = uid(), s2 = uid(), s3 = uid();
+      const p1 = uid("box"), p2 = uid("box"), s1 = uid("sub"), s2 = uid("sub"), s3 = uid("sub");
       return {
-        version: 2,
+        version: 4,
+        meta: { usedIds: [p1, p2, s1, s2, s3] },
         boxNodes: [
           { id: p1, parentId: null, level: 1, title: "Content", sort: 1, createdAt: t, updatedAt: t },
           { id: p2, parentId: null, level: 1, title: "Sales", sort: 2, createdAt: t, updatedAt: t },
@@ -2380,7 +2440,7 @@
       delete ui.boxOnlyFilled;
       const boxNodes = Array.isArray(parsed.boxNodes)
         ? parsed.boxNodes.map((n, i) => ({
-          id: n.id || uid(),
+          id: rememberId(n.id || uid(n.parentId ? "sub" : "box")),
           parentId: n.parentId ?? null,
           level: clampLevel(n.level || (n.parentId ? 2 : 1)),
           title: cleanTitle(n.title || "Untitled"),
@@ -2391,17 +2451,17 @@
         }))
         : Array.isArray(parsed.nodes)
           ? parsed.nodes.map((n, i) => ({
-            id: n.id || uid(), parentId: n.parentId ?? null, level: clampLevel(n.level || (n.parentId ? 2 : 1)), title: cleanTitle(n.title || "Untitled"), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || n.noteHtml || n.contentHtml || ""), sort: Number.isFinite(+n.sort) ? +n.sort : i + 1, createdAt: n.createdAt || now(), updatedAt: n.updatedAt || now()
+            id: rememberId(n.id || uid(n.parentId ? "sub" : "box")), parentId: n.parentId ?? null, level: clampLevel(n.level || (n.parentId ? 2 : 1)), title: cleanTitle(n.title || "Untitled"), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || n.noteHtml || n.contentHtml || ""), sort: Number.isFinite(+n.sort) ? +n.sort : i + 1, createdAt: n.createdAt || now(), updatedAt: n.updatedAt || now()
           }))
           : seed().boxNodes;
 
       const actionDays = Array.isArray(parsed.actionDays) ? parsed.actionDays.map(day => ({
-        id: day.id || uid(),
+        id: rememberId(day.id || uid("day")),
         date: day.date || todayYMD(),
         createdAt: day.createdAt || now(),
         updatedAt: day.updatedAt || now(),
         nodes: Array.isArray(day.nodes) ? day.nodes.map((n, i) => ({
-          id: n.id || uid(),
+          id: rememberId(n.id || uid("actionnode")),
           parentId: n.parentId ?? null,
           level: clampLevel(n.level || (n.parentId ? 2 : 1)),
           title: cleanTitle(n.title || "Untitled"),
@@ -2414,8 +2474,9 @@
         })) : []
       })) : [];
 
-      const normalized = { version: 3, boxNodes, actionDays, ui };
+      const normalized = { version: 4, meta: { usedIds: Array.isArray(parsed.meta?.usedIds) ? parsed.meta.usedIds.map(String) : [] }, boxNodes, actionDays, ui };
       repairStableIdentity(normalized);
+      normalizeIdLedger(normalized);
       return normalized;
     }
 
@@ -2428,7 +2489,7 @@
       const t = now();
       if (type === "note") {
         return {
-          id: entry?.id || uid(),
+          id: rememberId(entry?.id || uid("entry")),
           type: "note",
           title: cleanTitle(entry?.title || entry?.text || "Note"),
           bodyHtml: sanitizeHtml(entry?.bodyHtml || entry?.contentHtml || entry?.body || ""),
@@ -2438,7 +2499,7 @@
         };
       }
       return {
-        id: entry?.id || uid(),
+        id: rememberId(entry?.id || uid("entry")),
         type: "action",
         text: cleanTitle(entry?.text || entry?.title || "Action"),
         done: Boolean(entry?.done),
@@ -2530,12 +2591,14 @@
       }
       return null;
     }
-    function cacheLocal() { try { localStorage.setItem(localKey(), JSON.stringify(sanitizedState(db))); } catch {} }
+    function cacheLocal() { try { normalizeIdLedger(db); localStorage.setItem(localKey(), JSON.stringify(sanitizedState(db))); } catch {} }
 
     function sanitizedState(state) {
+      normalizeIdLedger(state);
       return {
         ...state,
-        boxNodes: state.boxNodes.map(n => ({ ...n, title: cleanTitle(n.title), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || "") })),
+        meta: { ...(state.meta || {}), usedIds: Array.from(new Set([...(state.meta?.usedIds || []), ...collectIdsFromState(state)])).map(String) },
+        boxNodes: state.boxNodes.map(n => ({ ...n, id: rememberId(n.id, state), title: cleanTitle(n.title), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || "") })),
         actionDays: state.actionDays.map(sanitizedActionDay)
       };
     }
@@ -2543,13 +2606,15 @@
     function sanitizedActionDay(day) {
       return {
         ...day,
+        id: rememberId(day.id || uid("day")),
         nodes: (day.nodes || []).map(n => ({
           ...n,
+          id: rememberId(n.id || uid("actionnode")),
           title: cleanTitle(n.title),
           sourceBoxNodeId: n.sourceBoxNodeId || n.templateId || n.boxNodeId || null,
           entries: normalizeEntries(n).map(entry => entry.type === "note"
-            ? { ...entry, title: cleanTitle(entry.title || "Note"), bodyHtml: sanitizeHtml(entry.bodyHtml || "") }
-            : { ...entry, text: cleanTitle(entry.text || "Action"), done: Boolean(entry.done) }
+            ? { ...entry, id: rememberId(entry.id || uid("entry")), title: cleanTitle(entry.title || "Note"), bodyHtml: sanitizeHtml(entry.bodyHtml || "") }
+            : { ...entry, id: rememberId(entry.id || uid("entry")), text: cleanTitle(entry.text || "Action"), done: Boolean(entry.done) }
           ),
           contentHtml: "",
           done: Boolean(n.done)
@@ -2565,7 +2630,7 @@
     function normalizeActionDayRow(row) {
       const data = row?.data || {};
       const normalized = normalizeState({ actionDays: [{
-        id: data.id || row.id || uid(),
+        id: rememberId(data.id || row.id || uid("day")),
         date: data.date || row.date || todayYMD(),
         createdAt: data.createdAt || row.created_at || now(),
         updatedAt: data.updatedAt || row.updated_at || now(),
@@ -2593,35 +2658,61 @@
       return status === 401 || status === 403 || code.includes("jwt") || code.includes("auth") || msg.includes("jwt") || msg.includes("token") || msg.includes("expired") || msg.includes("session");
     }
 
+    function isMissingTableError(error) {
+      const msg = String(error?.message || error?.details || "").toLowerCase();
+      const code = String(error?.code || "");
+      return code === "42P01" || msg.includes("does not exist") || msg.includes("schema cache") || msg.includes("could not find the table");
+    }
+
+    function isRetryableSyncError(error) {
+      const msg = String(error?.message || error?.name || "").toLowerCase();
+      const status = Number(error?.status || 0);
+      return !navigator.onLine || status === 0 || status === 408 || status === 429 || status >= 500 || msg.includes("timeout") || msg.includes("failed to fetch") || msg.includes("network") || msg.includes("abort");
+    }
+
+    function withTimeout(promise, ms = 15000) {
+      let timeoutId;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("Supabase request timeout")), ms);
+      });
+      return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+    }
+
     async function ensureFreshSession() {
-      const { data, error } = await sb.auth.getSession();
+      let sessionResult;
+      try {
+        sessionResult = await withTimeout(sb.auth.getSession(), 10000);
+      } catch (error) {
+        throw error;
+      }
+      const { data, error } = sessionResult || {};
       if (error) throw error;
       if (!data?.session?.user) throw new Error("No active session");
       currentUser = data.session.user;
       const expiresAtMs = data.session.expires_at ? data.session.expires_at * 1000 : 0;
-      if (expiresAtMs && expiresAtMs - Date.now() < 120000) {
-        const refreshed = await sb.auth.refreshSession();
+      if (expiresAtMs && expiresAtMs - Date.now() < 180000) {
+        const refreshed = await withTimeout(sb.auth.refreshSession(), 10000);
         if (refreshed.error) throw refreshed.error;
         if (refreshed.data?.session?.user) currentUser = refreshed.data.session.user;
       }
       return currentUser;
     }
 
-    async function supabaseAuthed(fn) {
+    async function supabaseAuthed(fn, { optional = false } = {}) {
       try { await ensureFreshSession(); } catch (error) { return { data: null, error }; }
       let result;
-      try { result = await fn(); } catch (error) { return { data: null, error }; }
+      try { result = await withTimeout(fn(), optional ? 10000 : 15000); } catch (error) { return { data: null, error }; }
       if (result?.error && isAuthStaleError(result.error)) {
         try {
-          const refreshed = await sb.auth.refreshSession();
+          const refreshed = await withTimeout(sb.auth.refreshSession(), 10000);
           if (refreshed.error) return result;
           if (refreshed.data?.session?.user) currentUser = refreshed.data.session.user;
-          result = await fn();
+          result = await withTimeout(fn(), optional ? 10000 : 15000);
         } catch (error) {
           return { data: null, error };
         }
       }
-      return result;
+      return result || { data: null, error: null };
     }
 
     function forceAuthScreen(message = "Đã logout") {
@@ -2666,17 +2757,20 @@
       if (!navigator.onLine) return setSync("offline", "Offline");
       if (cloudSaving) { cloudPending = true; return; }
       cloudSaving = true;
-      let error = null;
+      let stateError = null;
+      let dayError = null;
 
       try {
         const userId = currentUser.id;
+        const fullState = sanitizedState(db);
         const statePayload = {
           user_id: userId,
-          data: sanitizedBoxState(db),
+          // Full snapshot fallback: includes actionDays so data still syncs even if the per-day table is missing or temporarily unavailable.
+          data: fullState,
           updated_at: now()
         };
         const stateResult = await supabaseAuthed(() => sb.from(STATE_TABLE).upsert(statePayload, { onConflict: "user_id" }));
-        error = stateResult.error;
+        stateError = stateResult.error;
 
         const days = db.actionDays.map(day => ({
           user_id: userId,
@@ -2684,27 +2778,41 @@
           data: sanitizedActionDay(day),
           updated_at: now()
         }));
-        if (!error && days.length) {
-          const dayResult = await supabaseAuthed(() => sb.from(ACTION_DAYS_TABLE).upsert(days, { onConflict: "user_id,date" }));
-          error = dayResult.error;
+        if (!stateError && days.length) {
+          const dayResult = await supabaseAuthed(() => sb.from(ACTION_DAYS_TABLE).upsert(days, { onConflict: "user_id,date" }), { optional: true });
+          dayError = dayResult.error;
         }
       } catch (caught) {
-        error = caught;
+        stateError = caught;
       } finally {
         cloudSaving = false;
       }
 
-      if (error) {
-        console.error(error);
+      if (stateError) {
+        console.error(stateError);
         cacheLocal();
-        if (String(error.message || "").includes("No active session") || isAuthStaleError(error)) {
-          setSync("offline", "Local saved");
+        if (isMissingTableError(stateError)) {
+          setSync("error", "No DB");
+        } else if (String(stateError.message || "").includes("No active session") || isAuthStaleError(stateError)) {
+          setSync("offline", "Login needed");
         } else {
-          setSync("offline", error.code === "42P01" ? "No DB" : "Local saved");
+          setSync("offline", "Local saved");
         }
-        if (cloudPending) { cloudPending = false; setTimeout(queueCloudSave, 3000); }
+        if (isRetryableSyncError(stateError) || isAuthStaleError(stateError)) {
+          cloudPending = false;
+          setTimeout(() => { if (currentUser && navigator.onLine) queueCloudSave(); }, 5000);
+        }
         return;
       }
+
+      // The per-day table is an optimization. If it fails, the full snapshot above is still saved safely.
+      if (dayError && !isMissingTableError(dayError)) {
+        console.warn("Action day table sync skipped; full snapshot saved.", dayError);
+        if (isRetryableSyncError(dayError)) {
+          setTimeout(() => { if (currentUser && navigator.onLine) queueCloudSave(); }, 7000);
+        }
+      }
+
       setSync("saved", "Saved");
       if (cloudPending) { cloudPending = false; queueCloudSave(); }
     }
@@ -2715,40 +2823,38 @@
       renderBoot();
 
       const { data: stateRow, error: stateError } = await supabaseAuthed(() => sb.from(STATE_TABLE).select("data").eq("user_id", currentUser.id).maybeSingle());
+      const local = loadLocalForUser(currentUser.id) || loadLegacyLocal();
+
       if (stateError) {
         console.error(stateError);
-        db = loadLocalForUser(currentUser.id) || loadLegacyLocal() || seed();
+        db = local || seed();
         booting = false;
         render();
-        setSync("error", stateError.code === "42P01" ? "No DB" : "Cache");
-        showSnack(stateError.code === "42P01" ? "Chưa chạy SQL" : "Đang dùng cache", null, 2600);
+        setSync(isMissingTableError(stateError) ? "error" : "offline", isMissingTableError(stateError) ? "No DB" : "Local saved");
+        if (isMissingTableError(stateError)) showSnack("Chưa chạy SQL", null, 2600);
         return;
       }
 
-      const local = loadLocalForUser(currentUser.id) || loadLegacyLocal();
       db = stateRow?.data ? normalizeState(stateRow.data) : (local || seed());
+      const fallbackDays = normalizeState(stateRow?.data || {}).actionDays || [];
 
       const { data: dayRows, error: dayError } = await supabaseAuthed(() => sb
         .from(ACTION_DAYS_TABLE)
         .select("date,data,created_at,updated_at")
         .eq("user_id", currentUser.id)
-        .order("date", { ascending: false }));
+        .order("date", { ascending: false }), { optional: true });
 
       if (dayError) {
-        console.error(dayError);
-        if (dayError.code === "42P01") {
-          db.actionDays = local?.actionDays?.length ? local.actionDays : (normalizeState(stateRow?.data || {}).actionDays || []);
-          showSnack("Chưa chạy SQL action days", null, 2600);
-        } else if (local?.actionDays?.length) db.actionDays = local.actionDays;
-        setSync("error", dayError.code === "42P01" ? "No day DB" : "Cache");
+        console.warn("Using actionDays from state/local fallback.", dayError);
+        db.actionDays = fallbackDays.length ? fallbackDays : (local?.actionDays || db.actionDays || []);
       } else {
         const rows = Array.isArray(dayRows) ? dayRows.map(normalizeActionDayRow) : [];
-        const migrated = normalizeState(stateRow?.data || {}).actionDays || [];
-        db.actionDays = rows.length ? rows : (migrated.length ? migrated : (local?.actionDays || []));
+        db.actionDays = rows.length ? rows : (fallbackDays.length ? fallbackDays : (local?.actionDays || []));
       }
 
       const identityRepaired = repairStableIdentity(db);
-      if (!stateRow?.data || identityRepaired || (!dayError && !dayRows?.length && db.actionDays.length)) await pushCloudState();
+      normalizeIdLedger(db);
+      if (!stateRow?.data || identityRepaired || db.actionDays.length) await pushCloudState();
       cacheLocal();
       booting = false;
       render();
@@ -3516,7 +3622,7 @@
 
     function createProject() {
       const t = now();
-      const node = { id: uid(), parentId: null, level: 1, title: "Untitled", boxNoteHtml: "", sort: boxRoots().length + 1, createdAt: t, updatedAt: t };
+      const node = { id: uid("box"), parentId: null, level: 1, title: "Untitled", boxNoteHtml: "", sort: boxRoots().length + 1, createdAt: t, updatedAt: t };
       db.boxNodes.push(node);
       createdFlashId = node.id;
       syncSelectedActionDayWithBox();
@@ -3535,7 +3641,7 @@
       const parent = getBoxNode(parentId);
       if (!parent || parent.level >= 5) return;
       const t = now();
-      const child = { id: uid(), parentId: parent.id, level: parent.level + 1, title: "Untitled", sort: childrenOf(parent.id, db.boxNodes).length + 1, createdAt: t, updatedAt: t };
+      const child = { id: uid("sub"), parentId: parent.id, level: parent.level + 1, title: "Untitled", sort: childrenOf(parent.id, db.boxNodes).length + 1, createdAt: t, updatedAt: t };
       parent.updatedAt = t;
       db.boxNodes.push(child);
       createdFlashId = child.id;
@@ -3575,7 +3681,7 @@
       const roots = boxRoots();
       if (!roots.length) { showSnack("Chưa có box", null, 1600); return goBoxHome(); }
       const t = now();
-      const day = { id: uid(), date: selectedDate, createdAt: t, updatedAt: t, nodes: [] };
+      const day = { id: uid("day"), date: selectedDate, createdAt: t, updatedAt: t, nodes: [] };
       syncActionDayWithBox(day);
       db.actionDays.push(day);
       db.ui.selectedActionDate = selectedDate;
@@ -3634,7 +3740,7 @@
       function clone(boxNode, parentCloneId) {
         const matched = existingBySource.get(boxNode.id);
         const cloned = {
-          id: matched?.id || uid(),
+          id: rememberId(matched?.id || uid("actionnode")),
           parentId: parentCloneId,
           level: boxNode.level,
           title: cleanTitle(boxNode.title),
@@ -4176,7 +4282,7 @@
     window.addEventListener("offline", () => setSync("offline", "Offline"));
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible" && currentUser) {
-        ensureFreshSession().then(() => { if (navigator.onLine) queueCloudSave(); }).catch(() => setSync("error", "Login expired"));
+        ensureFreshSession().then(() => { if (navigator.onLine) queueCloudSave(); }).catch(() => setSync("offline", "Local saved"));
       }
     });
     window.addEventListener("hashchange", () => { toolsOpen = false; render(); });
