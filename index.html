@@ -2532,6 +2532,282 @@
     }
   }
 </style>
+
+<style id="pwa-size-restore-v1">
+  /* Keep PWA full-bleed/safe-area fixes, but restore the original visual scale. */
+  html, body {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    overflow-x: hidden;
+    background: #121212;
+  }
+
+  .phone {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    min-height: 100dvh;
+    background: #121212 !important;
+  }
+
+  .screen,
+  .editor,
+  .auth-screen,
+  .boot-screen {
+    width: 100% !important;
+    max-width: none !important;
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+    background: #121212 !important;
+  }
+
+  .topbar,
+  .editorbar {
+    min-height: 58px !important;
+    margin: 0 -20px 16px !important;
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) 20px 10px !important;
+    align-items: center !important;
+    background: linear-gradient(to bottom, rgba(18,18,18,.98), rgba(18,18,18,.92)) !important;
+  }
+
+  .topbar::after,
+  .editorbar::after {
+    left: 20px !important;
+    right: 20px !important;
+  }
+
+  .brand {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    gap: 12px !important;
+  }
+
+  .mark {
+    width: auto !important;
+    height: auto !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: var(--coral) !important;
+    font-size: 27px !important;
+    line-height: 1 !important;
+    display: inline-grid !important;
+    place-items: center !important;
+  }
+
+  .brand-title {
+    font-size: 22px !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .top-actions {
+    gap: 8px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    flex: 0 0 auto !important;
+  }
+
+  .sync-pill {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+    max-width: 32px !important;
+    padding: 0 !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    border-radius: 999px !important;
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  .sync-pill.saved {
+    color: #66d77a !important;
+    border-color: rgba(102,215,122,.34) !important;
+    background: rgba(102,215,122,.055) !important;
+  }
+
+  .sync-pill.saving {
+    color: #f59e0b !important;
+    border-color: rgba(245,158,11,.36) !important;
+    background: rgba(245,158,11,.07) !important;
+  }
+
+  .sync-pill.error,
+  .sync-pill.offline {
+    color: #ff817a !important;
+    border-color: rgba(255,129,122,.34) !important;
+    background: rgba(255,129,122,.06) !important;
+  }
+
+  .icon-btn,
+  .round-btn {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
+    padding: 0 !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    align-items: center !important;
+    justify-items: center !important;
+    line-height: 1 !important;
+    font-size: 22px !important;
+    text-align: center !important;
+  }
+
+  .round-btn.primary {
+    font-size: 22px !important;
+    font-weight: 700 !important;
+  }
+
+  .round-btn.danger {
+    font-size: 22px !important;
+  }
+
+  button[data-open-search].icon-btn {
+    width: 30px !important;
+    height: 38px !important;
+    min-width: 30px !important;
+    min-height: 38px !important;
+    border: 0 !important;
+    background: transparent !important;
+    color: var(--muted) !important;
+    font-size: 21px !important;
+    box-shadow: none !important;
+  }
+
+  button[data-open-search].icon-btn:hover,
+  button[data-open-search].icon-btn:focus-visible {
+    color: #fff !important;
+    background: transparent !important;
+  }
+
+  .mode-nav {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 9px !important;
+    margin: 0 0 22px !important;
+    padding: 0 !important;
+    width: auto !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .tab-btn {
+    min-height: auto !important;
+    padding: 0 !important;
+    background: transparent !important;
+    color: #fff !important;
+    font-size: clamp(28px, 8vw, 34px) !important;
+    font-weight: 700 !important;
+    line-height: 1.05 !important;
+    border-radius: 0 !important;
+  }
+
+  .tab-btn.ghost {
+    background: transparent !important;
+    color: var(--muted) !important;
+    opacity: .42 !important;
+  }
+
+  .chip {
+    min-height: 38px !important;
+    padding: 0 13px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+  }
+
+  .modal-backdrop {
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px calc(env(safe-area-inset-bottom, 0px) + 14px) !important;
+    align-items: center !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .entry-modal,
+  .auth-card,
+  .tools-sheet {
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 28px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .format-bar {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 10px) !important;
+    max-width: calc(100vw - 18px) !important;
+  }
+
+  @media (max-width: 430px) {
+    .screen,
+    .editor,
+    .auth-screen,
+    .boot-screen {
+      padding-left: 20px !important;
+      padding-right: 20px !important;
+    }
+
+    .topbar,
+    .editorbar {
+      margin-left: -20px !important;
+      margin-right: -20px !important;
+      padding-left: 20px !important;
+      padding-right: 20px !important;
+    }
+
+    .topbar::after,
+    .editorbar::after {
+      left: 20px !important;
+      right: 20px !important;
+    }
+
+    .brand-title {
+      font-size: 21px !important;
+    }
+
+    .top-actions { gap: 6px !important; }
+
+    .icon-btn,
+    .round-btn {
+      width: 36px !important;
+      height: 36px !important;
+      min-width: 36px !important;
+      min-height: 36px !important;
+    }
+
+    .sync-pill {
+      width: 30px !important;
+      height: 30px !important;
+      min-width: 30px !important;
+      min-height: 30px !important;
+      max-width: 30px !important;
+      font-size: 15px !important;
+    }
+
+    button[data-open-search].icon-btn {
+      width: 28px !important;
+      min-width: 28px !important;
+      font-size: 20px !important;
+    }
+  }
+</style>
+
 </head>
 <body>
   <main class="phone" id="app"></main>
