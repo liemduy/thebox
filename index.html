@@ -1,10 +1,21 @@
+
 <!doctype html>
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#FAFAFA" />
-  <title>Idea Box</title>
+  <meta name="theme-color" content="#121212" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Liem Planner" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icon.svg" />
+  <title>Liem's Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@500;700;800&display=swap" rel="stylesheet" />
   <style>
     :root {
       --core: #1A1E23;
@@ -17,6 +28,8 @@
       --border: #E8E3E1;
       --input: #CCCCCC;
       --success: #289E43;
+      --warning: #F59E0B;
+      --danger: #D32F2F;
       --shadow: rgba(26, 30, 35, 0.1) 0px 0px 10px 0px;
       --lift: rgba(26, 30, 35, 0.08) 0px 4px 12px 0px;
       --deep: rgba(26, 30, 35, 0.18) 0px 12px 28px;
@@ -25,19 +38,16 @@
     }
 
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
-    html, body {
-      margin: 0;
-      min-height: 100%;
-      background: var(--bg);
-      color: var(--core);
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--core); }
+    body {
+      overflow-x: hidden;
       font-family: "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
       font-size: 16px;
       line-height: 1.5;
     }
-
-    body { overflow-x: hidden; }
-    button { font: inherit; border: 0; cursor: pointer; }
+    button, input { font: inherit; }
+    button { border: 0; cursor: pointer; }
+    a { color: inherit; }
 
     .phone {
       width: 100%;
@@ -48,38 +58,31 @@
       position: relative;
     }
 
-    .screen, .editor {
+    .screen, .editor, .auth-screen, .boot-screen {
       min-height: 100dvh;
       padding: calc(14px + var(--safe-top)) 16px calc(96px + var(--safe-bottom));
     }
+
+    .auth-screen, .boot-screen { display: grid; place-items: center; padding-bottom: calc(24px + var(--safe-bottom)); }
 
     .topbar, .editorbar {
       min-height: 54px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
+      gap: 10px;
       margin-bottom: 12px;
     }
 
     .editorbar {
       position: sticky;
       top: 0;
-      z-index: 10;
-      margin-bottom: 10px;
+      z-index: 12;
       padding-top: 2px;
-      background: linear-gradient(var(--bg) 78%, rgba(250,250,250,0));
+      background: linear-gradient(var(--bg) 82%, rgba(250,250,250,0));
     }
 
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 20px;
-      line-height: 1;
-      font-weight: 500;
-    }
-
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .mark {
       width: 34px;
       height: 34px;
@@ -89,20 +92,43 @@
       display: grid;
       place-items: center;
       font-size: 15px;
+      flex: 0 0 auto;
     }
+    .brand-title { font-size: 20px; line-height: 1; font-weight: 500; white-space: nowrap; }
+
+    .top-actions { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+    .sync-pill {
+      min-height: 34px;
+      max-width: 96px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--white);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sync-pill.saving { color: var(--warning); border-color: rgba(245,158,11,.28); background: rgba(245,158,11,.08); }
+    .sync-pill.saved { color: var(--success); border-color: rgba(40,158,67,.24); background: rgba(40,158,67,.08); }
+    .sync-pill.error, .sync-pill.offline { color: var(--danger); border-color: rgba(211,47,47,.22); background: rgba(211,47,47,.06); }
 
     .mode-nav {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
-      margin: 0 0 16px;
+      margin: 0 0 14px;
       padding: 6px;
       border: 1px solid var(--border);
       border-radius: 999px;
       background: var(--white);
       box-shadow: var(--shadow);
     }
-
     .tab-btn {
       min-height: 44px;
       border-radius: 999px;
@@ -111,17 +137,10 @@
       font-size: 14px;
       transition: opacity .16s ease, background .16s ease, transform .16s ease;
     }
+    .tab-btn.ghost { background: transparent; color: var(--core); opacity: .34; }
+    .tab-btn:active, .chip:active, .icon-btn:active, .round-btn:active { transform: scale(.96); }
 
-    .tab-btn.ghost {
-      background: transparent;
-      color: var(--core);
-      opacity: .34;
-      border: 1px solid transparent;
-    }
-
-    .tab-btn:active { transform: scale(.98); }
-
-    .icon-btn, .round-plus, .tiny-action {
+    .icon-btn, .round-btn {
       width: 44px;
       height: 44px;
       border-radius: 50%;
@@ -135,61 +154,61 @@
       flex: 0 0 auto;
       transition: transform .16s ease, background .16s ease, box-shadow .16s ease;
     }
+    .round-btn.primary { background: var(--coral); border-color: var(--coral); color: var(--white); }
+    .round-btn.danger { color: var(--muted); background: var(--white); }
+    .small-icon { width: 38px; height: 38px; font-size: 18px; }
 
-    .round-plus {
-      background: var(--coral);
-      border-color: var(--coral);
-      color: var(--white);
-      font-size: 24px;
-    }
-
-    .tiny-action {
-      width: 36px;
-      height: 36px;
-      font-size: 18px;
-      background: var(--blush);
-    }
-
-    .tiny-action.danger,
-    .round-plus.danger {
-      background: var(--white);
-      border-color: var(--border);
-      color: var(--muted);
-    }
-
-    .tiny-action.danger:active,
-    .round-plus.danger:active {
-      background: #FFF3F0;
-      color: var(--core);
-    }
-
-    .icon-btn:active, .round-plus:active, .tiny-action:active { transform: scale(.94); }
-
-    .inline-actions {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      flex: 0 0 auto;
-    }
-
-    .project-stack, .day-list, .action-project-stack { display: grid; gap: 14px; }
-    .project-stack.dragging { user-select: none; }
-
-    .project-card, .action-card {
-      min-height: 132px;
+    .filters, .tool-row {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 2px 1px 14px;
+      scrollbar-width: none;
+    }
+    .filters::-webkit-scrollbar, .tool-row::-webkit-scrollbar { display: none; }
+    .chip {
+      min-height: 38px;
+      padding: 0 13px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--white);
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+      transition: transform .16s ease, background .16s ease, color .16s ease;
+    }
+    .chip.active { background: var(--core); border-color: var(--core); color: var(--white); }
+    .chip.coral { background: var(--coral); color: var(--white); border-color: var(--coral); }
+
+    .project-stack, .day-list, .search-results, .box-editor-tree, .action-tree { display: grid; gap: 14px; }
+    .project-stack.dragging { user-select: none; }
+
+    .project-card, .day-card, .template-card, .action-node, .summary-day, .auth-card, .tools-sheet, .search-result {
       background: var(--white);
       border: 1px solid var(--border);
       border-radius: 18px;
-      padding: 20px;
+      box-shadow: none;
+    }
+    .project-card {
+      min-height: 132px;
+      padding: 18px;
+      display: grid;
+      gap: 12px;
       transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, opacity .16s ease;
     }
-
-    .project-card:active, .action-card:active { transform: scale(.992); }
-    .project-card:hover, .action-card:hover { border-color: #D4D0CC; box-shadow: var(--lift); }
+    .project-card:hover, .day-card:hover, .search-result:hover { border-color: #D4D0CC; box-shadow: var(--lift); }
     .project-card.dragging { opacity: .45; transform: scale(.985); box-shadow: var(--deep); }
+
+    .project-head, .node-head, .day-head, .summary-head, .action-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+    }
+    .project-left { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+    .inline-actions { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; }
 
     .drag-handle {
       width: 34px;
@@ -204,46 +223,30 @@
       touch-action: none;
       cursor: grab;
     }
-
     .drag-handle:active { cursor: grabbing; background: var(--blush); }
-
-    .card-title-wrap {
-      flex: 1 1 auto;
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
 
     .editable-title {
       outline: 0;
-      color: var(--core);
       min-width: 0;
-      flex: 1 1 auto;
       word-break: break-word;
       border-radius: 10px;
+      padding: 2px 0;
     }
-
     .editable-title:focus {
-      box-shadow: 0 0 0 3px rgba(255, 151, 128, .12);
-      background: rgba(255, 234, 230, .55);
+      box-shadow: 0 0 0 3px rgba(255,151,128,.12);
+      background: rgba(255,234,230,.55);
     }
-
-    .editable-title:empty::before,
-    .rich-editor:empty::before {
+    .editable-title:empty::before, .rich-editor:empty::before {
       content: attr(data-placeholder);
       color: #9B9B9B;
       pointer-events: none;
     }
 
-    .home-title {
-      font-size: 28px;
-      font-weight: 400;
-      line-height: 1.12;
-      padding: 2px 0;
-    }
-
+    .home-title { font-size: 28px; font-weight: 400; line-height: 1.12; }
+    .editor-title { font-size: clamp(34px, 10vw, 48px); font-weight: 400; line-height: 1.08; }
+    .sub-title, .action-title { font-size: 18px; line-height: 23px; font-weight: 400; }
+    .muted { color: var(--muted); }
+    .section-label { color: var(--muted); font-size: 13px; line-height: 18px; padding: 0 2px; }
     .empty-card {
       min-height: 220px;
       border: 1px dashed var(--coral);
@@ -256,6 +259,55 @@
       font-size: 22px;
     }
 
+    .mini-tree, .summary-list { display: grid; gap: 7px; }
+    .mini-row, .summary-row {
+      border-left: 1px solid var(--border);
+      padding-left: 10px;
+      margin-left: calc(var(--depth, 0) * 12px);
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 19px;
+    }
+    .mini-row.rootish { color: var(--core); }
+
+    .project-summary { display: grid; gap: 10px; }
+    .summary-day { overflow: hidden; background: var(--bg); }
+    .summary-head, .day-head {
+      min-height: 58px;
+      padding: 0 16px;
+      background: transparent;
+      color: var(--core);
+      text-align: left;
+    }
+    .summary-body, .day-body { padding: 0 12px 12px; display: grid; gap: 10px; }
+    .summary-action {
+      width: 100%;
+      display: grid;
+      gap: 4px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--white);
+      text-align: left;
+      color: var(--core);
+    }
+    .summary-action-title { font-size: 14px; line-height: 19px; display: flex; align-items: center; gap: 7px; }
+    .summary-action-text { color: var(--muted); font-size: 13px; line-height: 18px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .done-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 1px solid var(--input);
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 auto;
+      color: transparent;
+      font-size: 11px;
+    }
+    .done-dot.done { background: var(--success); border-color: var(--success); color: var(--white); }
+    .chev { transition: transform .16s ease; display: inline-grid; place-items: center; }
+    .collapsed .chev { transform: rotate(-90deg); }
+
     .create-today {
       width: 100%;
       min-height: 56px;
@@ -266,121 +318,56 @@
       margin-bottom: 16px;
       box-shadow: var(--lift);
     }
-
-    .create-today.secondary {
-      background: var(--core);
+    .create-today.secondary { background: var(--core); }
+    .action-date-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      position: relative;
     }
-
-    .day-card, .summary-day {
-      background: var(--white);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      overflow: hidden;
-    }
-
-    .day-head, .summary-head {
+    .date-pill {
       width: 100%;
-      min-height: 58px;
+      min-height: 54px;
       padding: 0 16px;
-      background: transparent;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--white);
+      color: var(--core);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      color: var(--core);
+      gap: 12px;
+      box-shadow: var(--shadow);
     }
-
-    .day-head span:first-child, .summary-head span:first-child {
-      font-size: 18px;
-      line-height: 24px;
+    .date-pill span { font-size: 18px; display: inline-block; color: var(--muted); }
+    .date-pill strong { font-weight: 500; flex: 1; text-align: left; }
+    .date-pill em { font-style: normal; color: var(--muted); font-size: 13px; }
+    .native-date {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 54px;
+      height: 54px;
+      opacity: 0;
+      pointer-events: auto;
     }
+    .recent-label { margin-top: 22px; }
+    .compact-days .day-card { opacity: .92; }
 
-    .day-chev { transition: transform .16s ease; }
-    .collapsed .day-chev { transform: rotate(-90deg); }
-
-    .day-body, .summary-body {
-      padding: 0 12px 12px;
-      display: grid;
-      gap: 10px;
-    }
-
-    .action-card {
-      min-height: 96px;
-      border-radius: 14px;
-      background: var(--bg);
-      padding: 18px;
-    }
-
-    .action-card .home-title { font-size: 23px; }
+    .day-card { overflow: hidden; }
+    .day-meta { color: var(--muted); font-size: 13px; line-height: 18px; }
+    .progress-track { height: 8px; border-radius: 999px; background: var(--blush); overflow: hidden; margin-top: 2px; }
+    .progress-fill { height: 100%; background: var(--success); border-radius: inherit; width: var(--progress, 0%); }
 
     .editor { padding-bottom: calc(112px + var(--safe-bottom)); }
-
-    .editor-kicker {
-      font-size: 13px;
-      line-height: 18px;
-      color: var(--muted);
-      margin: -2px 0 10px;
-    }
-
-    .node-title-row, .sub-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-    }
-
-    .node-title-row { justify-content: space-between; margin-bottom: 12px; }
-    .sub-row { align-items: center; min-height: 54px; }
-
-    .editor-title {
-      font-size: clamp(34px, 10vw, 48px);
-      font-weight: 400;
-      line-height: 1.08;
-      padding: 4px 0;
-    }
-
-    .rich-editor {
-      width: 100%;
-      min-height: 42dvh;
-      outline: 0;
-      background: var(--white);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 18px;
-      color: var(--core);
-      font-size: 16px;
-      line-height: 24px;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      box-shadow: none;
-    }
-
-    .rich-editor:focus {
-      border-color: var(--coral);
-      box-shadow: 0px 0px 0px 3px rgba(255, 151, 128, 0.1);
-    }
-
-    .rich-editor h2,
-    .rich-editor h3 { margin: 0 0 8px; font-weight: 500; line-height: 1.2; }
-    .rich-editor ul,
-    .rich-editor ol { padding-left: 22px; margin: 8px 0; }
-    .rich-editor p { margin: 0 0 8px; }
-
-    .children { display: grid; gap: 10px; margin-top: 14px; }
-    .sub-node { display: grid; gap: 8px; }
-
-    .sub-shell {
-      background: var(--white);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 12px;
-      transition: border-color .16s ease, box-shadow .16s ease;
-    }
-
-    .sub-shell.open {
-      border-color: var(--coral);
-      box-shadow: 0px 0px 0px 3px rgba(255, 151, 128, 0.07);
-    }
-
-    .chev {
+    .editor-kicker { font-size: 13px; color: var(--muted); line-height: 18px; min-width: 0; }
+    .template-card { padding: 14px; display: grid; gap: 10px; }
+    .node-head { min-height: 54px; }
+    .node-shell { display: grid; gap: 8px; }
+    .node-shell.open > .template-card { border-color: var(--coral); box-shadow: 0 0 0 3px rgba(255,151,128,.07); }
+    .sub-children { display: grid; gap: 10px; margin-top: 8px; padding-left: 12px; border-left: 1px solid var(--border); }
+    .caret {
       width: 34px;
       height: 34px;
       border-radius: 50%;
@@ -389,83 +376,69 @@
       display: grid;
       place-items: center;
       flex: 0 0 auto;
-      transform: rotate(0deg);
       transition: transform .16s ease, background .16s ease, color .16s ease;
     }
+    .node-shell.open > .template-card > .node-head .caret,
+    .action-node.open > .action-head .caret { transform: rotate(90deg); background: var(--coral); color: var(--white); }
 
-    .sub-shell.open .chev {
-      transform: rotate(90deg);
-      background: var(--coral);
-      color: var(--white);
-    }
-
-    .sub-title {
-      font-size: 18px;
-      line-height: 23px;
-      font-weight: 400;
-      padding: 5px 2px;
-    }
-
-    .sub-body { margin-top: 10px; }
-
-    .sub-body .rich-editor {
-      min-height: 126px;
-      border-radius: 14px;
-      background: #FFFFFF;
-      font-size: 15px;
-      line-height: 22px;
-      padding: 14px;
-    }
-
-    .sub-children {
+    .action-node { padding: 12px; display: grid; gap: 10px; }
+    .action-node.level-1 { border-radius: 18px; }
+    .action-head { min-height: 48px; }
+    .action-title-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+    .check-btn {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 1px solid var(--input);
+      background: var(--white);
+      color: transparent;
       display: grid;
-      gap: 10px;
-      margin-top: 10px;
-      padding-left: 12px;
-      border-left: 1px solid var(--border);
-    }
-
-    .box-summary {
-      margin-top: 22px;
-      display: grid;
-      gap: 10px;
-    }
-
-    .section-label {
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 18px;
-      padding: 0 2px;
-    }
-
-    .snapshot-tree {
-      display: grid;
-      gap: 8px;
-      padding: 4px 2px 0;
-    }
-
-    .snapshot-row {
-      border-left: 1px solid var(--border);
-      padding-left: 10px;
-      margin-left: calc(var(--depth, 0) * 12px);
-    }
-
-    .snapshot-title {
+      place-items: center;
+      flex: 0 0 auto;
       font-size: 14px;
-      line-height: 19px;
+      transition: background .16s ease, color .16s ease, border .16s ease;
+    }
+    .check-btn.done { background: var(--success); border-color: var(--success); color: var(--white); }
+    .action-meta { color: var(--muted); font-size: 12px; }
+    .rich-editor {
+      width: 100%;
+      min-height: 118px;
+      outline: 0;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
       color: var(--core);
+      font-size: 16px;
+      line-height: 24px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
+    .rich-editor:focus { border-color: var(--coral); box-shadow: 0 0 0 3px rgba(255,151,128,.1); }
+    .rich-editor h3 { margin: 0 0 8px; font-weight: 500; line-height: 1.2; }
+    .rich-editor ul, .rich-editor ol { padding-left: 22px; margin: 8px 0; }
+    .rich-editor p { margin: 0 0 8px; }
 
-    .snapshot-content {
-      margin: 2px 0 0;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 18px;
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
+    .action-body { display: grid; gap: 10px; }
+    .action-children { display: grid; gap: 10px; padding-left: 12px; border-left: 1px solid var(--border); }
+
+    .search-screen .topbar { margin-bottom: 8px; }
+    .search-input {
+      width: 100%;
+      height: 50px;
+      border: 1px solid var(--input);
+      border-radius: 16px;
+      background: var(--white);
+      color: var(--core);
+      padding: 0 14px;
+      outline: 0;
+      margin-bottom: 14px;
     }
+    .search-input:focus { border-color: var(--coral); box-shadow: 0 0 0 3px rgba(255,151,128,.1); }
+    .search-result { padding: 14px; display: grid; gap: 4px; text-align: left; color: var(--core); }
+    .search-type { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+    .search-title { font-size: 17px; line-height: 22px; }
+    .search-text { color: var(--muted); font-size: 13px; line-height: 18px; }
 
     .format-bar {
       position: fixed;
@@ -481,7 +454,7 @@
       padding: 8px;
       border: 1px solid var(--border);
       border-radius: 22px;
-      background: rgba(255, 255, 255, .94);
+      background: rgba(255,255,255,.94);
       backdrop-filter: blur(18px);
       -webkit-backdrop-filter: blur(18px);
       box-shadow: var(--deep);
@@ -489,190 +462,1826 @@
       pointer-events: none;
       transition: transform .18s ease, opacity .18s ease;
     }
-
-    .format-bar.show {
-      transform: translate(-50%, 0);
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .format-btn {
-      width: 40px;
-      height: 40px;
-      border-radius: 14px;
-      background: var(--bg);
-      color: var(--core);
-      display: grid;
-      place-items: center;
-      font-size: 15px;
-      line-height: 1;
-    }
-
-    .format-btn:active { background: var(--blush); transform: scale(.96); }
+    .format-bar.show { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+    .format-btn { width: 40px; height: 40px; border-radius: 14px; background: var(--bg); color: var(--core); display: grid; place-items: center; font-size: 15px; }
     .format-btn.primary { background: var(--coral); color: var(--white); }
     .format-spacer { flex: 1; }
 
-    .toast {
+    .snackbar {
       position: fixed;
       left: 50%;
-      top: calc(12px + var(--safe-top));
-      transform: translateX(-50%);
-      z-index: 70;
-      min-height: 36px;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: rgba(26, 30, 35, .86);
+      bottom: calc(76px + var(--safe-bottom));
+      transform: translate(-50%, 140%);
+      z-index: 72;
+      width: min(488px, calc(100% - 24px));
+      min-height: 48px;
+      padding: 8px 8px 8px 14px;
+      border-radius: 18px;
+      background: rgba(26,30,35,.92);
       color: var(--white);
-      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
       opacity: 0;
       pointer-events: none;
-      transition: opacity .16s ease;
+      transition: transform .18s ease, opacity .18s ease;
+      box-shadow: var(--deep);
+      font-size: 13px;
     }
+    .snackbar.show { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+    .snackbar button { min-height: 34px; border-radius: 999px; padding: 0 12px; background: var(--coral); color: var(--white); font-size: 13px; }
 
-    .toast.show { opacity: 1; }
-
-
-    .auth-screen, .boot-screen {
-      min-height: 100dvh;
-      padding: calc(24px + var(--safe-top)) 16px calc(24px + var(--safe-bottom));
+    .tools-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 64;
+      background: rgba(26,30,35,.24);
       display: grid;
-      place-items: center;
+      align-items: end;
+      justify-items: center;
+      padding: 16px 12px calc(12px + var(--safe-bottom));
     }
-
-    .auth-card {
-      width: 100%;
-      background: var(--white);
-      border: 1px solid var(--border);
-      border-radius: 22px;
-      padding: 24px;
-      box-shadow: var(--shadow);
-    }
-
-    .auth-title {
-      margin: 28px 0 6px;
-      font-size: 42px;
-      font-weight: 400;
-      line-height: 1.08;
-      color: var(--core);
-    }
-
-    .auth-copy {
-      margin: 0 0 22px;
-      color: var(--muted);
-      font-size: 15px;
-      line-height: 22px;
-    }
-
-    .auth-form {
-      display: grid;
-      gap: 12px;
-    }
-
-    .auth-input {
-      width: 100%;
-      height: 48px;
-      border: 1px solid var(--input);
-      border-radius: 8px;
-      background: var(--white);
-      color: var(--core);
-      padding: 0 14px;
-      font: inherit;
-      font-size: 15px;
-      outline: 0;
-    }
-
-    .auth-input:focus {
-      border-color: var(--coral);
-      box-shadow: 0 0 0 3px rgba(255, 151, 128, .1);
-    }
-
-    .auth-actions {
+    .tools-sheet {
+      width: min(496px, 100%);
+      padding: 16px;
+      box-shadow: var(--deep);
       display: grid;
       gap: 10px;
-      margin-top: 6px;
     }
-
-    .auth-primary, .auth-secondary {
+    .tool-button {
       width: 100%;
       min-height: 48px;
-      border-radius: 999px;
-      color: var(--white);
-      font-size: 14px;
+      border-radius: 14px;
+      background: var(--bg);
+      color: var(--core);
+      text-align: left;
+      padding: 0 14px;
+      border: 1px solid var(--border);
     }
+    .tool-button.danger { color: var(--danger); }
+    .file-input { display: none; }
 
+    .auth-card { width: 100%; padding: 24px; box-shadow: var(--shadow); }
+    .auth-title { margin: 28px 0 6px; font-size: 42px; font-weight: 400; line-height: 1.08; }
+    .auth-copy { margin: 0 0 22px; color: var(--muted); font-size: 15px; line-height: 22px; }
+    .auth-form { display: grid; gap: 12px; }
+    .auth-input {
+      width: 100%; height: 48px; border: 1px solid var(--input); border-radius: 8px; background: var(--white); color: var(--core); padding: 0 14px; font-size: 15px; outline: 0;
+    }
+    .auth-input:focus { border-color: var(--coral); box-shadow: 0 0 0 3px rgba(255,151,128,.1); }
+    .auth-actions { display: grid; gap: 10px; margin-top: 6px; }
+    .auth-primary, .auth-secondary, .auth-ghost { width: 100%; min-height: 48px; border-radius: 999px; color: var(--white); font-size: 14px; }
     .auth-primary { background: var(--coral); }
     .auth-secondary { background: var(--core); }
-    .auth-primary:disabled, .auth-secondary:disabled { opacity: .5; cursor: not-allowed; }
-
-    .auth-message {
-      min-height: 21px;
-      margin-top: 14px;
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 21px;
-      word-break: break-word;
-    }
-
-    .top-actions {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      flex: 0 0 auto;
-    }
-
-    .logout-btn {
-      min-width: 52px;
-      height: 44px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--white);
-      color: var(--muted);
-      font-size: 13px;
-      padding: 0 12px;
-    }
-
-    .sync-note {
-      margin-top: 12px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 18px;
-    }
-
+    .auth-ghost { background: transparent; color: var(--core); border: 1px solid var(--border); }
+    .auth-primary:disabled, .auth-secondary:disabled, .auth-ghost:disabled { opacity: .5; cursor: not-allowed; }
+    .auth-message { min-height: 21px; margin-top: 14px; color: var(--muted); font-size: 14px; line-height: 21px; word-break: break-word; }
 
     @media (min-width: 768px) {
       body { background: #F2F0EF; }
-      .phone { box-shadow: rgba(26, 30, 35, 0.12) 0px 24px 48px; }
+      .phone { box-shadow: rgba(26,30,35,.12) 0px 24px 48px; }
       .screen, .editor { padding-left: 24px; padding-right: 24px; }
       .project-card { min-height: 148px; }
     }
-
     @media (max-width: 374px) {
       .home-title { font-size: 24px; }
       .editor-title { font-size: 32px; }
-      .project-card { padding: 18px; }
+      .project-card { padding: 16px; }
       .format-btn { width: 36px; }
       .drag-handle { width: 30px; }
+      .sync-pill { display: none; }
     }
+
+    /* Planxanh dark redesign — visual-only override, app logic untouched */
+    :root {
+      --core: #ffffff;
+      --muted: #b3b3b3;
+      --bg: #121212;
+      --white: #242424;
+      --coral: #ffc8d2;
+      --coral-2: #ffd8e1;
+      --blush: rgba(255, 200, 210, 0.14);
+      --border: #3e3e3e;
+      --input: #3e3e3e;
+      --success: #60a5fa;
+      --warning: #facc15;
+      --danger: #ff453a;
+      --shadow: none;
+      --lift: none;
+      --deep: 0 18px 48px rgba(0,0,0,.45);
+      color-scheme: dark;
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--core);
+    }
+
+    body {
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+    }
+
+    h1, h2, h3, .brand-title, .home-title, .editor-title, .auth-title, .tab-btn {
+      font-family: "Montserrat", "Inter", sans-serif;
+      letter-spacing: -0.5px;
+    }
+
+    .phone {
+      max-width: 640px;
+      background: var(--bg);
+    }
+
+    .screen, .editor, .auth-screen, .boot-screen {
+      padding-left: 20px;
+      padding-right: 20px;
+      background: var(--bg);
+    }
+
+    .topbar, .editorbar {
+      min-height: 58px;
+      margin: 0 -20px 16px;
+      padding: calc(8px + var(--safe-top)) 20px 10px;
+      background: linear-gradient(to bottom, rgba(18,18,18,.98), rgba(18,18,18,.92));
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .topbar::after, .editorbar::after {
+      content: "";
+      position: absolute;
+      left: 20px;
+      right: 20px;
+      bottom: 0;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(255,255,255,.02), rgba(255,255,255,.09), rgba(255,255,255,.02));
+      pointer-events: none;
+    }
+
+    .brand { gap: 12px; }
+    .mark {
+      width: auto;
+      height: auto;
+      border-radius: 0;
+      background: transparent;
+      color: var(--coral);
+      font-size: 27px;
+      line-height: 1;
+    }
+    .brand-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1;
+    }
+    .brand-title b { color: var(--coral); font-weight: 800; }
+
+    .top-actions { gap: 8px; }
+    .sync-pill,
+    .icon-btn,
+    .round-btn,
+    .chip,
+    .date-pill,
+    .auth-input,
+    .search-input {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,.16);
+      color: var(--muted);
+      box-shadow: none;
+    }
+    .sync-pill {
+      min-height: 32px;
+      border-radius: 999px;
+      font-size: 11px;
+      max-width: 92px;
+    }
+    .sync-pill.saved {
+      color: #bde7c8;
+      border-color: rgba(189,231,200,.32);
+      background: rgba(189,231,200,.05);
+    }
+    .sync-pill.saving {
+      color: #f2d08a;
+      border-color: rgba(242,208,138,.3);
+      background: rgba(242,208,138,.06);
+    }
+    .sync-pill.error, .sync-pill.offline {
+      color: #f6b0b0;
+      border-color: rgba(246,176,176,.28);
+      background: rgba(246,176,176,.05);
+    }
+
+    .icon-btn, .round-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .icon-btn:hover, .round-btn:hover {
+      color: #fff;
+      border-color: #fff;
+      background: transparent;
+    }
+    .round-btn.primary {
+      background: var(--coral);
+      border-color: var(--coral);
+      color: #000;
+    }
+    .round-btn.primary:hover { background: var(--coral-2); color: #000; border-color: var(--coral-2); }
+    .round-btn.danger { color: var(--muted); background: transparent; }
+    .round-btn.danger:hover { color: var(--danger); border-color: rgba(255,69,58,.45); }
+
+    .mode-nav {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 9px;
+      margin: 0 0 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    .tab-btn {
+      min-height: auto;
+      padding: 0;
+      background: transparent;
+      color: #fff;
+      font-size: clamp(28px, 8vw, 34px);
+      font-weight: 700;
+      line-height: 1.05;
+      border-radius: 0;
+      opacity: 1;
+    }
+    .tab-btn.ghost {
+      background: transparent;
+      color: var(--muted);
+      opacity: .58;
+    }
+    .view-sep {
+      color: rgba(255,255,255,.22);
+      font-size: clamp(22px, 6vw, 28px);
+      line-height: 1;
+      transform: translateY(-1px);
+    }
+
+    .filters, .tool-row {
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .chip {
+      min-height: 36px;
+      padding: 0 13px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .chip:hover { color: #fff; border-color: rgba(255,255,255,.42); }
+    .chip.active, .chip.coral {
+      background: rgba(255,200,210,.16);
+      color: var(--coral);
+      border-color: rgba(255,200,210,.34);
+    }
+
+    .project-stack, .day-list, .search-results, .box-editor-tree, .action-tree {
+      gap: 16px;
+    }
+
+    .project-card,
+    .day-card,
+    .template-card,
+    .action-node,
+    .summary-day,
+    .auth-card,
+    .tools-sheet,
+    .search-result {
+      background: var(--white);
+      border: none;
+      border-radius: 10px;
+      box-shadow: none;
+      color: #fff;
+    }
+    .project-card {
+      min-height: 118px;
+      padding: 18px 18px 8px;
+    }
+    .project-card:hover,
+    .day-card:hover,
+    .search-result:hover {
+      background: #2a2a2a;
+      box-shadow: none;
+      border-color: transparent;
+    }
+    .project-card.dragging {
+      opacity: .42;
+      transform: scale(.985);
+      box-shadow: none;
+    }
+
+    .project-head,
+    .node-head,
+    .day-head,
+    .summary-head,
+    .action-head {
+      min-height: 48px;
+    }
+    .project-card > .project-head {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .project-left { gap: 12px; }
+    .drag-handle {
+      width: 32px;
+      height: 38px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 8px;
+      font-size: 19px;
+    }
+    .drag-handle:active { background: rgba(255,255,255,.06); color: var(--coral); }
+
+    .editable-title,
+    .rich-editor {
+      user-select: text;
+    }
+    .editable-title:focus {
+      box-shadow: 0 0 0 1px rgba(255,200,210,.55);
+      background: rgba(255,255,255,.06);
+    }
+    .editable-title:empty::before,
+    .rich-editor:empty::before {
+      color: rgba(179,179,179,.72);
+    }
+
+    .home-title {
+      color: var(--coral);
+      font-size: 21px;
+      font-weight: 700;
+      line-height: 1.06;
+    }
+    .editor-title {
+      color: var(--coral);
+      font-size: clamp(32px, 9vw, 44px);
+      font-weight: 800;
+      line-height: 1.04;
+    }
+    .sub-title, .action-title {
+      color: #fff;
+      font-size: 16px;
+      line-height: 1.22;
+      font-weight: 600;
+    }
+    .muted, .section-label, .editor-kicker, .action-meta, .day-meta, .search-type, .search-text, .summary-action-text {
+      color: var(--muted);
+    }
+
+    .mini-tree,
+    .summary-list {
+      gap: 0;
+      padding-top: 8px;
+    }
+    .mini-row,
+    .summary-row {
+      border-left: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 18px;
+      padding: 5px 0 5px 10px;
+    }
+    .mini-row.rootish { color: #e5e7eb; }
+
+    .project-summary { gap: 8px; margin-top: 4px; }
+    .summary-day {
+      background: #1d1d1d;
+      border: 1px solid rgba(255,255,255,.07);
+      overflow: hidden;
+    }
+    .summary-head,
+    .day-head {
+      min-height: 50px;
+      padding: 0 14px;
+      color: #fff;
+    }
+    .summary-body,
+    .day-body {
+      padding: 0 12px 12px;
+      gap: 8px;
+    }
+    .summary-action {
+      padding: 10px 12px;
+      background: #2f2f2f;
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: 8px;
+      color: #fff;
+    }
+    .summary-action:hover { border-color: rgba(255,200,210,.24); background: #333; }
+    .summary-action-title { font-size: 14px; color: #f4f4f4; }
+    .done-dot {
+      border-color: var(--border);
+      background: #121212;
+      color: transparent;
+    }
+    .done-dot.done {
+      background: rgba(96,165,250,.14);
+      border-color: rgba(96,165,250,.4);
+      color: #93c5fd;
+    }
+
+    .empty-card {
+      min-height: 180px;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      background: var(--white);
+      color: var(--muted);
+      font-family: "Montserrat", sans-serif;
+      font-weight: 700;
+      font-size: 18px;
+    }
+
+    .action-date-bar { margin-bottom: 18px; }
+    .date-pill {
+      min-height: 44px;
+      border-radius: 999px;
+      background: transparent;
+      border-color: rgba(255,200,210,.18);
+      color: #fff;
+      box-shadow: none;
+    }
+    .date-pill span, .date-pill em { color: var(--muted); }
+    .date-pill strong {
+      color: var(--coral);
+      font-family: "Montserrat", sans-serif;
+      font-weight: 700;
+    }
+    .create-today {
+      min-height: 48px;
+      border-radius: 999px;
+      background: var(--coral);
+      color: #000;
+      font-weight: 700;
+      box-shadow: none;
+    }
+    .create-today.secondary { background: #333; color: #fff; }
+
+    .day-card { overflow: hidden; }
+    .day-card .day-head { border-bottom: 1px solid var(--border); }
+    .progress-track {
+      height: 6px;
+      background: rgba(255,255,255,.08);
+    }
+    .progress-fill { background: #60a5fa; }
+
+    .editorbar {
+      margin-bottom: 18px;
+      background: linear-gradient(to bottom, rgba(18,18,18,.98), rgba(18,18,18,.92));
+    }
+    .template-card {
+      padding: 14px;
+      background: var(--white);
+    }
+    .node-shell.open > .template-card {
+      border-color: transparent;
+      box-shadow: none;
+      background: #2a2a2a;
+    }
+    .sub-children,
+    .action-children {
+      border-left: 1px solid var(--border);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .caret {
+      background: rgba(255,255,255,.06);
+      color: var(--muted);
+      width: 32px;
+      height: 32px;
+    }
+    .node-shell.open > .template-card > .node-head .caret,
+    .action-node.open > .action-head .caret {
+      background: rgba(255,200,210,.16);
+      color: var(--coral);
+    }
+
+    .action-node {
+      padding: 14px;
+      gap: 10px;
+      background: var(--white);
+    }
+    .action-node.level-1 {
+      border-radius: 10px;
+    }
+    .action-node.open {
+      background: #2a2a2a;
+    }
+    .action-title-wrap { gap: 10px; }
+    .check-btn {
+      background: #121212;
+      border-color: var(--border);
+      color: transparent;
+    }
+    .check-btn.done {
+      background: rgba(96,165,250,.14);
+      border-color: rgba(96,165,250,.4);
+      color: #93c5fd;
+    }
+    .rich-editor {
+      min-height: 112px;
+      background: #333;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      color: #fff;
+      padding: 13px;
+      font-size: 15px;
+      line-height: 23px;
+    }
+    .rich-editor:focus {
+      border-color: var(--muted);
+      box-shadow: none;
+      background: #3e3e3e;
+    }
+
+    .search-input,
+    .auth-input {
+      height: 48px;
+      border-radius: 4px;
+      background: #333;
+      color: #fff;
+      border-color: transparent;
+    }
+    .search-input::placeholder,
+    .auth-input::placeholder { color: var(--muted); }
+    .search-input:focus,
+    .auth-input:focus {
+      border-color: var(--muted);
+      box-shadow: none;
+      background: #3e3e3e;
+    }
+    .search-result { padding: 14px; background: var(--white); }
+    .search-title { color: #fff; }
+
+    .auth-card {
+      background: var(--white);
+      border-radius: 16px;
+      padding: 32px 24px;
+      border: 1px solid rgba(255,255,255,.08);
+      box-shadow: 0 18px 48px rgba(0,0,0,.45);
+    }
+    .auth-title {
+      color: #fff;
+      font-size: 28px;
+      font-weight: 800;
+    }
+    .auth-copy { color: var(--muted); }
+    .auth-primary {
+      background: var(--coral);
+      color: #000;
+      border-radius: 999px;
+      font-weight: 700;
+      min-height: 44px;
+    }
+    .auth-secondary,
+    .auth-ghost,
+    .tool-button {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      min-height: 44px;
+    }
+    .auth-secondary:hover,
+    .auth-ghost:hover,
+    .tool-button:hover {
+      color: #fff;
+      border-color: #fff;
+    }
+    .auth-message { color: var(--muted); }
+
+    .tools-backdrop {
+      background: rgba(0,0,0,.7);
+      backdrop-filter: blur(8px);
+    }
+    .tools-sheet {
+      background: var(--white);
+      border: 1px solid rgba(255,255,255,.08);
+      box-shadow: 0 18px 48px rgba(0,0,0,.45);
+      border-radius: 16px 16px 0 0;
+    }
+    .tool-button.danger { color: #f6b0b0; border-color: rgba(246,176,176,.28); }
+
+    .format-bar {
+      background: rgba(36,36,36,.96);
+      border: 1px solid rgba(255,255,255,.08);
+      box-shadow: 0 -14px 42px rgba(0,0,0,.45);
+    }
+    .format-btn {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid transparent;
+    }
+    .format-btn:hover { color: #fff; background: rgba(255,255,255,.06); }
+    .format-btn.primary {
+      background: var(--coral);
+      color: #000;
+      border-color: var(--coral);
+    }
+
+    .snackbar {
+      background: #242424;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,.08);
+      box-shadow: 0 18px 48px rgba(0,0,0,.45);
+    }
+    .snackbar button { color: var(--coral); }
+
+    @media (max-width: 640px) {
+      .screen, .editor, .auth-screen, .boot-screen {
+        padding-left: 20px;
+        padding-right: 20px;
+      }
+      .project-card { padding: 18px 14px 8px; }
+      .brand-title { font-size: 21px; }
+      .home-title { font-size: 19px; }
+      .sub-title, .action-title { font-size: 15px; }
+      .sync-pill { max-width: 82px; }
+      .top-actions { gap: 6px; }
+      .icon-btn, .round-btn { width: 36px; height: 36px; }
+    }
+
   </style>
+
+<style id="inline-plus-actions-empty-fix-v1">
+  .project-card.just-created,
+  .inline-sub-row.just-created,
+  .template-card.just-created {
+    animation: createdFlash .62s ease-out both;
+  }
+  @keyframes createdFlash {
+    0% { transform: translateY(7px) scale(.985); opacity: .08; background: rgba(255,200,210,.18); }
+    70% { transform: translateY(0) scale(1); opacity: 1; background: #2a2a2a; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  .inline-sub-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 38px;
+    padding: 6px 0 6px calc(10px + var(--depth, 0) * 13px);
+    border-left: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .inline-sub-row.rootish { color: #e5e7eb; }
+  .mini-row.inline-sub-row {
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .mini-row-main {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    flex: 1;
+  }
+  .mini-title {
+    min-width: 40px;
+    max-width: 100%;
+    color: inherit;
+    font-size: 13px;
+    line-height: 18px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    overflow-wrap: anywhere;
+  }
+  .mini-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+  }
+  .mini-icon {
+    width: 28px;
+    height: 28px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,.12);
+    color: var(--muted);
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .mini-icon.add:hover { color: #000; background: var(--coral); border-color: var(--coral); }
+  .mini-icon.delete:hover { color: #ff453a; border-color: rgba(255,69,58,.45); }
+
+  .schedule-empty-state {
+    min-height: 330px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    background: transparent;
+    padding: 42px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 14px;
+    margin-top: 14px;
+  }
+  .schedule-empty-state h2 {
+    margin: 4px 0 0;
+    color: #fff;
+    font-family: "Montserrat", sans-serif;
+    font-size: 19px;
+    line-height: 1.2;
+    letter-spacing: -.02em;
+  }
+  .schedule-empty-state p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.45;
+    max-width: 280px;
+  }
+  .calendar-illustration {
+    width: 86px;
+    height: 86px;
+    border-radius: 24px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    position: relative;
+    display: grid;
+    place-items: center;
+  }
+  .calendar-rings {
+    position: absolute;
+    top: 18px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    gap: 28px;
+    z-index: 2;
+  }
+  .calendar-rings span {
+    width: 6px;
+    height: 14px;
+    border-radius: 999px;
+    background: var(--coral);
+    box-shadow: 0 0 0 3px rgba(255,200,210,.11);
+  }
+  .calendar-page {
+    width: 54px;
+    height: 58px;
+    border-radius: 9px;
+    background: #242424;
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 12px 28px rgba(0,0,0,.26);
+    padding: 18px 9px 8px;
+    position: relative;
+  }
+  .calendar-page::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 13px;
+    border-radius: 9px 9px 0 0;
+    background: rgba(255,200,210,.18);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+  .calendar-grid span, .calendar-grid b {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.22);
+  }
+  .calendar-grid b { background: var(--coral); }
+  .empty-create-btn {
+    margin-top: 8px;
+    width: min(100%, 260px);
+  }
+
+  @media (max-width: 640px) {
+    .inline-sub-row { padding-top: 5px; padding-bottom: 5px; }
+    .mini-icon { width: 26px; height: 26px; }
+    .schedule-empty-state { min-height: 300px; padding: 36px 18px; }
+  }
+</style>
+
+
+<style id="action-notes-v3">
+  /* Boxes: match uploaded dark accordion rhythm */
+  .project-card {
+    padding: 18px 18px 6px !important;
+    border-radius: 10px !important;
+    min-height: auto !important;
+    gap: 0 !important;
+  }
+  .project-card > .project-head {
+    min-height: 52px;
+    padding-bottom: 12px !important;
+    border-bottom: 1px solid var(--border) !important;
+  }
+  .box-subtree {
+    display: grid;
+    gap: 0;
+    padding: 8px 0 0 0;
+  }
+  .box-subtree.empty {
+    padding-top: 12px;
+  }
+  .box-subrow {
+    border-bottom: 1px solid var(--border);
+    margin-left: calc(var(--depth, 0) * 16px);
+  }
+  .box-subrow:last-child { border-bottom: none; }
+  .box-subhead {
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 0;
+    cursor: pointer;
+  }
+  .box-subleft {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+  .box-subtitle {
+    color: #e5e7eb;
+    font-size: 15px;
+    line-height: 1.25;
+    font-weight: 600;
+  }
+  .box-subrow.depth-0 .box-subtitle { color: #fff; font-size: 16px; }
+  .box-subchildren {
+    display: grid;
+    gap: 0;
+    padding-left: 18px;
+    border-left: 1px solid var(--border);
+  }
+  .box-subrow .caret {
+    width: 26px;
+    height: 26px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,.08);
+    font-size: 17px;
+  }
+  .box-subrow.open > .box-subhead .caret {
+    transform: rotate(90deg);
+    color: var(--coral);
+    border-color: rgba(255,200,210,.24);
+    background: rgba(255,200,210,.08);
+  }
+  .box-subactions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+  }
+  .box-subactions .mini-icon,
+  .action-add-btn,
+  .entry-delete-btn,
+  .entry-edit-btn {
+    width: 28px;
+    height: 28px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,.12);
+    color: var(--muted);
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .box-subactions .mini-icon.add:hover,
+  .action-add-btn:hover { color:#000; background: var(--coral); border-color: var(--coral); }
+  .box-subactions .mini-icon.delete:hover,
+  .entry-delete-btn:hover { color: var(--danger); border-color: rgba(255,69,58,.45); }
+
+  /* Actions: node is a container, entries are the real actions/notes */
+  .action-node {
+    padding: 0 !important;
+    overflow: visible;
+  }
+  .action-node > .action-head {
+    min-height: 56px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .action-node.open > .action-head { border-bottom-color: rgba(255,255,255,.10); }
+  .action-title-wrap .caret { width: 28px; height: 28px; }
+  .action-body {
+    padding: 10px 14px 14px 34px;
+    gap: 9px !important;
+  }
+  .action-children {
+    margin-top: 4px;
+    padding-left: 14px;
+  }
+  .entry-list {
+    display: grid;
+    gap: 2px;
+  }
+  .entry-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-height: 38px;
+    padding: 8px 6px;
+    margin-left: -6px;
+    margin-right: -6px;
+    border-radius: 8px;
+    transition: background .16s ease;
+  }
+  .entry-row:hover { background: rgba(255,255,255,.05); }
+  .entry-check {
+    width: 17px;
+    height: 17px;
+    margin-top: 2px;
+    accent-color: var(--coral);
+    flex: 0 0 auto;
+  }
+  .entry-text {
+    flex: 1;
+    color: #e5e7eb;
+    font-size: 14px;
+    line-height: 20px;
+    outline: 0;
+    user-select: text;
+    min-width: 0;
+    word-break: break-word;
+  }
+  .entry-text:focus {
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px rgba(255,200,210,.45);
+    background: rgba(255,255,255,.05);
+  }
+  .entry-row.done .entry-text {
+    color: var(--muted);
+    text-decoration: line-through;
+  }
+  .note-row .entry-text {
+    cursor: pointer;
+    text-decoration: none !important;
+    color: #fff;
+    font-weight: 600;
+  }
+  .note-pill {
+    font-size: 11px;
+    color: var(--coral);
+    border: 1px solid rgba(255,200,210,.24);
+    background: rgba(255,200,210,.08);
+    border-radius: 999px;
+    padding: 2px 7px;
+    line-height: 16px;
+    margin-top: 0;
+  }
+  .entry-actions { display: inline-flex; gap: 5px; opacity: .78; }
+  .entry-row:hover .entry-actions { opacity: 1; }
+  .entry-delete-btn, .entry-edit-btn { width: 25px; height: 25px; font-size: 13px; border-color: transparent; }
+  .entry-edit-btn:hover { color: var(--coral); border-color: rgba(255,200,210,.25); }
+  .action-menu-wrap { position: relative; flex: 0 0 auto; }
+  .action-menu {
+    position: absolute;
+    right: 0;
+    top: 34px;
+    z-index: 30;
+    width: 152px;
+    background: #242424;
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 12px;
+    box-shadow: 0 18px 48px rgba(0,0,0,.45);
+    padding: 6px;
+    display: grid;
+    gap: 4px;
+  }
+  .action-menu button {
+    min-height: 38px;
+    border-radius: 8px;
+    background: transparent;
+    color: #fff;
+    text-align: left;
+    padding: 0 10px;
+    font-size: 14px;
+  }
+  .action-menu button:hover { background: rgba(255,255,255,.06); color: var(--coral); }
+  .entry-empty {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 18px;
+    padding: 4px 0 2px;
+  }
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: rgba(0,0,0,.70);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .entry-modal {
+    width: min(420px, 100%);
+    background: #242424;
+    color: #fff;
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 16px;
+    box-shadow: 0 18px 48px rgba(0,0,0,.45);
+    padding: 22px 18px 18px;
+    display: grid;
+    gap: 14px;
+  }
+  .entry-modal h3 {
+    margin: 0;
+    font-family: "Montserrat", sans-serif;
+    font-size: 20px;
+    letter-spacing: -.02em;
+  }
+  .entry-modal label {
+    display: grid;
+    gap: 7px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .entry-modal input,
+  .entry-modal textarea {
+    width: 100%;
+    border: 1px solid transparent;
+    background: #333;
+    color: #fff;
+    border-radius: 6px;
+    padding: 11px 12px;
+    font: inherit;
+    outline: 0;
+    user-select: text;
+  }
+  .entry-modal textarea {
+    min-height: 140px;
+    resize: vertical;
+    line-height: 22px;
+  }
+  .entry-modal input:focus,
+  .entry-modal textarea:focus { border-color: var(--muted); background: #3e3e3e; }
+  .entry-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .modal-btn {
+    min-height: 42px;
+    border-radius: 999px;
+    padding: 0 16px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-weight: 700;
+  }
+  .modal-btn.primary { background: var(--coral); border-color: var(--coral); color: #000; }
+  .modal-btn:hover { border-color: #fff; color: #fff; }
+  .modal-btn.primary:hover { color: #000; background: #ffd8e1; }
+  .summary-action-title .note-pill { margin-left: 2px; }
+  .summary-action-text.note-preview { -webkit-line-clamp: 2; }
+</style>
+
+
+<style id="fix-empty-plus-and-entry-render-v1">
+  .empty-hint {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 18px;
+    padding: 20px 4px;
+    text-align: center;
+  }
+  .box-subtree.empty, .empty-sub-add { display: none !important; }
+  .entry-list:empty { display: none; }
+</style>
+
+
+<style id="v2-action-filter-search-range-polish">
+  /* Notes are text-only: no pill/box, just pink typography. */
+  .note-row {
+    padding-left: 6px;
+    background: transparent !important;
+  }
+  .note-row .entry-text,
+  .note-row .note-title-inline {
+    color: var(--coral) !important;
+    font-weight: 700;
+    background: transparent !important;
+    border: 0 !important;
+    padding: 0 !important;
+    text-align: left;
+  }
+  .note-row .entry-text:hover { color: var(--coral-2) !important; }
+  .note-pill { display: none !important; }
+
+  .box-filter-area { position: relative; margin-bottom: 2px; }
+  .calendar-chip { display: inline-flex; align-items: center; gap: 7px; }
+  .date-range-popover {
+    position: relative;
+    margin: -4px 0 14px;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: #242424;
+    box-shadow: 0 18px 48px rgba(0,0,0,.28);
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 10px;
+    align-items: end;
+    animation: searchDrop .18s ease both;
+  }
+  .date-range-popover label {
+    display: grid;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .date-range-popover input {
+    min-height: 38px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: #333;
+    color: #fff;
+    padding: 0 10px;
+    outline: 0;
+  }
+  .date-range-popover input::-webkit-calendar-picker-indicator { filter: invert(1); opacity: .85; }
+  .date-range-popover button {
+    min-height: 38px;
+    padding: 0 14px;
+    border-radius: 999px;
+    background: var(--coral);
+    color: #000;
+    font-weight: 800;
+  }
+
+  .box-search-wrap {
+    position: sticky;
+    top: 68px;
+    z-index: 45;
+    margin: -8px 0 14px;
+    animation: searchDrop .18s ease both;
+  }
+  .box-search-card {
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: #242424;
+    box-shadow: 0 18px 48px rgba(0,0,0,.35);
+    overflow: hidden;
+  }
+  .box-search-line {
+    min-height: 52px;
+    display: grid;
+    grid-template-columns: 42px 1fr 42px;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .box-search-icon { color: var(--muted); text-align: center; font-size: 18px; }
+  .box-search-input {
+    width: 100%;
+    height: 52px;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    color: #fff;
+    font-size: 15px;
+    user-select: text;
+  }
+  .box-search-input::placeholder { color: var(--muted); }
+  .box-search-close {
+    width: 42px;
+    height: 52px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 22px;
+  }
+  .box-search-results {
+    max-height: min(55vh, 420px);
+    overflow: auto;
+    padding: 8px;
+    display: grid;
+    gap: 6px;
+  }
+  .box-search-empty {
+    padding: 14px 12px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .box-search-result {
+    display: grid;
+    gap: 3px;
+    text-align: left;
+    min-height: 58px;
+    border-radius: 10px;
+    background: transparent;
+    padding: 10px 12px;
+    color: #fff;
+  }
+  .box-search-result:hover { background: rgba(255,255,255,.06); }
+  .box-search-result span {
+    color: var(--coral);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    font-weight: 800;
+  }
+  .box-search-result strong { font-size: 14px; line-height: 18px; }
+  .box-search-result em {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 16px;
+    font-style: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  @keyframes searchDrop {
+    from { opacity: 0; transform: translateY(-8px) scale(.99); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @media (max-width: 480px) {
+    .date-range-popover { grid-template-columns: 1fr; }
+    .box-search-wrap { top: 64px; }
+  }
+</style>
+
+
+
+<style id="v3-root-action-and-summary-tree-fix">
+  /* Actions: level 1 mirrors Boxes card; sub levels mirror Boxes rows. */
+  .action-tree {
+    gap: 16px !important;
+  }
+  .action-node.level-1 {
+    background: var(--white) !important;
+    border-radius: 10px !important;
+    padding: 18px 18px 6px !important;
+    overflow: visible !important;
+  }
+  .action-node.level-1 > .action-head {
+    min-height: 52px !important;
+    padding: 0 0 12px !important;
+    border-bottom: 1px solid var(--border) !important;
+  }
+  .action-node.level-1 > .action-head .action-title {
+    color: var(--coral) !important;
+    font-family: "Montserrat", sans-serif;
+    font-size: 21px !important;
+    font-weight: 700 !important;
+    line-height: 1.06 !important;
+  }
+  .action-node.level-1 > .action-body {
+    padding: 8px 0 0 !important;
+    gap: 0 !important;
+  }
+  .action-node.level-1 > .action-body > .action-children {
+    border-left: 0 !important;
+    padding-left: 0 !important;
+    margin-top: 0 !important;
+    gap: 0 !important;
+  }
+  .action-node:not(.level-1) {
+    background: transparent !important;
+    border-radius: 0 !important;
+    border-bottom: 1px solid var(--border) !important;
+    padding: 0 !important;
+  }
+  .action-node:not(.level-1):last-child {
+    border-bottom: 0 !important;
+  }
+  .action-node:not(.level-1).open {
+    background: transparent !important;
+  }
+  .action-node:not(.level-1) > .action-head {
+    min-height: 46px !important;
+    padding: 8px 0 !important;
+    border-bottom: 0 !important;
+  }
+  .action-node:not(.level-1) .action-title {
+    color: #e5e7eb !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    line-height: 1.25 !important;
+  }
+  .action-node:not(.level-1) > .action-body {
+    padding: 0 0 8px 34px !important;
+    gap: 8px !important;
+  }
+  .action-node:not(.level-1) > .action-body > .action-children {
+    padding-left: 14px !important;
+    margin-top: 4px !important;
+    border-left: 1px solid var(--border) !important;
+    gap: 0 !important;
+  }
+  .action-node.level-1 > .action-head .action-menu-wrap,
+  .action-node.level-1 > .action-head .action-add-btn {
+    display: none !important;
+  }
+
+  /* Boxes summary: compact tree under each collapsible date. */
+  .project-summary {
+    gap: 6px !important;
+    margin-top: 8px !important;
+  }
+  .project-summary > .section-label {
+    padding-top: 2px;
+    font-size: 11px !important;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .summary-day.compact-summary {
+    background: transparent !important;
+    border: 0 !important;
+    border-top: 1px solid rgba(255,255,255,.08) !important;
+    border-radius: 0 !important;
+  }
+  .summary-day.compact-summary .summary-head {
+    min-height: 34px !important;
+    padding: 0 !important;
+    color: var(--muted) !important;
+    font-size: 12px !important;
+  }
+  .summary-day.compact-summary .summary-head:hover {
+    color: #fff !important;
+  }
+  .summary-date-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: inherit;
+  }
+  .summary-day.compact-summary .day-meta {
+    font-size: 11px !important;
+    color: rgba(179,179,179,.72) !important;
+  }
+  .summary-day.compact-summary .summary-body {
+    padding: 0 0 8px 0 !important;
+  }
+  .summary-tree {
+    display: grid;
+    gap: 0;
+  }
+  .summary-tree-row {
+    width: 100%;
+    display: grid;
+    gap: 2px;
+    min-height: 30px;
+    padding: 5px 0 5px calc(10px + var(--depth, 0) * 14px);
+    border-left: 1px solid rgba(255,255,255,.10);
+    background: transparent;
+    color: var(--muted);
+    text-align: left;
+    border-radius: 0;
+  }
+  .summary-tree-row:hover {
+    color: #fff;
+    background: rgba(255,255,255,.035);
+  }
+  .summary-tree-main {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+  }
+  .summary-check {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    color: transparent;
+    display: inline-grid;
+    place-items: center;
+    font-size: 10px;
+    flex: 0 0 auto;
+  }
+  .summary-check.done {
+    background: rgba(96,165,250,.14);
+    border-color: rgba(96,165,250,.42);
+    color: #93c5fd;
+  }
+  .summary-note-mark {
+    color: var(--coral);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    width: 28px;
+    flex: 0 0 auto;
+  }
+  .summary-tree-title {
+    color: #e5e7eb;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 700;
+    flex: 0 0 auto;
+  }
+  .summary-tree-entry {
+    color: inherit;
+    font-size: 12px;
+    line-height: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .summary-tree-row.is-note .summary-tree-entry {
+    color: var(--coral);
+    font-weight: 700;
+  }
+  .summary-tree-preview {
+    color: rgba(179,179,179,.78);
+    font-size: 11px;
+    line-height: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-left: 35px;
+  }
+  @media (max-width: 640px) {
+    .action-node.level-1 { padding: 18px 14px 6px !important; }
+    .action-node.level-1 > .action-head .action-title { font-size: 19px !important; }
+  }
+</style>
+
+<style id="v4-node-date-summary-and-note-toolbar">
+  .node-date-summary {
+    margin: 2px 0 8px calc(var(--depth, 0) * 16px + 26px);
+    display: grid;
+    gap: 6px;
+  }
+  .node-summary-day {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  .node-summary-head {
+    min-height: 26px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    color: rgba(255,200,210,.86) !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+  }
+  .node-summary-head .chev {
+    color: rgba(179,179,179,.7);
+    font-size: 12px;
+    transform: translateY(-1px);
+  }
+  .node-summary-body {
+    padding: 2px 0 2px 12px !important;
+    border-left: 1px solid rgba(255,255,255,.08);
+  }
+  .node-summary-tree {
+    display: grid;
+    gap: 2px;
+  }
+  .node-summary-entry {
+    min-height: 24px !important;
+    padding: 2px 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    color: rgba(229,231,235,.94) !important;
+  }
+  .node-summary-entry:hover {
+    color: #fff !important;
+  }
+  .node-summary-entry .summary-tree-main {
+    gap: 7px;
+  }
+  .node-summary-entry .summary-tree-entry {
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .node-summary-entry.is-note .summary-tree-entry {
+    color: var(--coral);
+    font-weight: 700;
+  }
+  .node-summary-entry .summary-note-mark {
+    font-size: 10px;
+    opacity: .82;
+  }
+  .note-rich-editor {
+    min-height: 180px !important;
+    margin-top: 8px;
+    background: #2f2f2f !important;
+    border: 1px solid rgba(255,255,255,.08) !important;
+    border-radius: 10px !important;
+    color: var(--text-main) !important;
+  }
+  .note-rich-editor:focus {
+    border-color: rgba(255,200,210,.55) !important;
+    box-shadow: 0 0 0 3px rgba(255,200,210,.08) !important;
+  }
+  .note-rich-editor h3 {
+    color: #fff;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 18px;
+  }
+</style>
+
+
+<style id="v5-action-date-stepper-arrows">
+  .action-date-stepper {
+    display: grid !important;
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+    align-items: center;
+    gap: 8px;
+  }
+  .date-step-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.04);
+    color: var(--accent);
+    display: inline-grid;
+    place-items: center;
+    font-size: 30px;
+    line-height: 1;
+    font-weight: 500;
+    padding-bottom: 4px;
+    transition: background .16s ease, color .16s ease, border-color .16s ease, transform .16s ease;
+  }
+  .date-step-btn:hover {
+    background: rgba(255,200,210,.12);
+    border-color: rgba(255,200,210,.28);
+    color: #ffd8e1;
+    transform: translateY(-1px);
+  }
+  .action-date-stepper .date-pill {
+    min-width: 0;
+    width: 100%;
+  }
+  .action-date-stepper .date-pill strong {
+    text-align: center;
+  }
+  .action-date-stepper .date-pill span {
+    flex: 0 0 auto;
+  }
+  .action-date-stepper .date-pill em {
+    flex: 0 0 auto;
+  }
+  .action-date-stepper .native-date {
+    pointer-events: none !important;
+    width: 1px !important;
+    height: 1px !important;
+    right: auto !important;
+    left: 50% !important;
+    top: 50% !important;
+  }
+  @media (max-width: 420px) {
+    .action-date-stepper {
+      grid-template-columns: 38px minmax(0, 1fr) 38px;
+      gap: 7px;
+    }
+    .date-step-btn {
+      width: 38px;
+      height: 38px;
+      font-size: 27px;
+    }
+    .action-date-stepper .date-pill {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    .action-date-stepper .date-pill em {
+      display: none;
+    }
+  }
+</style>
+
+<style id="box-root-notes-v1">
+  .box-note-pill {
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: .01em;
+    text-transform: lowercase;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: color .18s ease, border-color .18s ease, background .18s ease, transform .16s ease;
+  }
+  .box-note-pill:hover,
+  .box-note-pill.is-open {
+    color: #000;
+    border-color: var(--coral);
+    background: var(--coral);
+  }
+  .box-note-pill.has-note:not(.is-open) {
+    color: var(--coral);
+    border-color: rgba(255,200,210,.34);
+    background: rgba(255,200,210,.08);
+  }
+  .box-note-panel {
+    margin: 12px 0 8px 44px;
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.035);
+    border: 1px solid rgba(255,255,255,.08);
+  }
+  .box-note-panel.in-actions {
+    margin: 8px 0 10px 28px;
+  }
+  .box-note-label {
+    margin-bottom: 8px;
+    color: var(--coral);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .box-note-editor {
+    min-height: 96px !important;
+    padding: 11px 12px !important;
+    border-radius: 9px !important;
+    background: #2f2f2f !important;
+    border: 1px solid rgba(255,255,255,.08) !important;
+    color: var(--text-main) !important;
+    font-size: 14px !important;
+    line-height: 1.55 !important;
+  }
+  .box-note-editor:focus {
+    border-color: rgba(255,200,210,.55) !important;
+    box-shadow: 0 0 0 3px rgba(255,200,210,.08) !important;
+  }
+  .action-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+  @media (max-width: 640px) {
+    .box-note-panel { margin-left: 0; }
+    .box-note-panel.in-actions { margin-left: 12px; }
+    .box-note-pill { min-height: 26px; padding: 0 9px; }
+  }
+</style>
+
+
+<style id="note-modal-format-mobile-v1">
+  html, body {
+    height: 100%;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: none;
+  }
+  body {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .phone {
+    min-height: 100svh;
+  }
+  .screen, .editor, .auth-screen, .boot-screen {
+    min-height: 100svh;
+  }
+  .box-note-panel {
+    display: none !important;
+  }
+  .modal-subtitle {
+    margin: -8px 0 2px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 18px;
+    word-break: break-word;
+  }
+  .box-note-modal .note-rich-editor {
+    min-height: 220px !important;
+  }
+  .modal-backdrop {
+    overflow-y: auto;
+    align-items: flex-start !important;
+    padding-top: calc(20px + env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .entry-modal {
+    max-height: calc(100svh - 132px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .rich-editor h2 {
+    margin: 0 0 10px;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 22px;
+    line-height: 1.18;
+    color: #fff;
+  }
+  .rich-editor h3 {
+    margin: 0 0 8px;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 18px;
+    line-height: 1.22;
+  }
+  .rich-editor blockquote {
+    margin: 8px 0 8px 14px;
+    padding-left: 12px;
+    border-left: 2px solid rgba(255, 200, 210, .42);
+    color: rgba(255,255,255,.82);
+  }
+  .format-bar {
+    z-index: 140 !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    justify-content: flex-start;
+    scrollbar-width: none;
+    touch-action: pan-x;
+  }
+  .format-bar::-webkit-scrollbar { display: none; }
+  .format-btn {
+    flex: 0 0 38px;
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 13px !important;
+    font-weight: 800;
+  }
+  .format-spacer { flex: 1 0 10px; }
+  @media (max-width: 640px) {
+    .format-bar {
+      width: calc(100% - 14px) !important;
+      bottom: calc(6px + env(safe-area-inset-bottom, 0px)) !important;
+      min-height: 54px !important;
+      padding: 7px !important;
+      border-radius: 19px !important;
+      gap: 5px !important;
+    }
+    .format-btn {
+      flex-basis: 34px;
+      width: 34px !important;
+      height: 34px !important;
+      border-radius: 12px !important;
+      font-size: 13px !important;
+    }
+    .entry-modal {
+      width: 100% !important;
+      max-height: calc(100svh - 118px);
+    }
+    .box-note-modal .note-rich-editor,
+    .note-rich-editor {
+      min-height: 42svh !important;
+    }
+  }
+</style>
+
 </head>
 <body>
   <main class="phone" id="app"></main>
 
   <div class="format-bar" id="formatBar" aria-hidden="true">
-    <button class="format-btn" type="button" data-cmd="formatBlock" data-value="h3">Aa</button>
+    <button class="format-btn" type="button" data-cycle-block title="Text size">Aa</button>
     <button class="format-btn" type="button" data-cmd="bold"><strong>B</strong></button>
     <button class="format-btn" type="button" data-cmd="italic"><em>I</em></button>
     <button class="format-btn" type="button" data-cmd="underline"><u>U</u></button>
+    <button class="format-btn" type="button" data-cmd="strikeThrough"><s>S</s></button>
     <button class="format-btn" type="button" data-cmd="insertUnorderedList">•</button>
     <button class="format-btn" type="button" data-cmd="insertOrderedList">1.</button>
+    <button class="format-btn" type="button" data-cmd="outdent" title="Outdent">⇤</button>
+    <button class="format-btn" type="button" data-cmd="indent" title="Indent">⇥</button>
     <span class="format-spacer"></span>
     <button class="format-btn primary" type="button" data-done>✓</button>
   </div>
 
-  <div class="toast" id="toast">Đã lưu</div>
+  <div class="snackbar" id="snackbar"><span id="snackbarText"></span><button type="button" id="snackbarAction">Undo</button></div>
+
+  <div id="entryModalMount"></div>
+
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <script>
     const SUPABASE_URL = "https://mmtvezpwflqbpkilkooy.supabase.co";
     const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_bvZguwM4vs7ZNPr9XRCcxw_gMm1DZpU";
@@ -680,148 +2289,424 @@
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     });
 
-    const STORAGE_KEY = "idea-box-html-v7-supabase";
+    const STORAGE_KEY = "idea-box-html-v13-action-notes";
+    const STATE_TABLE = "idea_box_states";
+    const ACTION_DAYS_TABLE = "idea_box_action_days";
     const LEGACY_KEYS = [
+      "idea-box-html-v12-stable-ids",
+      "idea-box-html-v10-action-days-db",
+      "idea-box-html-v9-supabase",
+      "idea-box-html-v8-supabase",
+      "idea-box-html-v7-supabase",
       "idea-box-html-v6-actions",
       "idea-box-html-v4-clean-box",
       "idea-box-html-v3-inline-delete",
       "idea-box-html-v2-inline-format"
     ];
+
     const app = document.getElementById("app");
     const formatBar = document.getElementById("formatBar");
-    const toast = document.getElementById("toast");
+    const snackbar = document.getElementById("snackbar");
+    const snackbarText = document.getElementById("snackbarText");
+    const snackbarAction = document.getElementById("snackbarAction");
 
-    const uid = () => (window.crypto && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : "id_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
-
+    const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : "id_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
     const now = () => new Date().toISOString();
 
     let db = seed();
+    let createdFlashId = null;
     let currentUser = null;
     let booting = true;
     let authBusy = false;
     let authMessage = "";
-    let expanded = new Set();
+    let authView = "login";
+    let toolsOpen = false;
+    let searchQuery = "";
+    let boxSearchOpen = false;
+    let boxSearchQuery = "";
     let activeEditor = null;
     let savedRange = null;
     let saveTimer = null;
     let cloudSaveTimer = null;
     let cloudSaving = false;
     let cloudPending = false;
-    let toastTimer = null;
+    let syncStatus = navigator.onLine ? "saved" : "offline";
+    let syncLabel = navigator.onLine ? "Saved" : "Offline";
+    let snackTimer = null;
+    let undoHandler = null;
     let dragState = null;
     let suppressOpenUntil = 0;
+    let actionMenuOpenFor = null;
+    let entryModal = null;
 
     function seed() {
       const t = now();
-      const p1 = uid();
-      const p2 = uid();
-      const s1 = uid();
-      const s2 = uid();
+      const p1 = uid(), p2 = uid(), s1 = uid(), s2 = uid(), s3 = uid();
       return {
+        version: 2,
         boxNodes: [
-          { id: p1, parentId: null, level: 1, title: "App bán hàng", contentHtml: "", sort: 1, createdAt: t, updatedAt: t },
-          { id: p2, parentId: null, level: 1, title: "Content plan", contentHtml: "", sort: 2, createdAt: t, updatedAt: t },
-          { id: s1, parentId: p1, level: 2, title: "UI", contentHtml: "", sort: 1, createdAt: t, updatedAt: t },
-          { id: s2, parentId: s1, level: 3, title: "Home", contentHtml: "", sort: 1, createdAt: t, updatedAt: t }
+          { id: p1, parentId: null, level: 1, title: "Content", sort: 1, createdAt: t, updatedAt: t },
+          { id: p2, parentId: null, level: 1, title: "Sales", sort: 2, createdAt: t, updatedAt: t },
+          { id: s1, parentId: p1, level: 2, title: "TikTok", sort: 1, createdAt: t, updatedAt: t },
+          { id: s2, parentId: p1, level: 2, title: "Blog", sort: 2, createdAt: t, updatedAt: t },
+          { id: s3, parentId: p2, level: 2, title: "Follow up", sort: 1, createdAt: t, updatedAt: t }
         ],
         actionDays: [],
-        ui: { collapsedDays: [], collapsedSummaries: [] }
+        ui: defaultUI()
+      };
+    }
+
+    function defaultUI() {
+      return {
+        collapsedBoxNodes: [],
+        expandedBoxNodes: [],
+        expandedBoxNotes: [],
+        collapsedActionNodes: [],
+        collapsedActionDays: [],
+        collapsedSummaryDays: [],
+        expandedSummaryDays: [],
+        boxFilter: "today",
+        boxFilterFrom: "",
+        boxFilterTo: "",
+        boxDateRangeOpen: false,
+        actionFilter: "all",
+        selectedActionDate: todayYMD()
       };
     }
 
     function normalizeState(parsed) {
-      if (parsed && Array.isArray(parsed.boxNodes)) {
-        parsed.boxNodes = parsed.boxNodes.map(n => ({ ...n, contentHtml: typeof n.contentHtml === "string" ? n.contentHtml : escapeHtml(n.content || "").replace(/\n/g, "<br>") }));
-        parsed.actionDays = Array.isArray(parsed.actionDays) ? parsed.actionDays : [];
-        parsed.actionDays = parsed.actionDays.map(day => ({
-          ...day,
-          nodes: Array.isArray(day.nodes) ? day.nodes.map(n => ({ ...n, contentHtml: typeof n.contentHtml === "string" ? n.contentHtml : escapeHtml(n.content || "").replace(/\n/g, "<br>") })) : []
-        }));
-        parsed.ui = parsed.ui || { collapsedDays: [], collapsedSummaries: [] };
-        parsed.ui.collapsedDays = parsed.ui.collapsedDays || [];
-        parsed.ui.collapsedSummaries = parsed.ui.collapsedSummaries || [];
-        return parsed;
-      }
-      if (parsed && Array.isArray(parsed.nodes)) {
+      if (!parsed || typeof parsed !== "object") return seed();
+      const ui = { ...defaultUI(), ...(parsed.ui || {}) };
+      delete ui.boxOnlyFilled;
+      const boxNodes = Array.isArray(parsed.boxNodes)
+        ? parsed.boxNodes.map((n, i) => ({
+          id: n.id || uid(),
+          parentId: n.parentId ?? null,
+          level: clampLevel(n.level || (n.parentId ? 2 : 1)),
+          title: cleanTitle(n.title || "Untitled"),
+          boxNoteHtml: sanitizeHtml(n.boxNoteHtml || n.noteHtml || n.contentHtml || ""),
+          sort: Number.isFinite(+n.sort) ? +n.sort : i + 1,
+          createdAt: n.createdAt || now(),
+          updatedAt: n.updatedAt || now()
+        }))
+        : Array.isArray(parsed.nodes)
+          ? parsed.nodes.map((n, i) => ({
+            id: n.id || uid(), parentId: n.parentId ?? null, level: clampLevel(n.level || (n.parentId ? 2 : 1)), title: cleanTitle(n.title || "Untitled"), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || n.noteHtml || n.contentHtml || ""), sort: Number.isFinite(+n.sort) ? +n.sort : i + 1, createdAt: n.createdAt || now(), updatedAt: n.updatedAt || now()
+          }))
+          : seed().boxNodes;
+
+      const actionDays = Array.isArray(parsed.actionDays) ? parsed.actionDays.map(day => ({
+        id: day.id || uid(),
+        date: day.date || todayYMD(),
+        createdAt: day.createdAt || now(),
+        updatedAt: day.updatedAt || now(),
+        nodes: Array.isArray(day.nodes) ? day.nodes.map((n, i) => ({
+          id: n.id || uid(),
+          parentId: n.parentId ?? null,
+          level: clampLevel(n.level || (n.parentId ? 2 : 1)),
+          title: cleanTitle(n.title || "Untitled"),
+          sort: Number.isFinite(+n.sort) ? +n.sort : i + 1,
+          sourceBoxNodeId: n.sourceBoxNodeId || n.templateId || n.boxNodeId || null,
+          entries: normalizeEntries(n),
+          done: Boolean(n.done),
+          createdAt: n.createdAt || now(),
+          updatedAt: n.updatedAt || now()
+        })) : []
+      })) : [];
+
+      const normalized = { version: 3, boxNodes, actionDays, ui };
+      repairStableIdentity(normalized);
+      return normalized;
+    }
+
+    function clampLevel(value) { return Math.max(1, Math.min(5, Number(value) || 1)); }
+    function cleanTitle(value) { return String(value || "").replace(/\s+/g, " ").trim() || "Untitled"; }
+
+    function plainText(value) { return String(value || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(); }
+    function normalizeEntry(entry, index = 0) {
+      const type = entry?.type === "note" ? "note" : "action";
+      const t = now();
+      if (type === "note") {
         return {
-          boxNodes: parsed.nodes.map(n => ({ ...n, contentHtml: typeof n.contentHtml === "string" ? n.contentHtml : escapeHtml(n.content || "").replace(/\n/g, "<br>") })),
-          actionDays: [],
-          ui: { collapsedDays: [], collapsedSummaries: [] }
+          id: entry?.id || uid(),
+          type: "note",
+          title: cleanTitle(entry?.title || entry?.text || "Note"),
+          bodyHtml: sanitizeHtml(entry?.bodyHtml || entry?.contentHtml || entry?.body || ""),
+          sort: Number.isFinite(+entry?.sort) ? +entry.sort : index + 1,
+          createdAt: entry?.createdAt || t,
+          updatedAt: entry?.updatedAt || t
         };
       }
-      return seed();
+      return {
+        id: entry?.id || uid(),
+        type: "action",
+        text: cleanTitle(entry?.text || entry?.title || "Action"),
+        done: Boolean(entry?.done),
+        sort: Number.isFinite(+entry?.sort) ? +entry.sort : index + 1,
+        createdAt: entry?.createdAt || t,
+        updatedAt: entry?.updatedAt || t
+      };
+    }
+    function normalizeEntries(node) {
+      const raw = Array.isArray(node?.entries) ? node.entries : [];
+      if (raw.length) return raw.map(normalizeEntry).filter(Boolean);
+      const legacy = sanitizeHtml(node?.contentHtml || "");
+      if (htmlToText(legacy)) {
+        return [normalizeEntry({ type: "note", title: "Note", bodyHtml: legacy })];
+      }
+      return [];
+    }
+    function entriesFor(node, type = null) {
+      const entries = Array.isArray(node?.entries) ? node.entries : [];
+      return type ? entries.filter(e => e.type === type) : entries;
+    }
+    function actionEntriesFor(node) { return entriesFor(node, "action"); }
+    function noteEntriesFor(node) { return entriesFor(node, "note"); }
+    function noteTitle(entry) {
+      const title = cleanTitle(entry?.title || "Note");
+      return title.toLowerCase() === "untitled" ? "Note" : title;
+    }
+    function entryText(entry) { return entry?.type === "note" ? `${noteTitle(entry)} ${htmlToText(entry.bodyHtml || "")}` : (entry?.text || ""); }
+    function nodeHasEntries(node) { return entriesFor(node).length > 0; }
+
+
+    function repairStableIdentity(state, options = {}) {
+      const changed = { value: false };
+      backfillActionSourcesByStablePath(state, changed);
+      syncActionTitlesFromBoxes(state, options.sourceBoxNodeId || null, changed);
+      return changed.value;
     }
 
-    function localKey(userId = currentUser?.id) {
-      return userId ? `${STORAGE_KEY}:${userId}` : `${STORAGE_KEY}:guest`;
+    function backfillActionSourcesByStablePath(state, changed) {
+      const boxes = Array.isArray(state.boxNodes) ? state.boxNodes : [];
+      const pathToBoxIds = new Map();
+      boxes.forEach(box => {
+        const path = pathOf(box, boxes);
+        if (!pathToBoxIds.has(path)) pathToBoxIds.set(path, []);
+        pathToBoxIds.get(path).push(box.id);
+      });
+      (state.actionDays || []).forEach(day => {
+        (day.nodes || []).forEach(action => {
+          if (action.sourceBoxNodeId) return;
+          const ids = pathToBoxIds.get(pathOf(action, day.nodes)) || [];
+          if (ids.length === 1) {
+            action.sourceBoxNodeId = ids[0];
+            action.updatedAt = action.updatedAt || now();
+            day.updatedAt = now();
+            changed.value = true;
+          }
+        });
+      });
     }
 
-    function loadLocalForUser(userId) {
-      try {
-        const raw = localStorage.getItem(localKey(userId));
-        return raw ? normalizeState(JSON.parse(raw)) : null;
-      } catch { return null; }
+    function syncActionTitlesFromBoxes(state, sourceBoxNodeId = null, changed = { value: false }) {
+      const boxById = new Map((state.boxNodes || []).map(box => [box.id, box]));
+      (state.actionDays || []).forEach(day => {
+        let dayChanged = false;
+        (day.nodes || []).forEach(action => {
+          const sourceId = action.sourceBoxNodeId || action.templateId || action.boxNodeId;
+          if (!sourceId || (sourceBoxNodeId && sourceId !== sourceBoxNodeId)) return;
+          const box = boxById.get(sourceId);
+          if (!box) return;
+          const nextTitle = cleanTitle(box.title);
+          if (action.title !== nextTitle || action.sourceBoxNodeId !== sourceId) {
+            action.title = nextTitle;
+            action.sourceBoxNodeId = sourceId;
+            action.updatedAt = now();
+            dayChanged = true;
+            changed.value = true;
+          }
+        });
+        if (dayChanged) day.updatedAt = now();
+      });
+      return changed.value;
     }
 
+    function localKey(userId = currentUser?.id) { return userId ? `${STORAGE_KEY}:${userId}` : `${STORAGE_KEY}:guest`; }
+    function loadLocalForUser(userId) { try { const raw = localStorage.getItem(localKey(userId)); return raw ? normalizeState(JSON.parse(raw)) : null; } catch { return null; } }
     function loadLegacyLocal() {
       for (const key of LEGACY_KEYS) {
-        try {
-          const raw = localStorage.getItem(key);
-          if (raw) return normalizeState(JSON.parse(raw));
-        } catch {}
+        try { const raw = localStorage.getItem(key); if (raw) return normalizeState(JSON.parse(raw)); } catch {}
       }
       return null;
     }
+    function cacheLocal() { try { localStorage.setItem(localKey(), JSON.stringify(sanitizedState(db))); } catch {} }
 
-    function cacheLocal() {
-      try { localStorage.setItem(localKey(), JSON.stringify(db)); } catch {}
+    function sanitizedState(state) {
+      return {
+        ...state,
+        boxNodes: state.boxNodes.map(n => ({ ...n, title: cleanTitle(n.title), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || "") })),
+        actionDays: state.actionDays.map(sanitizedActionDay)
+      };
     }
 
-    function persist(silent = false) {
-      db.ui = db.ui || {};
-      db.ui.collapsedDays = db.ui.collapsedDays || [];
-      db.ui.collapsedSummaries = db.ui.collapsedSummaries || [];
+    function sanitizedActionDay(day) {
+      return {
+        ...day,
+        nodes: (day.nodes || []).map(n => ({
+          ...n,
+          title: cleanTitle(n.title),
+          sourceBoxNodeId: n.sourceBoxNodeId || n.templateId || n.boxNodeId || null,
+          entries: normalizeEntries(n).map(entry => entry.type === "note"
+            ? { ...entry, title: cleanTitle(entry.title || "Note"), bodyHtml: sanitizeHtml(entry.bodyHtml || "") }
+            : { ...entry, text: cleanTitle(entry.text || "Action"), done: Boolean(entry.done) }
+          ),
+          contentHtml: "",
+          done: Boolean(n.done)
+        }))
+      };
+    }
+
+    function sanitizedBoxState(state) {
+      const clean = sanitizedState(state);
+      return { ...clean, actionDays: [] };
+    }
+
+    function normalizeActionDayRow(row) {
+      const data = row?.data || {};
+      const normalized = normalizeState({ actionDays: [{
+        id: data.id || row.id || uid(),
+        date: data.date || row.date || todayYMD(),
+        createdAt: data.createdAt || row.created_at || now(),
+        updatedAt: data.updatedAt || row.updated_at || now(),
+        nodes: data.nodes || []
+      }] });
+      return normalized.actionDays[0];
+    }
+
+    function setSync(status, label) {
+      syncStatus = status;
+      syncLabel = label;
+      document.querySelectorAll("[data-sync-pill]").forEach(el => {
+        el.className = `sync-pill ${status}`;
+        el.textContent = label;
+      });
+    }
+
+
+    function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+    function isAuthStaleError(error) {
+      const msg = String(error?.message || error?.name || "").toLowerCase();
+      const code = String(error?.code || "").toLowerCase();
+      const status = Number(error?.status || 0);
+      return status === 401 || status === 403 || code.includes("jwt") || code.includes("auth") || msg.includes("jwt") || msg.includes("token") || msg.includes("expired") || msg.includes("session");
+    }
+
+    async function ensureFreshSession() {
+      const { data, error } = await sb.auth.getSession();
+      if (error) throw error;
+      if (!data?.session?.user) throw new Error("No active session");
+      currentUser = data.session.user;
+      const expiresAtMs = data.session.expires_at ? data.session.expires_at * 1000 : 0;
+      if (expiresAtMs && expiresAtMs - Date.now() < 120000) {
+        const refreshed = await sb.auth.refreshSession();
+        if (refreshed.error) throw refreshed.error;
+        if (refreshed.data?.session?.user) currentUser = refreshed.data.session.user;
+      }
+      return currentUser;
+    }
+
+    async function supabaseAuthed(fn) {
+      try { await ensureFreshSession(); } catch (error) { return { data: null, error }; }
+      let result;
+      try { result = await fn(); } catch (error) { return { data: null, error }; }
+      if (result?.error && isAuthStaleError(result.error)) {
+        try {
+          const refreshed = await sb.auth.refreshSession();
+          if (refreshed.error) return result;
+          if (refreshed.data?.session?.user) currentUser = refreshed.data.session.user;
+          result = await fn();
+        } catch (error) {
+          return { data: null, error };
+        }
+      }
+      return result;
+    }
+
+    function forceAuthScreen(message = "Đã logout") {
+      clearTimeout(saveTimer);
+      clearTimeout(cloudSaveTimer);
+      cloudSaving = false;
+      cloudPending = false;
+      toolsOpen = false;
+      currentUser = null;
+      db = seed();
+      booting = false;
+      authBusy = false;
+      authView = "login";
+      authMessage = message;
+      setSync(navigator.onLine ? "saved" : "offline", navigator.onLine ? "Saved" : "Offline");
+      renderAuth();
+    }
+
+    function persist({ renderAfter = false } = {}) {
+      db.ui = { ...defaultUI(), ...(db.ui || {}) };
       cacheLocal();
       queueCloudSave();
-      if (!silent) showToast("Đã lưu");
+      if (renderAfter) render();
     }
 
     function scheduleSave() {
+      setSync(navigator.onLine ? "saving" : "offline", navigator.onLine ? "Saving" : "Offline");
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => persist(true), 160);
+      saveTimer = setTimeout(() => persist(), 220);
     }
 
     function queueCloudSave() {
       if (!currentUser) return;
+      if (!navigator.onLine) return setSync("offline", "Offline");
+      setSync("saving", "Saving");
       clearTimeout(cloudSaveTimer);
-      cloudSaveTimer = setTimeout(pushCloudState, 350);
+      cloudSaveTimer = setTimeout(pushCloudState, 950);
     }
 
     async function pushCloudState() {
       if (!currentUser) return;
-      if (cloudSaving) {
-        cloudPending = true;
-        return;
-      }
+      if (!navigator.onLine) return setSync("offline", "Offline");
+      if (cloudSaving) { cloudPending = true; return; }
       cloudSaving = true;
-      const payload = {
-        user_id: currentUser.id,
-        data: db,
-        updated_at: now()
-      };
-      const { error } = await sb.from("idea_box_states").upsert(payload, { onConflict: "user_id" });
-      cloudSaving = false;
+      let error = null;
+
+      try {
+        const userId = currentUser.id;
+        const statePayload = {
+          user_id: userId,
+          data: sanitizedBoxState(db),
+          updated_at: now()
+        };
+        const stateResult = await supabaseAuthed(() => sb.from(STATE_TABLE).upsert(statePayload, { onConflict: "user_id" }));
+        error = stateResult.error;
+
+        const days = db.actionDays.map(day => ({
+          user_id: userId,
+          date: day.date,
+          data: sanitizedActionDay(day),
+          updated_at: now()
+        }));
+        if (!error && days.length) {
+          const dayResult = await supabaseAuthed(() => sb.from(ACTION_DAYS_TABLE).upsert(days, { onConflict: "user_id,date" }));
+          error = dayResult.error;
+        }
+      } catch (caught) {
+        error = caught;
+      } finally {
+        cloudSaving = false;
+      }
+
       if (error) {
-        showToast(error.code === "42P01" ? "Chưa chạy SQL" : "Lỗi sync");
         console.error(error);
+        cacheLocal();
+        if (String(error.message || "").includes("No active session") || isAuthStaleError(error)) {
+          setSync("offline", "Local saved");
+        } else {
+          setSync("offline", error.code === "42P01" ? "No DB" : "Local saved");
+        }
+        if (cloudPending) { cloudPending = false; setTimeout(queueCloudSave, 3000); }
         return;
       }
-      if (cloudPending) {
-        cloudPending = false;
-        queueCloudSave();
-      }
+      setSync("saved", "Saved");
+      if (cloudPending) { cloudPending = false; queueCloudSave(); }
     }
 
     async function hydrateUserState() {
@@ -829,35 +2714,51 @@
       booting = true;
       renderBoot();
 
-      const { data, error } = await sb
-        .from("idea_box_states")
-        .select("data")
-        .eq("user_id", currentUser.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error(error);
+      const { data: stateRow, error: stateError } = await supabaseAuthed(() => sb.from(STATE_TABLE).select("data").eq("user_id", currentUser.id).maybeSingle());
+      if (stateError) {
+        console.error(stateError);
         db = loadLocalForUser(currentUser.id) || loadLegacyLocal() || seed();
         booting = false;
         render();
-        showToast(error.code === "42P01" ? "Chưa chạy SQL" : "Đang dùng cache");
+        setSync("error", stateError.code === "42P01" ? "No DB" : "Cache");
+        showSnack(stateError.code === "42P01" ? "Chưa chạy SQL" : "Đang dùng cache", null, 2600);
         return;
       }
 
-      if (data?.data) db = normalizeState(data.data);
-      else {
-        db = loadLocalForUser(currentUser.id) || loadLegacyLocal() || seed();
-        await pushCloudState();
+      const local = loadLocalForUser(currentUser.id) || loadLegacyLocal();
+      db = stateRow?.data ? normalizeState(stateRow.data) : (local || seed());
+
+      const { data: dayRows, error: dayError } = await supabaseAuthed(() => sb
+        .from(ACTION_DAYS_TABLE)
+        .select("date,data,created_at,updated_at")
+        .eq("user_id", currentUser.id)
+        .order("date", { ascending: false }));
+
+      if (dayError) {
+        console.error(dayError);
+        if (dayError.code === "42P01") {
+          db.actionDays = local?.actionDays?.length ? local.actionDays : (normalizeState(stateRow?.data || {}).actionDays || []);
+          showSnack("Chưa chạy SQL action days", null, 2600);
+        } else if (local?.actionDays?.length) db.actionDays = local.actionDays;
+        setSync("error", dayError.code === "42P01" ? "No day DB" : "Cache");
+      } else {
+        const rows = Array.isArray(dayRows) ? dayRows.map(normalizeActionDayRow) : [];
+        const migrated = normalizeState(stateRow?.data || {}).actionDays || [];
+        db.actionDays = rows.length ? rows : (migrated.length ? migrated : (local?.actionDays || []));
       }
 
+      const identityRepaired = repairStableIdentity(db);
+      if (!stateRow?.data || identityRepaired || (!dayError && !dayRows?.length && db.actionDays.length)) await pushCloudState();
       cacheLocal();
       booting = false;
       render();
+      setSync(navigator.onLine ? "saved" : "offline", navigator.onLine ? "Saved" : "Offline");
     }
 
     async function bootstrap() {
       if (!location.hash) location.hash = "/box";
       renderBoot();
+      registerServiceWorker();
       const { data, error } = await sb.auth.getSession();
       if (error) console.error(error);
       if (data.session?.user) {
@@ -867,8 +2768,8 @@
         booting = false;
         renderAuth();
       }
-
       sb.auth.onAuthStateChange(async (event, session) => {
+        if (event === "PASSWORD_RECOVERY") { authView = "updatePassword"; booting = false; renderAuth(); return; }
         if (event === "SIGNED_IN" && session?.user && session.user.id !== currentUser?.id) {
           currentUser = session.user;
           await hydrateUserState();
@@ -876,199 +2777,164 @@
         if (event === "SIGNED_OUT") {
           currentUser = null;
           db = seed();
-          expanded.clear();
           booting = false;
+          authView = "login";
           authMessage = "Đã logout";
           renderAuth();
         }
       });
     }
 
+    async function registerServiceWorker() {
+      if ("serviceWorker" in navigator) {
+        try { await navigator.serviceWorker.register("./sw.js"); } catch (error) { console.warn("SW skipped", error); }
+      }
+    }
+
     async function handleAuth(action) {
       if (authBusy) return;
       const email = document.getElementById("authEmail")?.value.trim();
       const password = document.getElementById("authPassword")?.value;
-      if (!email || !password) {
-        authMessage = "Nhập email và password";
-        renderAuth();
-        return;
+      if (action === "forgot") {
+        if (!email) { authMessage = "Nhập email trước"; renderAuth(); return; }
+        authBusy = true; authMessage = "Đang gửi email reset..."; renderAuth();
+        const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+        authBusy = false; authMessage = error ? error.message : "Check email để reset password"; renderAuth(); return;
       }
-      if (password.length < 6) {
-        authMessage = "Password tối thiểu 6 ký tự";
-        renderAuth();
-        return;
+      if (action === "update-password") {
+        const next = document.getElementById("newPassword")?.value;
+        if (!next || next.length < 6) { authMessage = "Password tối thiểu 6 ký tự"; renderAuth(); return; }
+        authBusy = true; authMessage = "Đang đổi password..."; renderAuth();
+        const { error } = await sb.auth.updateUser({ password: next });
+        authBusy = false;
+        if (error) { authMessage = error.message; renderAuth(); return; }
+        authView = "login"; authMessage = "Đã đổi password"; renderAuth(); return;
       }
-
-      authBusy = true;
-      authMessage = action === "signup" ? "Đang sign up..." : "Đang login...";
-      renderAuth();
-
-      const result = action === "signup"
-        ? await sb.auth.signUp({ email, password })
-        : await sb.auth.signInWithPassword({ email, password });
-
+      if (!email || !password) { authMessage = "Nhập email và password"; renderAuth(); return; }
+      if (password.length < 6) { authMessage = "Password tối thiểu 6 ký tự"; renderAuth(); return; }
+      authBusy = true; authMessage = action === "signup" ? "Đang sign up..." : "Đang login..."; renderAuth();
+      const result = action === "signup" ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
       authBusy = false;
-
-      if (result.error) {
-        authMessage = result.error.message;
-        renderAuth();
-        return;
-      }
-
+      if (result.error) { authMessage = result.error.message; renderAuth(); return; }
       const session = result.data?.session || (await sb.auth.getSession()).data.session;
-      if (session?.user) {
-        currentUser = session.user;
-        await hydrateUserState();
-        return;
-      }
-
+      if (session?.user) { currentUser = session.user; await hydrateUserState(); return; }
       authMessage = "Check email để xác nhận, rồi login lại";
       renderAuth();
     }
 
     async function signOut() {
-      await sb.auth.signOut();
-    }
-
-    function showToast(message) {
-      toast.textContent = message;
-      toast.classList.add("show");
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => toast.classList.remove("show"), 900);
-    }
-
-    function collapsedSet(key) {
-      db.ui = db.ui || { collapsedDays: [], collapsedSummaries: [] };
-      db.ui[key] = db.ui[key] || [];
-      return new Set(db.ui[key]);
-    }
-
-    function setCollapsed(key, set) {
-      db.ui = db.ui || {};
-      db.ui[key] = [...set];
-      persist(true);
+      forceAuthScreen("Đã logout");
+      try { await Promise.race([sb.auth.signOut({ scope: "local" }), delay(700)]); } catch {}
+      try { sb.auth.signOut({ scope: "global" }).catch(() => {}); } catch {}
     }
 
     function route() {
       const hash = decodeURIComponent(location.hash.replace("#", "")) || "/box";
       const parts = hash.split("/").filter(Boolean);
-      if (!parts.length) return { name: "home", tab: "box" };
-      if (parts[0] === "actions" && parts.length === 1) return { name: "home", tab: "actions" };
-      if (parts[0] === "box" && parts.length === 1) return { name: "home", tab: "box" };
-      if (parts[0] === "box" && parts[1]) return { name: "editor", mode: "box", nodeId: parts[1] };
-      if (parts[0] === "action" && parts[1] && parts[2]) return { name: "editor", mode: "action", dayId: parts[1], nodeId: parts[2] };
-      return { name: "home", tab: "box" };
+      if (!parts.length || parts[0] === "box" && parts.length === 1) return { name: "box" };
+      if (parts[0] === "box" && parts[1]) return { name: "boxEditor", rootId: parts[1] };
+      if (parts[0] === "actions" && parts.length === 1) return { name: "actions" };
+      if (parts[0] === "actions" && parts[1]) return { name: "actionDay", dayId: parts[1], targetId: parts[2] || null };
+      if (parts[0] === "search") return { name: "search" };
+      return { name: "box" };
     }
-
     function goBoxHome() { location.hash = "/box"; }
     function goActionsHome() { location.hash = "/actions"; }
-    function openBox(id) { location.hash = "/box/" + encodeURIComponent(id); }
-    function openAction(dayId, nodeId) { location.hash = "/action/" + encodeURIComponent(dayId) + "/" + encodeURIComponent(nodeId); }
+    function openBox(rootId) { location.hash = "/box/" + encodeURIComponent(rootId); }
+    function openActionDay(dayId, nodeId = "") { const day = getDay(dayId); if (day) db.ui.selectedActionDate = day.date; location.hash = "/actions/" + encodeURIComponent(dayId) + (nodeId ? "/" + encodeURIComponent(nodeId) : ""); }
+    function openSearch() {
+      if (route().name === "box") {
+        boxSearchOpen = true;
+        toolsOpen = false;
+        render();
+        setTimeout(() => document.querySelector("[data-box-search-input]")?.focus(), 40);
+        return;
+      }
+      location.hash = "/search";
+    }
 
+    function nodesForDay(dayId) { return getDay(dayId)?.nodes || []; }
     function getDay(dayId) { return db.actionDays.find(day => day.id === dayId); }
-
-    function nodesFor(context) {
-      if (context.mode === "action") return getDay(context.dayId)?.nodes || [];
-      return db.boxNodes;
-    }
-
-    function getNode(id, context = { mode: "box" }) {
-      return nodesFor(context).find(n => n.id === id);
-    }
-
-    function childrenOf(parentId, nodes) {
-      return nodes
-        .filter(n => n.parentId === parentId)
-        .sort((a, b) => (a.sort || 0) - (b.sort || 0));
-    }
-
-    function boxProjects() { return childrenOf(null, db.boxNodes); }
-
+    function getDayByDate(date) { return db.actionDays.find(day => day.date === date); }
+    function getBoxNode(id) { return db.boxNodes.find(n => n.id === id); }
+    function getActionNode(dayId, nodeId) { return nodesForDay(dayId).find(n => n.id === nodeId); }
+    function childrenOf(parentId, nodes) { return nodes.filter(n => (n.parentId ?? null) === (parentId ?? null)).sort((a, b) => (a.sort || 0) - (b.sort || 0)); }
+    function boxRoots() { return childrenOf(null, db.boxNodes); }
     function descendantsOf(id, nodes) {
       const out = [];
-      function walk(nodeId) {
-        childrenOf(nodeId, nodes).forEach(child => {
-          out.push(child);
-          walk(child.id);
-        });
-      }
-      walk(id);
+      function walk(nodeId) { childrenOf(nodeId, nodes).forEach(child => { out.push(child); walk(child.id); }); }
+      walk(id); return out;
+    }
+    function ancestorsOf(id, nodes) {
+      const out = [];
+      let cur = nodes.find(n => n.id === id);
+      while (cur?.parentId) { cur = nodes.find(n => n.id === cur.parentId); if (cur) out.unshift(cur); }
       return out;
     }
-
-    function rootOf(node, nodes) {
-      let cur = node;
-      while (cur && cur.parentId) cur = nodes.find(n => n.id === cur.parentId);
-      return cur;
-    }
+    function rootOf(node, nodes) { let cur = node; while (cur?.parentId) cur = nodes.find(n => n.id === cur.parentId); return cur; }
+    function pathOf(node, nodes) { return [...ancestorsOf(node.id, nodes), node].map(n => n.title).join(" › "); }
 
     function escapeHtml(value) {
-      return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+      return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
     }
-
-    function htmlToText(html) {
-      const div = document.createElement("div");
-      div.innerHTML = html || "";
-      return (div.textContent || "").replace(/\s+/g, " ").trim();
-    }
-
-    function contentOf(node) {
-      if (typeof node.contentHtml === "string") return node.contentHtml;
-      return escapeHtml(node.content || "").replace(/\n/g, "<br>");
-    }
-
-    function todayYMD() {
-      const d = new Date();
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${y}-${m}-${day}`;
-    }
-
+    function htmlToText(html) { const div = document.createElement("div"); div.innerHTML = sanitizeHtml(html || ""); return (div.textContent || "").replace(/\s+/g, " ").trim(); }
+    function contentOf(node) { return sanitizeHtml(node.contentHtml || ""); }
+    function todayYMD() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
     function displayDate(ymd) {
-      if (ymd === todayYMD()) return "Today";
-      const [y, m, d] = ymd.split("-");
-      return `${d}/${m}/${y}`;
+      const [y, m, d] = String(ymd || "").split("-");
+      const label = y && m && d ? `${d}/${m}/${y}` : String(ymd || "");
+      return ymd === todayYMD() ? `${label} (today)` : label;
     }
+    function daysBetween(ymd, base = todayYMD()) { return Math.round((new Date(base + "T00:00:00") - new Date(ymd + "T00:00:00")) / 86400000); }
 
+    function sanitizeHtml(input) {
+      const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H2", "H3", "BLOCKQUOTE"]);
+      const template = document.createElement("template");
+      template.innerHTML = String(input || "");
+      function clean(node) {
+        [...node.childNodes].forEach(child => {
+          if (child.nodeType === Node.ELEMENT_NODE) {
+            if (!allowed.has(child.tagName)) {
+              const text = document.createTextNode(child.textContent || "");
+              child.replaceWith(text);
+              return;
+            }
+            [...child.attributes].forEach(attr => child.removeAttribute(attr.name));
+            clean(child);
+          } else if (child.nodeType !== Node.TEXT_NODE) child.remove();
+        });
+      }
+      clean(template.content);
+      return template.innerHTML;
+    }
 
     function renderBoot() {
-      app.innerHTML = `
-        <section class="boot-screen">
-          <div class="auth-card">
-            <div class="brand"><span class="mark">I</span><span>IdeaBox</span></div>
-            <h1 class="auth-title">Loading</h1>
-            <p class="auth-copy">Đang mở workspace...</p>
-          </div>
-        </section>
-      `;
+      app.innerHTML = `<section class="boot-screen"><div class="auth-card"><div class="brand"><span class="mark">✦</span><span class="brand-title">Liem's <b>Planner</b></span></div><h1 class="auth-title">Loading</h1><p class="auth-copy">Đang mở workspace...</p></div></section>`;
     }
 
     function renderAuth() {
+      if (authView === "updatePassword") {
+        app.innerHTML = `<section class="auth-screen"><div class="auth-card"><div class="brand"><span class="mark">✦</span><span class="brand-title">Liem's <b>Planner</b></span></div><h1 class="auth-title">New password</h1><p class="auth-copy">Nhập password mới.</p><form class="auth-form" data-auth-form><input class="auth-input" id="newPassword" type="password" autocomplete="new-password" placeholder="New password" /><div class="auth-actions"><button class="auth-primary" type="submit" data-auth-action="update-password" ${authBusy ? "disabled" : ""}>Update password</button></div></form><div class="auth-message">${escapeHtml(authMessage || "")}</div></div></section>`;
+        return;
+      }
       app.innerHTML = `
         <section class="auth-screen">
           <div class="auth-card">
-            <div class="brand"><span class="mark">I</span><span>IdeaBox</span></div>
+            <div class="brand"><span class="mark">✦</span><span class="brand-title">Liem's <b>Planner</b></span></div>
             <h1 class="auth-title">Login</h1>
-            <p class="auth-copy">Box + Actions sync qua Supabase.</p>
+            <p class="auth-copy">Boxes là cấu trúc. Actions là việc theo ngày.</p>
             <form class="auth-form" data-auth-form>
-              <input class="auth-input" id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="Email" data-auth-input />
-              <input class="auth-input" id="authPassword" type="password" autocomplete="current-password" placeholder="Password" data-auth-input />
+              <input class="auth-input" id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="Email" />
+              <input class="auth-input" id="authPassword" type="password" autocomplete="current-password" placeholder="Password" />
               <div class="auth-actions">
                 <button class="auth-primary" type="submit" data-auth-action="login" ${authBusy ? "disabled" : ""}>Login</button>
                 <button class="auth-secondary" type="submit" data-auth-action="signup" ${authBusy ? "disabled" : ""}>Sign up</button>
+                <button class="auth-ghost" type="submit" data-auth-action="forgot" ${authBusy ? "disabled" : ""}>Forgot password</button>
               </div>
             </form>
             <div class="auth-message">${escapeHtml(authMessage || "")}</div>
-            <div class="sync-note">Dữ liệu lưu theo tài khoản.</div>
           </div>
-        </section>
-      `;
+        </section>`;
     }
 
     function render() {
@@ -1076,481 +2942,1141 @@
       if (!currentUser) return renderAuth();
       hideFormatBar();
       const r = route();
-      if (r.name === "editor") {
-        const context = r.mode === "action" ? { mode: "action", dayId: r.dayId } : { mode: "box" };
-        const node = getNode(r.nodeId, context);
-        if (node) return renderEditor(context, r.nodeId);
-      }
-      if (r.tab === "actions") renderActionsHome();
-      else renderBoxHome();
+      if (r.name === "boxEditor") return renderBoxEditor(r.rootId);
+      if (r.name === "actions") return renderActionsHome();
+      if (r.name === "actionDay") return renderActionDayEditor(r.dayId, r.targetId);
+      if (r.name === "search") return renderSearch();
+      return renderBoxHome();
     }
 
     function renderHeader(tab) {
       return `
         <div class="topbar">
-          <div class="brand"><span class="mark">I</span><span>IdeaBox</span></div>
+          <div class="brand"><span class="mark">✦</span><span class="brand-title">Liem's <b>Planner</b></span></div>
           <div class="top-actions">
-            ${tab === "box" ? `<button class="round-plus" type="button" data-create-project aria-label="Thêm project">+</button>` : ``}
-            <button class="logout-btn" type="button" data-sign-out>Out</button>
+            <span class="sync-pill ${syncStatus}" data-sync-pill>${escapeHtml(syncLabel)}</span>
+            <button class="icon-btn small-icon" type="button" data-open-search aria-label="Search">⌕</button>
+            ${tab === "box" ? `<button class="round-btn primary small-icon" type="button" data-create-project aria-label="Thêm box">+</button>` : ``}
+            <button class="icon-btn small-icon" type="button" data-open-tools aria-label="Tools">⋯</button>
           </div>
         </div>
         <nav class="mode-nav" aria-label="Mode">
-          <button class="tab-btn ${tab === "box" ? "" : "ghost"}" type="button" data-tab="box">Box</button>
+          <button class="tab-btn ${tab === "box" ? "" : "ghost"}" type="button" data-tab="box">Boxes</button>
+          <span class="view-sep" aria-hidden="true">/</span>
           <button class="tab-btn ${tab === "actions" ? "" : "ghost"}" type="button" data-tab="actions">Actions</button>
-        </nav>
-      `;
+        </nav>`;
+    }
+
+    function renderTools() {
+      if (!toolsOpen) return "";
+      return `
+        <div class="tools-backdrop" data-close-tools>
+          <div class="tools-sheet" data-tools-sheet>
+            <button class="tool-button" type="button" data-export-json>Export backup JSON</button>
+            <button class="tool-button" type="button" data-import-json>Import backup JSON</button>
+            <input class="file-input" type="file" accept="application/json" data-import-file />
+            <button class="tool-button" type="button" data-open-search>Search</button>
+            <button class="tool-button danger" type="button" data-sign-out>Logout</button>
+          </div>
+        </div>`;
     }
 
     function renderBoxHome() {
-      const items = boxProjects();
+      const items = boxRoots();
       app.innerHTML = `
         <section class="screen">
           ${renderHeader("box")}
+          ${renderBoxSearchPanel()}
+          ${renderBoxFilters()}
           <div class="project-stack" id="projectStack">
-            ${items.length ? items.map(projectCard).join("") : `<button class="empty-card" type="button" data-create-project>+</button>`}
+            ${items.length ? items.map(projectCard).join("") : `<div class="empty-hint">No boxes yet.</div>`}
           </div>
-        </section>
-      `;
+          ${renderTools()}
+          ${renderEntryModal()}
+        </section>`;
+    }
+
+    function renderBoxSearchPanel() {
+      if (!boxSearchOpen) return "";
+      return `<div class="box-search-wrap" data-box-search-wrap>
+        <div class="box-search-card">
+          <div class="box-search-line">
+            <span class="box-search-icon">⌕</span>
+            <input class="box-search-input" type="search" placeholder="Search boxes, actions, notes..." value="${escapeHtml(boxSearchQuery)}" data-box-search-input />
+            <button class="box-search-close" type="button" data-close-box-search aria-label="Close search">×</button>
+          </div>
+          <div class="box-search-results" id="boxSearchResults">${renderBoxSearchResults(boxSearchQuery)}</div>
+        </div>
+      </div>`;
+    }
+
+    function renderBoxSearchResults(q) {
+      const term = String(q || "").trim().toLowerCase();
+      if (!term) return `<div class="box-search-empty">Type to filter.</div>`;
+      const out = [];
+      db.boxNodes.forEach(n => {
+        const noteText = n.level === 1 ? htmlToText(n.boxNoteHtml || "") : "";
+        if (n.title.toLowerCase().includes(term) || noteText.toLowerCase().includes(term)) out.push({ type: "Box", title: pathOf(n, db.boxNodes), text: noteText || "Structure", action: `data-open-box="${rootOf(n, db.boxNodes).id}"` });
+      });
+      db.actionDays.forEach(day => (day.nodes || []).forEach(n => {
+        entriesFor(n).forEach(entry => {
+          const text = entryText(entry);
+          if (n.title.toLowerCase().includes(term) || text.toLowerCase().includes(term)) {
+            out.push({ type: `${displayDate(day.date)} · ${entry.type}`, title: pathOf(n, day.nodes), text, action: `data-open-action-day="${day.id}" data-open-action-node="${n.id}" ${entry.type === "note" ? `data-open-note-entry="${entry.id}" data-day-id="${day.id}" data-node-id="${n.id}"` : ""}` });
+          }
+        });
+      }));
+      if (!out.length) return `<div class="box-search-empty">No results.</div>`;
+      return out.slice(0, 30).map(item => `<button class="box-search-result" type="button" ${item.action}><span>${escapeHtml(item.type)}</span><strong>${escapeHtml(item.title)}</strong>${item.text ? `<em>${escapeHtml(item.text)}</em>` : ""}</button>`).join("");
+    }
+
+    function renderBoxFilters() {
+      const f = db.ui.boxFilter || "today";
+      const rangeLabel = db.ui.boxFilterFrom || db.ui.boxFilterTo
+        ? `${db.ui.boxFilterFrom ? displayDate(db.ui.boxFilterFrom) : "..."} → ${db.ui.boxFilterTo ? displayDate(db.ui.boxFilterTo) : "..."}`
+        : "Custom";
+      return `
+        <div class="box-filter-area">
+          <div class="filters">
+            ${filterChip("box-filter", "today", "Today", f === "today")}
+            ${filterChip("box-filter", "7", "7 days", f === "7")}
+            ${filterChip("box-filter", "30", "30 days", f === "30")}
+            ${filterChip("box-filter", "all", "All", f === "all")}
+            <button class="chip calendar-chip ${f === "custom" ? "active" : ""}" type="button" data-toggle-box-date-range><span>📅</span><span>${escapeHtml(rangeLabel)}</span></button>
+          </div>
+          ${db.ui.boxDateRangeOpen ? renderBoxDateRangePanel() : ""}
+        </div>`;
+    }
+
+    function renderBoxDateRangePanel() {
+      return `<div class="date-range-popover" data-box-date-range-panel>
+        <label>From<input type="date" value="${escapeHtml(db.ui.boxFilterFrom || "")}" data-box-filter-from /></label>
+        <label>To<input type="date" value="${escapeHtml(db.ui.boxFilterTo || "")}" data-box-filter-to /></label>
+        <button type="button" data-apply-box-date-range>Apply</button>
+      </div>`;
+    }
+
+    function filterChip(kind, value, label, active) {
+      return `<button class="chip ${active ? "active" : ""}" type="button" data-filter-kind="${kind}" data-filter-value="${value}">${label}</button>`;
+    }
+
+    function boxNoteContent(node) {
+      return sanitizeHtml(node?.boxNoteHtml || "");
+    }
+
+    function boxHasNote(node) {
+      return Boolean(htmlToText(boxNoteContent(node)));
+    }
+
+    function renderBoxNotePill(node, context = "boxes") {
+      if (!node || node.level !== 1) return "";
+      return `<button class="box-note-pill ${boxHasNote(node) ? "has-note" : ""}" type="button" data-toggle-box-note="${node.id}" data-note-context="${context}" aria-label="Box notes">notes</button>`;
+    }
+
+    function renderBoxNotePanel(node, context = "boxes") {
+      return "";
     }
 
     function projectCard(node) {
       return `
-        <article class="project-card" draggable="false" data-open-box="${node.id}">
-          <button class="drag-handle" type="button" data-drag-handle aria-label="Kéo sắp xếp">☰</button>
-          <div class="card-title-wrap">
-            <div class="editable-title home-title" contenteditable="true" spellcheck="false" data-field="title" data-node-id="${node.id}" data-mode="box" data-placeholder="Tên box">${escapeHtml(node.title)}</div>
+        <article class="project-card${createdFlashId === node.id ? " just-created" : ""}" data-root-card="${node.id}">
+          <div class="project-head">
+            <div class="project-left">
+              <button class="drag-handle" type="button" data-drag-handle aria-label="Kéo sắp xếp">☰</button>
+              <div class="editable-title home-title" contenteditable="true" spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên box">${escapeHtml(node.title)}</div>
+            </div>
             <div class="inline-actions">
-              ${node.level < 5 ? `<button class="round-plus" type="button" data-add-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
-              <button class="round-plus danger" type="button" data-delete="${node.id}" aria-label="Xóa box">×</button>
+              ${renderBoxNotePill(node, "boxes")}
+              ${node.level < 5 ? `<button class="round-btn primary small-icon" type="button" data-add-box-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
+              <button class="round-btn danger small-icon" type="button" data-delete-box-node="${node.id}" aria-label="Xóa box">×</button>
             </div>
           </div>
-        </article>
-      `;
+          ${renderBoxNotePanel(node, "boxes")}
+          ${renderMiniTree(node.id)}
+        </article>`;
+    }
+
+    function renderMiniTree(rootId) {
+      const kids = childrenOf(rootId, db.boxNodes);
+      if (!kids.length) return "";
+      return `<div class="box-subtree">${kids.map(child => renderMiniRow(child, 0)).join("")}</div>`;
+    }
+
+    function renderMiniRow(node, depth) {
+      const kids = childrenOf(node.id, db.boxNodes);
+      const open = (db.ui.expandedBoxNodes || []).includes(node.id);
+      const flash = createdFlashId === node.id ? " just-created" : "";
+      return `
+        <div class="box-subrow depth-${depth} ${open ? "open" : ""}${flash}" style="--depth:${depth}" data-mini-box-row="${node.id}">
+          <div class="box-subhead" data-toggle-box-node="${node.id}">
+            <div class="box-subleft">
+              <span class="caret">›</span>
+              <span class="editable-title box-subtitle" contenteditable="true" spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên sub">${escapeHtml(node.title)}</span>
+            </div>
+            <div class="box-subactions">
+              ${node.level < 5 ? `<button class="mini-icon add" type="button" data-add-box-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
+              <button class="mini-icon delete" type="button" data-delete-box-node="${node.id}" aria-label="Xóa sub">×</button>
+            </div>
+          </div>
+          ${renderNodeSummary(node)}
+          ${open && kids.length ? `<div class="box-subchildren">${kids.map(child => renderMiniRow(child, depth + 1)).join("")}</div>` : ""}
+        </div>`;
+    }
+
+    function renderProjectSummary(root) {
+      return "";
+    }
+
+    function renderNodeSummary(boxNode) {
+      const days = filteredDaysForBox();
+      const blocks = days.map(day => renderNodeSummaryForDay(boxNode, day)).filter(Boolean).join("");
+      if (!blocks) return "";
+      return `<div class="node-date-summary">${blocks}</div>`;
+    }
+
+    function renderNodeSummaryForDay(boxNode, day) {
+      const actionNode = (day.nodes || []).find(n => (n.sourceBoxNodeId || n.templateId || n.boxNodeId) === boxNode.id);
+      if (!actionNode) return "";
+      const entries = entriesFor(actionNode);
+      if (!entries.length) return "";
+      const key = `${boxNode.id}:${day.id}`;
+      const expanded = (db.ui.expandedSummaryDays || []).includes(key);
+      return `
+        <section class="summary-day compact-summary node-summary-day ${expanded ? "" : "collapsed"}">
+          <button class="summary-head node-summary-head" type="button" data-toggle-summary="${key}">
+            <span class="summary-date-label">${displayDate(day.date)}</span>
+            <span class="chev">⌄</span>
+          </button>
+          ${expanded ? `<div class="summary-body node-summary-body"><div class="summary-tree node-summary-tree">${entries.map(entry => renderNodeSummaryEntry(day, actionNode, entry)).join("")}</div></div>` : ""}
+        </section>`;
+    }
+
+    function renderNodeSummaryEntry(day, node, entry) {
+      const isNote = entry.type === "note";
+      const label = isNote ? noteTitle(entry) : cleanTitle(entry.text || "Action");
+      return `
+        <button class="summary-tree-row node-summary-entry ${isNote ? "is-note" : "is-action"}" type="button" data-open-action-day="${day.id}" data-open-action-node="${node.id}">
+          <span class="summary-tree-main">
+            ${isNote ? `<span class="summary-note-mark">note</span>` : `<span class="summary-check ${entry.done ? "done" : ""}">✓</span>`}
+            <span class="summary-tree-entry">${escapeHtml(label)}</span>
+          </span>
+        </button>`;
+    }
+
+    function filteredDaysForBox() {
+      const f = db.ui.boxFilter || "today";
+      return [...db.actionDays].sort((a, b) => b.date.localeCompare(a.date)).filter(day => {
+        const diff = daysBetween(day.date);
+        if (f === "today") return day.date === todayYMD();
+        if (f === "7") return diff >= 0 && diff < 7;
+        if (f === "30") return diff >= 0 && diff < 30;
+        if (f === "custom") {
+          const from = db.ui.boxFilterFrom || "0000-01-01";
+          const to = db.ui.boxFilterTo || "9999-12-31";
+          return day.date >= from && day.date <= to;
+        }
+        return true;
+      });
+    }
+
+    function renderSummaryForDay(root, day) {
+      const rootAction = day.nodes.find(n => (n.sourceBoxNodeId || n.templateId) === root.id && n.parentId === null);
+      if (!rootAction) return "";
+      const rows = summaryRowsForRoot(rootAction, day.nodes);
+      if (!rows.length) return "";
+      const key = `${root.id}:${day.id}`;
+      const expanded = (db.ui.expandedSummaryDays || []).includes(key);
+      const progress = progressForRoot(rootAction, day.nodes);
+      return `
+        <section class="summary-day compact-summary ${expanded ? "" : "collapsed"}">
+          <button class="summary-head" type="button" data-toggle-summary="${key}">
+            <span class="summary-date-label">${displayDate(day.date)} <span class="day-meta">· ${progress.done}/${progress.total}</span></span>
+            <span class="chev">⌄</span>
+          </button>
+          ${expanded ? `<div class="summary-body"><div class="summary-tree">${rows.map(row => renderSummaryAction(day, row.node, row.entry, rootAction.level)).join("")}</div></div>` : ""}
+        </section>`;
+    }
+
+    function summaryRowsForRoot(rootAction, nodes) {
+      const all = [rootAction, ...descendantsOf(rootAction.id, nodes)];
+      return all.flatMap(node => entriesFor(node).map(entry => ({ node, entry })));
+    }
+
+    function renderSummaryAction(day, node, entry, rootLevel = 1) {
+      const isNote = entry.type === "note";
+      const text = isNote ? htmlToText(entry.bodyHtml) : entry.text;
+      const depth = Math.max(0, (node.level || 1) - rootLevel);
+      const title = isNote ? (entry.title || "Note") : (entry.text || "Action");
+      return `
+        <button class="summary-tree-row ${isNote ? "is-note" : "is-action"}" style="--depth:${depth}" type="button" data-open-action-day="${day.id}" data-open-action-node="${node.id}" ${isNote ? `data-open-note-entry="${entry.id}" data-day-id="${day.id}" data-node-id="${node.id}"` : ""}>
+          <span class="summary-tree-main">
+            ${isNote ? `<span class="summary-note-mark">note</span>` : `<span class="summary-check ${entry.done ? "done" : ""}">✓</span>`}
+            <span class="summary-tree-title">${escapeHtml(node.title)}</span>
+            <span class="summary-tree-entry">${escapeHtml(title)}</span>
+          </span>
+          ${text && isNote ? `<span class="summary-tree-preview">${escapeHtml(text)}</span>` : ""}
+        </button>`;
+    }
+
+    function progressForRoot(root, nodes) {
+      const all = [root, ...descendantsOf(root.id, nodes)];
+      const actions = all.flatMap(n => actionEntriesFor(n));
+      return { total: actions.length, done: actions.filter(e => e.done).length };
     }
 
     function renderActionsHome() {
-      const days = [...db.actionDays].sort((a, b) => b.date.localeCompare(a.date));
-      const today = todayYMD();
-      const todayDay = db.actionDays.find(day => day.date === today);
+      const selectedDate = db.ui.selectedActionDate || todayYMD();
+      syncSelectedActionDayWithBox(selectedDate);
+      const selectedDay = getDayByDate(selectedDate);
+      const progress = selectedDay ? progressForDay(selectedDay) : null;
+      const roots = selectedDay ? childrenOf(null, selectedDay.nodes).filter(root => hasVisibleAction(root, selectedDay.nodes)) : [];
       app.innerHTML = `
-        <section class="screen">
+        <section class="screen actions-workspace">
           ${renderHeader("actions")}
-          <button class="create-today ${todayDay ? "secondary" : ""}" type="button" data-create-today-actions>
-            ${todayDay ? "Open today actions" : "Create today actions"}
-          </button>
-          <div class="day-list">
-            ${days.length ? days.map(renderActionDay).join("") : `<button class="empty-card" type="button" data-create-today-actions>+</button>`}
+          <div class="action-date-bar action-date-stepper">
+            <button class="date-step-btn" type="button" data-shift-action-date="-1" aria-label="Previous day">‹</button>
+            <button class="date-pill" type="button" data-trigger-date-picker>
+              <span>📅</span>
+              <strong>${escapeHtml(displayDate(selectedDate))}</strong>
+              ${progress ? `<em>${progress.done}/${progress.total}</em>` : `<em>No record</em>`}
+            </button>
+            <button class="date-step-btn" type="button" data-shift-action-date="1" aria-label="Next day">›</button>
+            <input class="native-date" type="date" value="${escapeHtml(selectedDate)}" data-action-date-picker aria-label="Chọn ngày" />
           </div>
-        </section>
-      `;
+          ${selectedDay ? `
+            <div class="filters">
+              ${filterChip("action-filter", "all", "All", (db.ui.actionFilter || "all") === "all")}
+              ${filterChip("action-filter", "undone", "Undone", db.ui.actionFilter === "undone")}
+              ${filterChip("action-filter", "done", "Done", db.ui.actionFilter === "done")}
+              ${filterChip("action-filter", "notes", "Notes", db.ui.actionFilter === "notes")}
+            </div>
+            <div class="action-tree">
+              ${roots.length ? roots.map(root => renderActionNode(selectedDay, root)).join("") : `<div class="empty-card">No items</div>`}
+            </div>
+          ` : `
+            ${renderActionEmptyState(selectedDate)}
+          `}
+          ${renderTools()}
+          ${renderEntryModal()}
+        </section>`;
     }
 
-    function renderActionDay(day) {
-      const collapsed = collapsedSet("collapsedDays").has(day.id);
-      const roots = childrenOf(null, day.nodes);
+    function renderActionEmptyState(selectedDate) {
+      const isToday = selectedDate === todayYMD();
+      const label = isToday ? "Create today actions" : `Create actions for ${displayDate(selectedDate)}`;
       return `
-        <section class="day-card ${collapsed ? "collapsed" : ""}">
-          <button class="day-head" type="button" data-toggle-day="${day.id}">
-            <span>${displayDate(day.date)}</span>
-            <span class="day-chev">⌄</span>
-          </button>
-          ${collapsed ? "" : `
-            <div class="day-body">
-              <div class="action-project-stack">
-                ${roots.length ? roots.map(root => actionProjectCard(day, root)).join("") : `<div class="section-label">Không có box</div>`}
+        <section class="schedule-empty-state action-empty-state">
+          <div class="calendar-illustration" aria-hidden="true">
+            <div class="calendar-rings"><span></span><span></span></div>
+            <div class="calendar-page">
+              <div class="calendar-grid">
+                <span></span><span></span><span></span>
+                <span></span><b></b><span></span>
+                <span></span><span></span><span></span>
               </div>
             </div>
-          `}
-        </section>
-      `;
-    }
-
-    function actionProjectCard(day, node) {
-      return `
-        <article class="action-card" data-open-action-day="${day.id}" data-open-action-node="${node.id}">
-          <div class="card-title-wrap">
-            <div class="home-title">${escapeHtml(node.title)}</div>
-            <span class="chev">›</span>
           </div>
-        </article>
-      `;
+          <h2>No actions yet</h2>
+          <button class="create-today empty-create-btn" type="button" data-create-actions-for-date="${escapeHtml(selectedDate)}">${escapeHtml(label)}</button>
+        </section>`;
     }
 
-    function renderEditor(context, id) {
-      const nodes = nodesFor(context);
-      const node = getNode(id, context);
-      const kids = childrenOf(node.id, nodes);
-      const root = rootOf(node, nodes);
-      const isBox = context.mode === "box";
-      const day = context.mode === "action" ? getDay(context.dayId) : null;
-      const backTarget = isBox ? "box" : "actions";
+    function progressForDay(day) {
+      const actions = (day.nodes || []).flatMap(n => actionEntriesFor(n));
+      return { total: actions.length, done: actions.filter(e => e.done).length };
+    }
 
+    function renderBoxEditor(rootId) {
+      const root = getBoxNode(rootId);
+      if (!root) return goBoxHome();
+      const kids = childrenOf(root.id, db.boxNodes);
       app.innerHTML = `
         <section class="editor">
           <div class="editorbar">
-            <button class="icon-btn" type="button" data-back-home="${backTarget}" aria-label="Back">‹</button>
-            <div class="editor-kicker">${isBox ? "Box" : displayDate(day.date)}</div>
-            <span></span>
+            <button class="icon-btn" type="button" data-back-home="box" aria-label="Back">‹</button>
+            <div class="editor-kicker">Box structure</div>
+            <span class="sync-pill ${syncStatus}" data-sync-pill>${escapeHtml(syncLabel)}</span>
           </div>
-
-          <div class="node-title-row">
-            <div class="editable-title editor-title" contenteditable="true" spellcheck="false" data-field="title" data-node-id="${node.id}" data-mode="${context.mode}" ${day ? `data-day-id="${day.id}"` : ""} data-placeholder="Tên box">${escapeHtml(node.title)}</div>
+          <div class="project-head" style="margin-bottom:14px">
+            <div class="editable-title editor-title" contenteditable="true" spellcheck="false" data-box-title="${root.id}" data-placeholder="Tên box">${escapeHtml(root.title)}</div>
             <div class="inline-actions">
-              ${node.level < 5 ? `<button class="round-plus" type="button" data-add-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
-              <button class="round-plus danger" type="button" data-delete="${node.id}" aria-label="Xóa">×</button>
+              ${renderBoxNotePill(root, "boxes")}
+              ${root.level < 5 ? `<button class="round-btn primary" type="button" data-add-box-child="${root.id}">+</button>` : ""}
+              <button class="round-btn danger" type="button" data-delete-box-node="${root.id}">×</button>
             </div>
           </div>
-
-          <div class="rich-editor" contenteditable="true" spellcheck="true" data-field="contentHtml" data-node-id="${node.id}" data-mode="${context.mode}" ${day ? `data-day-id="${day.id}"` : ""} data-placeholder="Viết ở đây...">${contentOf(node)}</div>
-
-          <div class="children">
-            ${kids.map(child => renderSub(context, child)).join("")}
+          ${renderBoxNotePanel(root, "boxes")}
+          <div class="box-editor-tree">
+            ${kids.length ? kids.map(child => renderBoxNode(child)).join("") : ``}
           </div>
-
-          ${isBox && node.parentId === null ? renderBoxActionSummary(node.id) : ""}
-        </section>
-      `;
+        </section>`;
     }
 
-    function renderSub(context, node) {
-      const nodes = nodesFor(context);
-      const open = expanded.has(node.id);
-      const kids = childrenOf(node.id, nodes);
-      const dayAttr = context.mode === "action" ? `data-day-id="${context.dayId}"` : "";
+    function renderBoxNode(node) {
+      const open = (db.ui.expandedBoxNodes || []).includes(node.id);
+      const kids = childrenOf(node.id, db.boxNodes);
       return `
-        <div class="sub-node" data-node="${node.id}">
-          <div class="sub-shell ${open ? "open" : ""}">
-            <div class="sub-row" data-toggle="${node.id}">
-              <span class="chev">›</span>
-              <div class="editable-title sub-title" contenteditable="true" spellcheck="false" data-field="title" data-node-id="${node.id}" data-mode="${context.mode}" ${dayAttr} data-placeholder="Tên sub">${escapeHtml(node.title)}</div>
+        <div class="node-shell ${open ? "open" : ""}" data-box-node-shell="${node.id}">
+          <div class="template-card">
+            <div class="node-head" data-toggle-box-node="${node.id}">
+              <span class="caret">›</span>
+              <div class="editable-title sub-title" contenteditable="true" spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên sub">${escapeHtml(node.title)}</div>
               <div class="inline-actions">
-                ${node.level < 5 ? `<button class="tiny-action" type="button" data-add-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
-                <button class="tiny-action danger" type="button" data-delete="${node.id}" aria-label="Xóa sub">×</button>
+                ${node.level < 5 ? `<button class="round-btn primary small-icon" type="button" data-add-box-child="${node.id}">+</button>` : ""}
+                <button class="round-btn danger small-icon" type="button" data-delete-box-node="${node.id}">×</button>
               </div>
             </div>
-            ${open ? `
-              <div class="sub-body">
-                <div class="rich-editor" contenteditable="true" spellcheck="true" data-field="contentHtml" data-node-id="${node.id}" data-mode="${context.mode}" ${dayAttr} data-placeholder="Nội dung...">${contentOf(node)}</div>
-              </div>
-              ${kids.length ? `<div class="sub-children">${kids.map(child => renderSub(context, child)).join("")}</div>` : ""}
-            ` : ""}
+            ${open && kids.length ? `<div class="sub-children">${kids.map(child => renderBoxNode(child)).join("")}</div>` : ""}
+          </div>
+        </div>`;
+    }
+
+    function renderActionDayEditor(dayId, targetId = null) {
+      const day = getDay(dayId);
+      if (!day) return goActionsHome();
+      const changed = syncActionDayWithBox(day);
+      if (changed) { cacheLocal(); if (navigator.onLine) queueCloudSave(); }
+      if (targetId) expandActionAncestors(day, targetId);
+      const roots = childrenOf(null, day.nodes).filter(root => hasVisibleAction(root, day.nodes));
+      const progress = progressForDay(day);
+      app.innerHTML = `
+        <section class="editor">
+          <div class="editorbar">
+            <button class="icon-btn" type="button" data-back-home="actions" aria-label="Back">‹</button>
+            <div class="editor-kicker">${displayDate(day.date)} · ${progress.done}/${progress.total}</div>
+            <span class="sync-pill ${syncStatus}" data-sync-pill>${escapeHtml(syncLabel)}</span>
+          </div>
+          <div class="filters">
+            ${filterChip("action-filter", "all", "All", (db.ui.actionFilter || "all") === "all")}
+            ${filterChip("action-filter", "undone", "Undone", db.ui.actionFilter === "undone")}
+            ${filterChip("action-filter", "done", "Done", db.ui.actionFilter === "done")}
+              ${filterChip("action-filter", "notes", "Notes", db.ui.actionFilter === "notes")}
+          </div>
+          <div class="action-tree">
+            ${roots.length ? roots.map(root => renderActionNode(day, root)).join("") : `<div class="empty-card">No items</div>`}
+          </div>
+          ${renderEntryModal()}
+        </section>`;
+      if (targetId) setTimeout(() => document.querySelector(`[data-action-node-id="${CSS.escape(targetId)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+    }
+
+    function expandActionAncestors(day, nodeId) {
+      const collapsed = new Set(db.ui.collapsedActionNodes || []);
+      [...ancestorsOf(nodeId, day.nodes).map(n => n.id), nodeId].forEach(id => collapsed.delete(id));
+      db.ui.collapsedActionNodes = [...collapsed];
+    }
+
+    function visibleEntriesFor(node) {
+      const filter = db.ui.actionFilter || "all";
+      const entries = entriesFor(node);
+      if (filter === "undone") return entries.filter(e => e.type === "action" && !e.done);
+      if (filter === "done") return entries.filter(e => e.type === "action" && e.done);
+      if (filter === "notes") return entries.filter(e => e.type === "note");
+      return entries;
+    }
+
+    function hasVisibleAction(node, nodes) {
+      const filter = db.ui.actionFilter || "all";
+      const self = filter === "all" ? true : visibleEntriesFor(node).length > 0;
+      return Boolean(self) || childrenOf(node.id, nodes).some(child => hasVisibleAction(child, nodes));
+    }
+
+    function renderActionNode(day, node) {
+      if (!hasVisibleAction(node, day.nodes)) return "";
+      const open = !(db.ui.collapsedActionNodes || []).includes(node.id);
+      const kids = childrenOf(node.id, day.nodes).filter(child => hasVisibleAction(child, day.nodes));
+      const entryCount = entriesFor(node).length;
+      const canAddEntry = node.level > 1;
+      const sourceBox = node.level === 1 ? getBoxNode(node.sourceBoxNodeId || node.templateId || node.boxNodeId) : null;
+      return `
+        <section class="action-node level-${node.level} ${open ? "open" : ""}" data-action-node-id="${node.id}">
+          <div class="action-head" data-toggle-action-node="${node.id}">
+            <div class="action-title-wrap">
+              <span class="caret">›</span>
+              <div class="action-title">${escapeHtml(node.title)}</div>
+            </div>
+            <div class="action-head-actions">
+              ${sourceBox ? renderBoxNotePill(sourceBox, "actions") : ""}
+              ${canAddEntry ? `<div class="action-menu-wrap">
+                <button class="action-add-btn" type="button" data-open-entry-menu="${node.id}" data-day-id="${day.id}" aria-label="Add action or note">+</button>
+                ${actionMenuOpenFor === `${day.id}:${node.id}` ? `<div class="action-menu" data-entry-menu>
+                  <button type="button" data-new-action-entry="${node.id}" data-day-id="${day.id}">Action</button>
+                  <button type="button" data-new-note-entry="${node.id}" data-day-id="${day.id}">Notes</button>
+                </div>` : ""}
+              </div>` : ""}
+            </div>
+          </div>
+          ${open ? `<div class="action-body">
+            ${sourceBox ? renderBoxNotePanel(sourceBox, "actions") : ""}
+            ${canAddEntry ? renderEntryList(day, node) : ""}
+            ${kids.length ? `<div class="action-children">${kids.map(child => renderActionNode(day, child)).join("")}</div>` : ""}
+          </div>` : (entryCount && canAddEntry ? `<div class="action-meta">${entryCount} item${entryCount > 1 ? "s" : ""}</div>` : "")}
+        </section>`;
+    }
+
+    function renderEntryList(day, node) {
+      const entries = visibleEntriesFor(node);
+      if (!entries.length) return `<div class="entry-empty">No actions or notes yet.</div>`;
+      return `<div class="entry-list">${entries.map(entry => renderEntryRow(day, node, entry)).join("")}</div>`;
+    }
+
+    function renderEntryRow(day, node, entry) {
+      if (entry.type === "note") {
+        return `<div class="entry-row note-row" data-entry-id="${entry.id}">
+          <button class="entry-text note-title-inline" type="button" data-open-note-entry="${entry.id}" data-day-id="${day.id}" data-node-id="${node.id}">${escapeHtml(noteTitle(entry))}</button>
+          <span class="entry-actions">
+            <button class="entry-edit-btn" type="button" data-open-note-entry="${entry.id}" data-day-id="${day.id}" data-node-id="${node.id}" aria-label="Edit note">✎</button>
+            <button class="entry-delete-btn" type="button" data-delete-entry="${entry.id}" data-day-id="${day.id}" data-node-id="${node.id}" aria-label="Delete note">×</button>
+          </span>
+        </div>`;
+      }
+      return `<div class="entry-row ${entry.done ? "done" : ""}" data-entry-id="${entry.id}">
+        <input class="entry-check" type="checkbox" ${entry.done ? "checked" : ""} data-toggle-entry-done="${entry.id}" data-day-id="${day.id}" data-node-id="${node.id}" />
+        <span class="entry-text" contenteditable="true" spellcheck="true" data-entry-action-text="${entry.id}" data-day-id="${day.id}" data-node-id="${node.id}">${escapeHtml(entry.text || "Action")}</span>
+        <span class="entry-actions"><button class="entry-delete-btn" type="button" data-delete-entry="${entry.id}" data-day-id="${day.id}" data-node-id="${node.id}" aria-label="Delete action">×</button></span>
+      </div>`;
+    }
+
+    function renderEntryModal() {
+      if (!entryModal) return "";
+      if (entryModal.type === "boxNote") {
+        const node = getBoxNode(entryModal.boxId);
+        if (!node) return "";
+        return `<div class="modal-backdrop" data-close-entry-modal>
+          <div class="entry-modal box-note-modal" data-entry-modal-card>
+            <h3>Box notes</h3>
+            <p class="modal-subtitle">${escapeHtml(node.title || "Untitled")}</p>
+            <label>Notes<div class="rich-editor note-rich-editor box-note-modal-editor" contenteditable="true" spellcheck="true" data-box-note-modal-editor="${node.id}" data-placeholder="Nhập notes cho box này...">${boxNoteContent(node)}</div></label>
+            <div class="entry-modal-actions">
+              <button class="modal-btn" type="button" data-close-entry-modal>Cancel</button>
+              <button class="modal-btn primary" type="button" data-save-box-note-modal>Done</button>
+            </div>
+          </div>
+        </div>`;
+      }
+      if (entryModal.type === "action") {
+        return `<div class="modal-backdrop" data-close-entry-modal>
+          <div class="entry-modal" data-entry-modal-card>
+            <h3>Add actions</h3>
+            <label>Each line is one action<textarea data-action-lines placeholder="Write one action per line\nFollow up client\nDesign new layout"></textarea></label>
+            <div class="entry-modal-actions">
+              <button class="modal-btn" type="button" data-close-entry-modal>Cancel</button>
+              <button class="modal-btn primary" type="button" data-save-action-lines>Done</button>
+            </div>
+          </div>
+        </div>`;
+      }
+      const note = entryModal.entry || { title: "", bodyHtml: "" };
+      return `<div class="modal-backdrop" data-close-entry-modal>
+        <div class="entry-modal" data-entry-modal-card>
+          <h3>${entryModal.entryId ? "Edit note" : "New note"}</h3>
+          <label>Note title<input data-note-title-input value="${escapeHtml(note.title || "")}" placeholder="Tên note" /></label>
+          <label>Notes<div class="rich-editor note-rich-editor" contenteditable="true" spellcheck="true" data-note-body-editor data-placeholder="Nhập notes...">${sanitizeHtml(note.bodyHtml || "")}</div></label>
+          <div class="entry-modal-actions">
+            <button class="modal-btn" type="button" data-close-entry-modal>Cancel</button>
+            <button class="modal-btn primary" type="button" data-save-note-entry>Done</button>
           </div>
         </div>
-      `;
+      </div>`;
     }
 
-    function renderBoxActionSummary(templateRootId) {
-      const summaries = [...db.actionDays]
-        .sort((a, b) => b.date.localeCompare(a.date))
-        .map(day => ({ day, root: day.nodes.find(n => n.parentId === null && n.templateId === templateRootId) }))
-        .filter(item => item.root);
-
-      if (!summaries.length) return "";
-      return `
-        <section class="box-summary">
-          <div class="section-label">Actions</div>
-          ${summaries.map(({ day, root }) => renderSummaryDay(day, root)).join("")}
-        </section>
-      `;
+    function renderSearch() {
+      app.innerHTML = `
+        <section class="screen search-screen">
+          <div class="topbar">
+            <button class="icon-btn" type="button" data-back-smart aria-label="Back">‹</button>
+            <div class="brand"><span class="brand-title">Search</span></div>
+            <span class="sync-pill ${syncStatus}" data-sync-pill>${escapeHtml(syncLabel)}</span>
+          </div>
+          <input class="search-input" type="search" placeholder="Tìm box, action, nội dung..." value="${escapeHtml(searchQuery)}" data-search-input autofocus />
+          <div class="search-results" id="searchResults">${renderSearchResults(searchQuery)}</div>
+        </section>`;
+      setTimeout(() => document.querySelector("[data-search-input]")?.focus(), 30);
     }
 
-    function renderSummaryDay(day, root) {
-      const key = `${root.templateId}:${day.id}`;
-      const collapsed = collapsedSet("collapsedSummaries").has(key);
-      return `
-        <section class="summary-day ${collapsed ? "collapsed" : ""}">
-          <button class="summary-head" type="button" data-toggle-summary="${key}">
-            <span>${displayDate(day.date)}</span>
-            <span class="day-chev">⌄</span>
-          </button>
-          ${collapsed ? "" : `
-            <div class="summary-body">
-              <div class="snapshot-tree">
-                ${renderSnapshot(root, day.nodes, 0)}
-              </div>
-            </div>
-          `}
-        </section>
-      `;
-    }
-
-    function renderSnapshot(node, nodes, depth) {
-      const text = htmlToText(contentOf(node));
-      const kids = childrenOf(node.id, nodes);
-      return `
-        <div class="snapshot-row" style="--depth:${depth}">
-          <div class="snapshot-title">${escapeHtml(node.title)}</div>
-          ${text ? `<p class="snapshot-content">${escapeHtml(text)}</p>` : ""}
-        </div>
-        ${kids.map(child => renderSnapshot(child, nodes, depth + 1)).join("")}
-      `;
+    function renderSearchResults(q) {
+      const term = String(q || "").trim().toLowerCase();
+      if (!term) return `<div class="section-label">Nhập từ khóa để tìm.</div>`;
+      const out = [];
+      db.boxNodes.forEach(n => {
+        const noteText = n.level === 1 ? htmlToText(n.boxNoteHtml || "") : "";
+        if (n.title.toLowerCase().includes(term) || noteText.toLowerCase().includes(term)) out.push({ type: "Box", title: pathOf(n, db.boxNodes), text: noteText || "Structure", action: `data-open-box="${rootOf(n, db.boxNodes).id}"` });
+      });
+      db.actionDays.forEach(day => day.nodes.forEach(n => {
+        entriesFor(n).forEach(entry => {
+          const text = entryText(entry);
+          if (n.title.toLowerCase().includes(term) || text.toLowerCase().includes(term)) {
+            out.push({ type: `${displayDate(day.date)} · ${entry.type}`, title: pathOf(n, day.nodes), text, action: `data-open-action-day="${day.id}" data-open-action-node="${n.id}" ${entry.type === "note" ? `data-open-note-entry="${entry.id}" data-day-id="${day.id}" data-node-id="${n.id}"` : ""}` });
+          }
+        });
+      }));
+      if (!out.length) return `<div class="section-label">Không có kết quả.</div>`;
+      return out.slice(0, 60).map(item => `<button class="search-result" type="button" ${item.action}><span class="search-type">${escapeHtml(item.type)}</span><span class="search-title">${escapeHtml(item.title)}</span>${item.text ? `<span class="search-text">${escapeHtml(item.text)}</span>` : ""}</button>`).join("");
     }
 
     function createProject() {
       const t = now();
-      const node = {
-        id: uid(), parentId: null, level: 1, title: "Untitled", contentHtml: "",
-        sort: boxProjects().length + 1, createdAt: t, updatedAt: t
-      };
+      const node = { id: uid(), parentId: null, level: 1, title: "Untitled", boxNoteHtml: "", sort: boxRoots().length + 1, createdAt: t, updatedAt: t };
       db.boxNodes.push(node);
-      persist();
-      openBox(node.id);
-      setTimeout(() => focusTitle(node.id), 30);
+      createdFlashId = node.id;
+      syncSelectedActionDayWithBox();
+      if (route().name !== "box") {
+        cacheLocal();
+        queueCloudSave();
+        goBoxHome();
+      } else {
+        persist({ renderAfter: true });
+      }
+      setTimeout(() => focusBoxTitle(node.id), 80);
+      setTimeout(() => { if (createdFlashId === node.id) { createdFlashId = null; render(); } }, 900);
     }
 
-    function createChild(parentId) {
-      const r = route();
-      const context = r.mode === "action" ? { mode: "action", dayId: r.dayId } : { mode: "box" };
-      const nodes = nodesFor(context);
-      const parent = nodes.find(n => n.id === parentId);
+    function createBoxChild(parentId) {
+      const parent = getBoxNode(parentId);
       if (!parent || parent.level >= 5) return;
       const t = now();
-      const child = {
-        id: uid(), parentId: parent.id, level: parent.level + 1, title: "Untitled", contentHtml: "",
-        sort: childrenOf(parent.id, nodes).length + 1, createdAt: t, updatedAt: t,
-        templateId: context.mode === "action" ? null : undefined
-      };
+      const child = { id: uid(), parentId: parent.id, level: parent.level + 1, title: "Untitled", sort: childrenOf(parent.id, db.boxNodes).length + 1, createdAt: t, updatedAt: t };
       parent.updatedAt = t;
-      nodes.push(child);
-      expanded.add(parent.id);
-      expanded.add(child.id);
-      persist();
-
-      const root = rootOf(parent, nodes);
-      if (context.mode === "action") openAction(context.dayId, root.id);
-      else openBox(root.id);
-      render();
-      setTimeout(() => focusTitle(child.id), 30);
+      db.boxNodes.push(child);
+      createdFlashId = child.id;
+      expandInArray("expandedBoxNodes", parent.id);
+      syncSelectedActionDayWithBox();
+      persist({ renderAfter: true });
+      setTimeout(() => focusBoxTitle(child.id), 80);
+      setTimeout(() => { if (createdFlashId === child.id) { createdFlashId = null; render(); } }, 900);
     }
 
-    function createTodayActions() {
-      const today = todayYMD();
-      const existing = db.actionDays.find(day => day.date === today);
-      if (existing) {
-        const first = childrenOf(null, existing.nodes)[0];
-        if (first) openAction(existing.id, first.id);
-        else goActionsHome();
-        return;
-      }
-
-      const roots = boxProjects();
-      if (!roots.length) {
-        showToast("Chưa có box");
-        goBoxHome();
-        return;
-      }
-
-      const t = now();
-      const day = { id: uid(), date: today, createdAt: t, updatedAt: t, nodes: [] };
-      function cloneNode(original, parentId) {
-        const clone = {
-          id: uid(), parentId, level: original.level, title: original.title, contentHtml: "",
-          sort: original.sort || 1, createdAt: t, updatedAt: t, templateId: original.id
-        };
-        day.nodes.push(clone);
-        childrenOf(original.id, db.boxNodes).forEach(child => cloneNode(child, clone.id));
-        return clone;
-      }
-      roots.forEach(root => cloneNode(root, null));
-      db.actionDays.push(day);
-      persist();
-      const first = childrenOf(null, day.nodes)[0];
-      if (first) openAction(day.id, first.id);
-      else goActionsHome();
-    }
-
-    function deleteNode(id) {
-      const r = route();
-      const context = r.mode === "action" ? { mode: "action", dayId: r.dayId } : { mode: "box" };
-      const nodes = nodesFor(context);
-      const node = nodes.find(n => n.id === id);
+    function deleteBoxNode(id) {
+      const node = getBoxNode(id);
       if (!node) return;
-      const isRoot = node.parentId === null;
-      if (!confirm(isRoot ? "Xóa box này?" : "Xóa sub này?")) return;
-
-      const ids = new Set([id, ...descendantsOf(id, nodes).map(n => n.id)]);
-      if (context.mode === "action") {
-        const day = getDay(context.dayId);
-        day.nodes = day.nodes.filter(n => !ids.has(n.id));
-      } else {
-        db.boxNodes = db.boxNodes.filter(n => !ids.has(n.id));
-      }
-      ids.forEach(item => expanded.delete(item));
-      persist();
-
-      if (isRoot) {
-        context.mode === "action" ? goActionsHome() : goBoxHome();
-      } else {
-        const root = rootOf(node, nodes.filter(n => !ids.has(n.id))) || childrenOf(null, nodes)[0];
-        if (context.mode === "action") openAction(context.dayId, root?.id || "");
-        else openBox(root?.id || "");
-        render();
-      }
+      const ids = new Set([id, ...descendantsOf(id, db.boxNodes).map(n => n.id)]);
+      const snapshot = db.boxNodes.filter(n => ids.has(n.id)).map(n => ({ ...n }));
+      db.boxNodes = db.boxNodes.filter(n => !ids.has(n.id));
+      db.ui.collapsedBoxNodes = (db.ui.collapsedBoxNodes || []).filter(x => !ids.has(x));
+      db.ui.expandedBoxNodes = (db.ui.expandedBoxNodes || []).filter(x => !ids.has(x));
+      syncSelectedActionDayWithBox();
+      persist({ renderAfter: true });
+      showSnack("Đã xoá", () => {
+        const existing = new Set(db.boxNodes.map(n => n.id));
+        snapshot.forEach(n => { if (!existing.has(n.id)) db.boxNodes.push(n); });
+        persist({ renderAfter: true });
+      });
+      if (route().name === "boxEditor" && node.parentId === null) goBoxHome();
     }
 
-    function toggleSub(id) {
-      expanded.has(id) ? expanded.delete(id) : expanded.add(id);
+    function createActionsForDate(date = todayYMD()) {
+      const selectedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) ? date : todayYMD();
+      const existing = getDayByDate(selectedDate);
+      if (existing) {
+        db.ui.selectedActionDate = selectedDate;
+        persist({ renderAfter: true });
+        return;
+      }
+      const roots = boxRoots();
+      if (!roots.length) { showSnack("Chưa có box", null, 1600); return goBoxHome(); }
+      const t = now();
+      const day = { id: uid(), date: selectedDate, createdAt: t, updatedAt: t, nodes: [] };
+      syncActionDayWithBox(day);
+      db.actionDays.push(day);
+      db.ui.selectedActionDate = selectedDate;
+      persist({ renderAfter: true });
+    }
+
+    function createTodayActions() { createActionsForDate(todayYMD()); }
+
+    function autoSyncTodayStructure() {
+      const day = db.actionDays.find(item => item.date === todayYMD());
+      if (!day) return false;
+      const changed = syncActionDayWithBox(day);
+      if (changed) {
+        cacheLocal();
+        queueCloudSave();
+      }
+      return changed;
+    }
+
+    function syncSelectedActionDayWithBox(date = db.ui.selectedActionDate) {
+      const day = getDayByDate(date || todayYMD());
+      if (!day) return false;
+      const changed = syncActionDayWithBox(day);
+      if (changed) {
+        cacheLocal();
+        queueCloudSave();
+      }
+      return changed;
+    }
+
+    function actionStructureSignature(nodes) {
+      return JSON.stringify((nodes || []).map(n => ({
+        id: n.id,
+        parentId: n.parentId ?? null,
+        level: n.level,
+        title: n.title,
+        sort: n.sort,
+        sourceBoxNodeId: n.sourceBoxNodeId || null,
+        entryIds: entriesFor(n).map(e => e.id)
+      })));
+    }
+
+    function boxPathFor(node) {
+      return [...ancestorsOf(node.id, db.boxNodes), node].map(n => cleanTitle(n.title)).join(" › ");
+    }
+
+    function syncActionDayWithBox(day) {
+      if (!day) return false;
+      const before = actionStructureSignature(day.nodes || []);
+      const t = now();
+      const existingBySource = new Map();
+      (day.nodes || []).forEach(node => {
+        if (node.sourceBoxNodeId) existingBySource.set(node.sourceBoxNodeId, node);
+      });
+      const next = [];
+      function clone(boxNode, parentCloneId) {
+        const matched = existingBySource.get(boxNode.id);
+        const cloned = {
+          id: matched?.id || uid(),
+          parentId: parentCloneId,
+          level: boxNode.level,
+          title: cleanTitle(boxNode.title),
+          sort: Number.isFinite(+boxNode.sort) ? +boxNode.sort : childrenOf(boxNode.parentId, db.boxNodes).indexOf(boxNode) + 1,
+          sourceBoxNodeId: boxNode.id,
+          entries: normalizeEntries(matched || {}),
+          done: Boolean(matched?.done),
+          createdAt: matched?.createdAt || t,
+          updatedAt: matched?.updatedAt || t
+        };
+        next.push(cloned);
+        childrenOf(boxNode.id, db.boxNodes).forEach(child => clone(child, cloned.id));
+      }
+      boxRoots().forEach(root => clone(root, null));
+      day.nodes = next;
+      const after = actionStructureSignature(day.nodes);
+      if (before !== after) {
+        day.updatedAt = t;
+        return true;
+      }
+      return false;
+    }
+
+    function toggleInArray(key, id) {
+      db.ui[key] = db.ui[key] || [];
+      const set = new Set(db.ui[key]);
+      set.has(id) ? set.delete(id) : set.add(id);
+      db.ui[key] = [...set];
+      persist({ renderAfter: true });
+    }
+    function uncollapse(key, id) { db.ui[key] = (db.ui[key] || []).filter(x => x !== id); }
+    function expandInArray(key, id) { db.ui[key] = [...new Set([...(db.ui[key] || []), id])]; }
+
+    function updateBoxTitle(id, text) {
+      const node = getBoxNode(id);
+      if (!node) return;
+      const nextTitle = cleanTitle(text);
+      if (node.title === nextTitle) return;
+      node.title = nextTitle;
+      node.updatedAt = now();
+      syncActionTitlesFromBoxes(db, id);
+      syncSelectedActionDayWithBox();
+      scheduleSave();
+    }
+
+    function updateBoxNote(id, html) {
+      const node = getBoxNode(id);
+      if (!node || node.level !== 1) return;
+      const nextHtml = sanitizeHtml(html || "");
+      if ((node.boxNoteHtml || "") === nextHtml) return;
+      node.boxNoteHtml = nextHtml;
+      node.updatedAt = now();
+      scheduleSave();
+    }
+
+    function updateActionContent(dayId, nodeId, html) {
+      const node = getActionNode(dayId, nodeId);
+      const day = getDay(dayId);
+      if (!node || !day) return;
+      node.entries = normalizeEntries(node);
+      node.entries.push(normalizeEntry({ type: "note", title: "Note", bodyHtml: sanitizeHtml(html || "") }, node.entries.length));
+      node.updatedAt = now();
+      day.updatedAt = now();
+      scheduleSave();
+    }
+
+    function findEntry(dayId, nodeId, entryId) {
+      const node = getActionNode(dayId, nodeId);
+      const day = getDay(dayId);
+      const entry = node ? entriesFor(node).find(e => e.id === entryId) : null;
+      return { day, node, entry };
+    }
+
+    function addActionEntries(dayId, nodeId, lines) {
+      const node = getActionNode(dayId, nodeId);
+      const day = getDay(dayId);
+      if (!node || !day) return;
+      if (node.level <= 1) { showSnack("Chọn sub-box để thêm action", null, 1800); entryModal = null; actionMenuOpenFor = null; render(); return; }
+      const cleaned = String(lines || "").split(/\n+/).map(cleanTitle).filter(Boolean);
+      if (!cleaned.length) return;
+      const t = now();
+      node.entries = normalizeEntries(node);
+      cleaned.forEach(text => node.entries.push(normalizeEntry({ type: "action", text, createdAt: t, updatedAt: t }, node.entries.length)));
+      node.updatedAt = t;
+      day.updatedAt = t;
+      db.ui.actionFilter = "all";
+      expandActionAncestors(day, nodeId);
+      entryModal = null;
+      actionMenuOpenFor = null;
+      persist({ renderAfter: true });
+    }
+
+    function saveNoteEntry(dayId, nodeId, entryId, title, bodyHtmlInput) {
+      const node = getActionNode(dayId, nodeId);
+      const day = getDay(dayId);
+      if (!node || !day) return;
+      if (node.level <= 1) { showSnack("Chọn sub-box để thêm notes", null, 1800); entryModal = null; actionMenuOpenFor = null; render(); return; }
+      const t = now();
+      node.entries = normalizeEntries(node);
+      let entry = entryId ? node.entries.find(e => e.id === entryId) : null;
+      const bodyHtml = sanitizeHtml(bodyHtmlInput || "");
+      if (entry) {
+        entry.title = cleanTitle(title || "Note");
+        entry.bodyHtml = bodyHtml;
+        entry.updatedAt = t;
+      } else {
+        node.entries.push(normalizeEntry({ type: "note", title: title || "Note", bodyHtml, createdAt: t, updatedAt: t }, node.entries.length));
+      }
+      node.updatedAt = t;
+      day.updatedAt = t;
+      db.ui.actionFilter = "all";
+      expandActionAncestors(day, nodeId);
+      entryModal = null;
+      actionMenuOpenFor = null;
+      persist({ renderAfter: true });
+    }
+
+    function updateActionEntryText(dayId, nodeId, entryId, text) {
+      const { day, node, entry } = findEntry(dayId, nodeId, entryId);
+      if (!day || !node || !entry || entry.type !== "action") return;
+      entry.text = cleanTitle(text || "Action");
+      entry.updatedAt = now();
+      node.updatedAt = entry.updatedAt;
+      day.updatedAt = entry.updatedAt;
+      scheduleSave();
+    }
+
+    function toggleEntryDone(dayId, nodeId, entryId) {
+      const { day, node, entry } = findEntry(dayId, nodeId, entryId);
+      if (!day || !node || !entry || entry.type !== "action") return;
+      entry.done = !entry.done;
+      entry.updatedAt = now();
+      node.updatedAt = entry.updatedAt;
+      day.updatedAt = entry.updatedAt;
+      persist({ renderAfter: true });
+    }
+
+    function deleteEntry(dayId, nodeId, entryId) {
+      const { day, node, entry } = findEntry(dayId, nodeId, entryId);
+      if (!day || !node || !entry) return;
+      const index = node.entries.findIndex(e => e.id === entryId);
+      const snapshot = { ...entry };
+      node.entries.splice(index, 1);
+      node.updatedAt = now();
+      day.updatedAt = now();
+      persist({ renderAfter: true });
+      showSnack("Đã xoá", () => {
+        const current = getActionNode(dayId, nodeId);
+        const d = getDay(dayId);
+        if (!current || !d) return;
+        current.entries = normalizeEntries(current);
+        current.entries.splice(Math.max(0, index), 0, snapshot);
+        current.updatedAt = now();
+        d.updatedAt = now();
+        persist({ renderAfter: true });
+      });
+    }
+
+    function toggleDone(dayId, nodeId) {
+      const node = getActionNode(dayId, nodeId);
+      const day = getDay(dayId);
+      if (!node || !day) return;
+      const actions = actionEntriesFor(node);
+      if (!actions.length) return;
+      const shouldDone = actions.some(e => !e.done);
+      actions.forEach(e => { e.done = shouldDone; e.updatedAt = now(); });
+      node.updatedAt = now();
+      day.updatedAt = now();
+      persist({ renderAfter: true });
+    }
+
+    function exportJson() {
+      const blob = new Blob([JSON.stringify(sanitizedState(db), null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `idea-box-backup-${todayYMD()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 500);
+      toolsOpen = false;
       render();
     }
 
-    function toggleDay(dayId) {
-      const set = collapsedSet("collapsedDays");
-      set.has(dayId) ? set.delete(dayId) : set.add(dayId);
-      setCollapsed("collapsedDays", set);
-      renderActionsHome();
+    async function importJson(file) {
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const next = normalizeState(JSON.parse(text));
+        const before = sanitizedState(db);
+        db = next;
+        persist({ renderAfter: true });
+        showSnack("Đã import", () => { db = before; persist({ renderAfter: true }); });
+      } catch (error) {
+        console.error(error);
+        showSnack("File không hợp lệ", null, 1800);
+      }
     }
 
-    function toggleSummary(key) {
-      const set = collapsedSet("collapsedSummaries");
-      set.has(key) ? set.delete(key) : set.add(key);
-      setCollapsed("collapsedSummaries", set);
-      render();
-    }
-
-    function focusTitle(id) {
-      const el = document.querySelector(`[data-field="title"][data-node-id="${CSS.escape(id)}"]`);
+    function focusBoxTitle(id) {
+      const el = document.querySelector(`[data-box-title="${CSS.escape(id)}"]`);
       if (!el) return;
-      el.focus();
-      selectAll(el);
+      el.focus(); selectAll(el);
+    }
+    function selectAll(el) { const range = document.createRange(); range.selectNodeContents(el); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); }
+
+    function showSnack(message, undo = null, ms = 3600) {
+      snackbarText.textContent = message;
+      undoHandler = undo;
+      snackbarAction.style.display = undo ? "inline-grid" : "none";
+      snackbar.classList.add("show");
+      clearTimeout(snackTimer);
+      snackTimer = setTimeout(hideSnack, ms);
+    }
+    function hideSnack() { snackbar.classList.remove("show"); undoHandler = null; }
+
+
+    function selectActionDate(date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return;
+      db.ui.selectedActionDate = date;
+      cacheLocal();
+      render();
     }
 
-    function selectAll(el) {
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
+    function addDaysYMD(ymd, offset) {
+      const parts = String(ymd || todayYMD()).split("-").map(Number);
+      if (parts.length !== 3 || parts.some(Number.isNaN)) return todayYMD();
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      d.setDate(d.getDate() + Number(offset || 0));
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     }
 
+    function shiftActionDate(offset) {
+      selectActionDate(addDaysYMD(db.ui.selectedActionDate || todayYMD(), offset));
+    }
+
+    function openDatePicker() {
+      const input = document.querySelector("[data-action-date-picker]");
+      if (!input) return;
+      if (typeof input.showPicker === "function") input.showPicker();
+      else input.click();
+    }
 
     app.addEventListener("submit", event => {
       const form = event.target.closest("[data-auth-form]");
       if (!form) return;
       event.preventDefault();
-      const action = event.submitter?.dataset?.authAction || "login";
-      handleAuth(action);
+      handleAuth(event.submitter?.dataset?.authAction || "login");
     });
 
     app.addEventListener("click", event => {
       if (Date.now() < suppressOpenUntil) return;
       const target = event.target;
 
-      if (target.closest("[data-sign-out]")) {
-        signOut();
+      if (target.closest("[data-sign-out]")) { signOut(); return; }
+      if (target.closest("[data-open-tools]")) { toolsOpen = true; render(); return; }
+      if (target.matches("[data-close-tools]") && !target.closest("[data-tools-sheet]")) { toolsOpen = false; render(); return; }
+      if (target.closest("[data-export-json]")) { exportJson(); return; }
+      if (target.closest("[data-import-json]")) { document.querySelector("[data-import-file]")?.click(); return; }
+      if (target.closest("[data-open-search]")) { toolsOpen = false; openSearch(); return; }
+
+      const saveActionLines = target.closest("[data-save-action-lines]");
+      if (saveActionLines && entryModal?.type === "action") {
+        const lines = document.querySelector("[data-action-lines]")?.value || "";
+        addActionEntries(entryModal.dayId, entryModal.nodeId, lines);
         return;
       }
+      const saveNote = target.closest("[data-save-note-entry]");
+      if (saveNote && entryModal?.type === "note") {
+        const title = document.querySelector("[data-note-title-input]")?.value || "";
+        const body = document.querySelector("[data-note-body-editor]")?.innerHTML || "";
+        saveNoteEntry(entryModal.dayId, entryModal.nodeId, entryModal.entryId || null, title, body);
+        return;
+      }
+      const saveBoxNote = target.closest("[data-save-box-note-modal]");
+      if (saveBoxNote && entryModal?.type === "boxNote") {
+        const body = document.querySelector("[data-box-note-modal-editor]")?.innerHTML || "";
+        updateBoxNote(entryModal.boxId, body);
+        entryModal = null;
+        persist({ renderAfter: true });
+        return;
+      }
+      const closeEntryBackdrop = target.matches("[data-close-entry-modal]") && !target.closest("[data-entry-modal-card]");
+      const closeEntryButton = target.closest("button[data-close-entry-modal]");
+      if (closeEntryBackdrop || closeEntryButton) { entryModal = null; render(); return; }
+
 
       const tab = target.closest("[data-tab]");
-      if (tab) {
-        tab.dataset.tab === "actions" ? goActionsHome() : goBoxHome();
-        return;
-      }
-
-      if (target.closest("[data-create-project]")) {
-        createProject();
-        return;
-      }
-
-      if (target.closest("[data-create-today-actions]")) {
-        createTodayActions();
-        return;
-      }
-
+      if (tab) { tab.dataset.tab === "actions" ? goActionsHome() : goBoxHome(); return; }
+      if (target.closest("[data-create-project]")) { createProject(); return; }
+      const shiftDate = target.closest("[data-shift-action-date]");
+      if (shiftDate) { shiftActionDate(Number(shiftDate.dataset.shiftActionDate || 0)); return; }
+      if (target.closest("[data-trigger-date-picker]")) { openDatePicker(); return; }
+      const createForDate = target.closest("[data-create-actions-for-date]");
+      if (createForDate) { createActionsForDate(createForDate.dataset.createActionsForDate); return; }
+      if (target.closest("[data-create-today-actions]")) { createTodayActions(); return; }
       const back = target.closest("[data-back-home]");
-      if (back) {
-        back.dataset.backHome === "actions" ? goActionsHome() : goBoxHome();
+      if (back) { back.dataset.backHome === "actions" ? goActionsHome() : goBoxHome(); return; }
+      if (target.closest("[data-back-smart]")) { history.length > 1 ? history.back() : goBoxHome(); return; }
+
+      const chip = target.closest("[data-filter-kind]");
+      if (chip) {
+        if (chip.dataset.filterKind === "box-filter") { db.ui.boxFilter = chip.dataset.filterValue; db.ui.boxDateRangeOpen = false; }
+        if (chip.dataset.filterKind === "action-filter") db.ui.actionFilter = (db.ui.actionFilter === chip.dataset.filterValue && chip.dataset.filterValue !== "all") ? "all" : chip.dataset.filterValue;
+        persist({ renderAfter: true });
         return;
       }
+      if (target.closest("[data-toggle-box-date-range]")) {
+        db.ui.boxDateRangeOpen = !db.ui.boxDateRangeOpen;
+        if (db.ui.boxDateRangeOpen) db.ui.boxFilter = "custom";
+        persist({ renderAfter: true });
+        return;
+      }
+      if (target.closest("[data-apply-box-date-range]")) {
+        db.ui.boxFilter = "custom";
+        db.ui.boxDateRangeOpen = false;
+        persist({ renderAfter: true });
+        return;
+      }
+      if (target.closest("[data-close-box-search]")) { boxSearchOpen = false; boxSearchQuery = ""; render(); return; }
 
-      const add = target.closest("[data-add-child]");
-      if (add) {
+      const openMenu = target.closest("[data-open-entry-menu]");
+      if (openMenu) {
         event.stopPropagation();
-        createChild(add.dataset.addChild);
+        const key = `${openMenu.dataset.dayId}:${openMenu.dataset.openEntryMenu}`;
+        actionMenuOpenFor = actionMenuOpenFor === key ? null : key;
+        render();
         return;
       }
-
-      const del = target.closest("[data-delete]");
-      if (del) {
+      const newAction = target.closest("[data-new-action-entry]");
+      if (newAction) {
         event.stopPropagation();
-        deleteNode(del.dataset.delete);
+        entryModal = { type: "action", dayId: newAction.dataset.dayId, nodeId: newAction.dataset.newActionEntry };
+        actionMenuOpenFor = null;
+        render();
+        setTimeout(() => document.querySelector("[data-action-lines]")?.focus(), 50);
         return;
       }
-
-      const dayToggle = target.closest("[data-toggle-day]");
-      if (dayToggle) {
-        toggleDay(dayToggle.dataset.toggleDay);
+      const newNote = target.closest("[data-new-note-entry]");
+      if (newNote) {
+        event.stopPropagation();
+        entryModal = { type: "note", dayId: newNote.dataset.dayId, nodeId: newNote.dataset.newNoteEntry, entryId: null, entry: null };
+        actionMenuOpenFor = null;
+        render();
+        setTimeout(() => document.querySelector("[data-note-title-input]")?.focus(), 50);
         return;
       }
-
+      const openActionEarly = target.closest("[data-open-action-day][data-open-action-node]");
+      if (openActionEarly) { openActionDay(openActionEarly.dataset.openActionDay, openActionEarly.dataset.openActionNode); return; }
+      const openNote = target.closest("[data-open-note-entry]");
+      if (openNote && openNote.dataset.dayId && (openNote.dataset.nodeId || openNote.closest("[data-action-node-id]"))) {
+        event.stopPropagation();
+        const nodeId = openNote.dataset.nodeId || openNote.closest("[data-action-node-id]")?.dataset.actionNodeId;
+        const { entry } = findEntry(openNote.dataset.dayId, nodeId, openNote.dataset.openNoteEntry);
+        entryModal = { type: "note", dayId: openNote.dataset.dayId, nodeId, entryId: openNote.dataset.openNoteEntry, entry: entry || null };
+        render();
+        return;
+      }
+      const delEntry = target.closest("[data-delete-entry]");
+      if (delEntry) {
+        event.stopPropagation();
+        deleteEntry(delEntry.dataset.dayId, delEntry.dataset.nodeId, delEntry.dataset.deleteEntry);
+        return;
+      }
+      const boxNote = target.closest("[data-toggle-box-note]");
+      if (boxNote) {
+        event.stopPropagation();
+        entryModal = { type: "boxNote", boxId: boxNote.dataset.toggleBoxNote };
+        render();
+        setTimeout(() => document.querySelector("[data-box-note-modal-editor]")?.focus(), 80);
+        return;
+      }
+      const add = target.closest("[data-add-box-child]");
+      if (add) { event.stopPropagation(); createBoxChild(add.dataset.addBoxChild); return; }
+      const del = target.closest("[data-delete-box-node]");
+      if (del) { event.stopPropagation(); deleteBoxNode(del.dataset.deleteBoxNode); return; }
+      const toggleBox = target.closest("[data-toggle-box-node]");
+      if (toggleBox && !target.closest("[contenteditable], button")) { toggleInArray("expandedBoxNodes", toggleBox.dataset.toggleBoxNode); return; }
+      const toggleAction = target.closest("[data-toggle-action-node]");
+      if (toggleAction && !target.closest("button, input, [contenteditable], .entry-text")) { toggleInArray("collapsedActionNodes", toggleAction.dataset.toggleActionNode); return; }
+      const entryDone = target.closest("[data-toggle-entry-done]");
+      if (entryDone) { event.stopPropagation(); toggleEntryDone(entryDone.dataset.dayId, entryDone.dataset.nodeId, entryDone.dataset.toggleEntryDone); return; }
+      const done = target.closest("[data-toggle-done]");
+      if (done) { event.stopPropagation(); toggleDone(done.dataset.dayId, done.dataset.toggleDone); return; }
       const summaryToggle = target.closest("[data-toggle-summary]");
-      if (summaryToggle) {
-        toggleSummary(summaryToggle.dataset.toggleSummary);
-        return;
-      }
-
-      const toggle = target.closest("[data-toggle]");
-      if (toggle && !target.closest("[contenteditable], button")) {
-        toggleSub(toggle.dataset.toggle);
-        return;
-      }
-
-      const actionCard = target.closest("[data-open-action-day][data-open-action-node]");
-      if (actionCard) {
-        openAction(actionCard.dataset.openActionDay, actionCard.dataset.openActionNode);
-        return;
-      }
-
-      const card = target.closest("[data-open-box]");
-      if (card && !target.closest("[contenteditable], button")) {
-        openBox(card.dataset.openBox);
-      }
+      if (summaryToggle) { toggleInArray("expandedSummaryDays", summaryToggle.dataset.toggleSummary); return; }
+      const openDay = target.closest("[data-open-action-day-only]");
+      if (openDay) { const day = getDay(openDay.dataset.openActionDayOnly); if (day) selectActionDate(day.date); return; }
+      const openBoxCard = target.closest("[data-open-box]");
+      if (openBoxCard && !target.closest("[contenteditable], button, .summary-action")) { openBox(openBoxCard.dataset.openBox); return; }
     });
 
     app.addEventListener("input", event => {
-      const el = event.target.closest("[data-field][data-node-id]");
-      if (!el) return;
-      const context = el.dataset.mode === "action" ? { mode: "action", dayId: el.dataset.dayId } : { mode: "box" };
-      const node = getNode(el.dataset.nodeId, context);
-      if (!node) return;
+      const boxTitle = event.target.closest("[data-box-title]");
+      if (boxTitle) { updateBoxTitle(boxTitle.dataset.boxTitle, boxTitle.textContent); return; }
+      const boxNoteEditor = event.target.closest("[data-box-note-editor]");
+      if (boxNoteEditor) { updateBoxNote(boxNoteEditor.dataset.boxNoteEditor, boxNoteEditor.innerHTML); return; }
+      const entryTextEl = event.target.closest("[data-entry-action-text]");
+      if (entryTextEl) { updateActionEntryText(entryTextEl.dataset.dayId, entryTextEl.dataset.nodeId, entryTextEl.dataset.entryActionText, entryTextEl.textContent); return; }
+      const boxSearch = event.target.closest("[data-box-search-input]");
+      if (boxSearch) { boxSearchQuery = boxSearch.value; const results = document.getElementById("boxSearchResults"); if (results) results.innerHTML = renderBoxSearchResults(boxSearchQuery); return; }
+      const search = event.target.closest("[data-search-input]");
+      if (search) { searchQuery = search.value; document.getElementById("searchResults").innerHTML = renderSearchResults(searchQuery); }
+    });
 
-      if (el.dataset.field === "title") node.title = el.textContent.replace(/\s+/g, " ").trim();
-      else if (el.dataset.field === "contentHtml") node.contentHtml = el.innerHTML;
-      node.updatedAt = now();
-      if (context.mode === "action") {
-        const day = getDay(context.dayId);
-        if (day) day.updatedAt = now();
-      }
-      scheduleSave();
+    app.addEventListener("change", event => {
+      const fileInput = event.target.closest("[data-import-file]");
+      if (fileInput) importJson(fileInput.files?.[0]);
+      const dateInput = event.target.closest("[data-action-date-picker]");
+      if (dateInput) selectActionDate(dateInput.value);
+      const fromInput = event.target.closest("[data-box-filter-from]");
+      if (fromInput) { db.ui.boxFilterFrom = fromInput.value; db.ui.boxFilter = "custom"; cacheLocal(); render(); return; }
+      const toInput = event.target.closest("[data-box-filter-to]");
+      if (toInput) { db.ui.boxFilterTo = toInput.value; db.ui.boxFilter = "custom"; cacheLocal(); render(); return; }
     });
 
     app.addEventListener("keydown", event => {
-      const title = event.target.closest('[data-field="title"]');
-      if (title && event.key === "Enter") {
-        event.preventDefault();
-        title.blur();
-      }
+      const title = event.target.closest("[data-box-title]");
+      if (title && event.key === "Enter") { event.preventDefault(); title.blur(); }
     });
 
     app.addEventListener("paste", event => {
-      const title = event.target.closest('[data-field="title"]');
+      const title = event.target.closest("[data-box-title]");
+      const entryTextEl = event.target.closest("[data-entry-action-text]");
       const editor = event.target.closest(".rich-editor");
-      if (!title && !editor) return;
+      if (!title && !entryTextEl && !editor) return;
       event.preventDefault();
       const text = (event.clipboardData || window.clipboardData).getData("text/plain");
-      document.execCommand("insertText", false, title ? text.replace(/\s+/g, " ") : text);
+      document.execCommand("insertText", false, title || entryTextEl ? text.replace(/\s+/g, " ") : text);
     });
 
     app.addEventListener("focusin", event => {
       const editor = event.target.closest(".rich-editor");
-      if (editor) {
-        activeEditor = editor;
-        captureSelection();
-        showFormatBar();
-      }
+      if (editor) { activeEditor = editor; captureSelection(); showFormatBar(); }
     });
 
     app.addEventListener("focusout", event => {
-      if (!event.target.closest(".rich-editor")) return;
+      const editor = event.target.closest(".rich-editor");
+      if (!editor) return;
+      editor.innerHTML = sanitizeHtml(editor.innerHTML);
+      if (editor.dataset.boxNoteEditor) updateBoxNote(editor.dataset.boxNoteEditor, editor.innerHTML);
+      if (editor.dataset.dayId && editor.dataset.actionContent) updateActionContent(editor.dataset.dayId, editor.dataset.actionContent, editor.innerHTML);
       setTimeout(() => {
         const active = document.activeElement;
         if (!active || (!active.closest(".rich-editor") && !active.closest("#formatBar"))) hideFormatBar();
@@ -1578,21 +4104,16 @@
       if (!after) dragState.stack.appendChild(dragState.card);
       else dragState.stack.insertBefore(dragState.card, after);
     }, { passive: false });
-
-    document.addEventListener("pointerup", () => finishDrag());
-    document.addEventListener("pointercancel", () => finishDrag());
+    document.addEventListener("pointerup", finishDrag);
+    document.addEventListener("pointercancel", finishDrag);
 
     function finishDrag() {
       if (!dragState) return;
       dragState.card.classList.remove("dragging");
       dragState.stack.classList.remove("dragging");
-      if (dragState.moved) {
-        suppressOpenUntil = Date.now() + 350;
-        saveProjectOrderFromDom(dragState.stack);
-      }
+      if (dragState.moved) { suppressOpenUntil = Date.now() + 350; saveProjectOrderFromDom(dragState.stack); }
       dragState = null;
     }
-
     function getDragAfterElement(container, y) {
       const items = [...container.querySelectorAll(".project-card:not(.dragging)")];
       return items.reduce((closest, child) => {
@@ -1602,13 +4123,12 @@
         return closest;
       }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
     }
-
     function saveProjectOrderFromDom(stack) {
-      [...stack.querySelectorAll("[data-open-box]")].forEach((el, index) => {
-        const node = db.boxNodes.find(n => n.id === el.dataset.openBox);
+      [...stack.querySelectorAll("[data-root-card]")].forEach((el, index) => {
+        const node = getBoxNode(el.dataset.rootCard);
         if (node) node.sort = index + 1;
       });
-      persist(true);
+      persist();
     }
 
     document.addEventListener("selectionchange", () => {
@@ -1618,74 +4138,48 @@
       const node = sel.anchorNode;
       if (node && activeEditor.contains(node)) savedRange = sel.getRangeAt(0).cloneRange();
     });
-
     formatBar.addEventListener("pointerdown", event => event.preventDefault());
-
     formatBar.addEventListener("click", event => {
       const done = event.target.closest("[data-done]");
-      if (done) {
-        activeEditor?.blur();
-        hideFormatBar();
-        return;
-      }
-
-      const btn = event.target.closest("[data-cmd]");
-      if (!btn || !activeEditor) return;
+      if (done) { activeEditor?.blur(); hideFormatBar(); return; }
+      if (!activeEditor) return;
       restoreSelection();
-      const cmd = btn.dataset.cmd;
-      let value = btn.dataset.value || null;
-      if (cmd === "formatBlock") {
-        const current = selectionBlockTag();
-        value = current === "H3" ? "p" : "h3";
+      const cycle = event.target.closest("[data-cycle-block]");
+      if (cycle) {
+        const tag = selectionBlockTag();
+        const next = tag === "H2" ? "p" : tag === "H3" ? "h2" : "h3";
+        document.execCommand("formatBlock", false, next);
+      } else {
+        const btn = event.target.closest("[data-cmd]");
+        if (!btn) return;
+        document.execCommand(btn.dataset.cmd, false, btn.dataset.value || null);
       }
-      document.execCommand(cmd, false, value);
+      activeEditor.innerHTML = sanitizeHtml(activeEditor.innerHTML);
       activeEditor.focus();
       captureSelection();
-      const context = activeEditor.dataset.mode === "action" ? { mode: "action", dayId: activeEditor.dataset.dayId } : { mode: "box" };
-      const node = getNode(activeEditor.dataset.nodeId, context);
-      if (node) {
-        node.contentHtml = activeEditor.innerHTML;
-        node.updatedAt = now();
-        scheduleSave();
-      }
+      if (activeEditor.dataset.dayId && activeEditor.dataset.actionContent) updateActionContent(activeEditor.dataset.dayId, activeEditor.dataset.actionContent, activeEditor.innerHTML);
     });
-
-    function showFormatBar() {
-      formatBar.classList.add("show");
-      formatBar.setAttribute("aria-hidden", "false");
-    }
-
-    function hideFormatBar() {
-      formatBar.classList.remove("show");
-      formatBar.setAttribute("aria-hidden", "true");
-      activeEditor = null;
-      savedRange = null;
-    }
-
-    function captureSelection() {
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount) savedRange = sel.getRangeAt(0).cloneRange();
-    }
-
-    function restoreSelection() {
-      if (!savedRange) return;
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(savedRange);
-    }
-
+    function showFormatBar() { formatBar.classList.add("show"); formatBar.setAttribute("aria-hidden", "false"); }
+    function hideFormatBar() { formatBar.classList.remove("show"); formatBar.setAttribute("aria-hidden", "true"); activeEditor = null; savedRange = null; }
+    function captureSelection() { const sel = window.getSelection(); if (sel && sel.rangeCount) savedRange = sel.getRangeAt(0).cloneRange(); }
+    function restoreSelection() { if (!savedRange) return; const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedRange); }
     function selectionBlockTag() {
       const sel = window.getSelection();
       if (!sel || !sel.anchorNode) return "";
       let node = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
-      while (node && node !== activeEditor) {
-        if (/^(H1|H2|H3|P|DIV)$/.test(node.tagName)) return node.tagName;
-        node = node.parentElement;
-      }
+      while (node && node !== activeEditor) { if (/^(H1|H2|H3|P|DIV|BLOCKQUOTE)$/.test(node.tagName)) return node.tagName; node = node.parentElement; }
       return "";
     }
 
-    window.addEventListener("hashchange", render);
+    snackbarAction.addEventListener("click", () => { const fn = undoHandler; hideSnack(); if (fn) fn(); });
+    window.addEventListener("online", () => { setSync("saving", "Saving"); queueCloudSave(); });
+    window.addEventListener("offline", () => setSync("offline", "Offline"));
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && currentUser) {
+        ensureFreshSession().then(() => { if (navigator.onLine) queueCloudSave(); }).catch(() => setSync("error", "Login expired"));
+      }
+    });
+    window.addEventListener("hashchange", () => { toolsOpen = false; render(); });
     window.addEventListener("DOMContentLoaded", bootstrap);
   </script>
 </body>
