@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="vi">
 <head>
@@ -2808,6 +2809,34 @@
   }
 </style>
 
+
+<style id="archive-history-v1">
+  .title-stack { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+  .title-stack .editable-title { min-width: 0; }
+  .archive-badge {
+    margin-top: 3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: fit-content;
+    color: var(--text-sub);
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    opacity: .78;
+    user-select: none;
+  }
+  .archive-badge::before { content: ""; width: 5px; height: 5px; border-radius: 999px; background: var(--text-sub); opacity: .72; }
+  .project-card.is-archived,
+  .box-subrow.is-archived,
+  .node-shell.is-archived,
+  .action-node.is-archived { opacity: .74; }
+  .project-card.is-archived .editable-title,
+  .box-subrow.is-archived .editable-title,
+  .node-shell.is-archived .editable-title,
+  .action-node.is-archived .action-title { color: var(--text-sub) !important; }
+</style>
 </head>
 <body>
   <main class="phone" id="app"></main>
@@ -2995,13 +3024,14 @@
           level: clampLevel(n.level || (n.parentId ? 2 : 1)),
           title: cleanTitle(n.title || "Untitled"),
           boxNoteHtml: sanitizeHtml(n.boxNoteHtml || n.noteHtml || n.contentHtml || ""),
+          archivedAt: n.archivedAt || (n.archived ? now() : null),
           sort: Number.isFinite(+n.sort) ? +n.sort : i + 1,
           createdAt: n.createdAt || now(),
           updatedAt: n.updatedAt || now()
         }))
         : Array.isArray(parsed.nodes)
           ? parsed.nodes.map((n, i) => ({
-            id: rememberId(n.id || uid(n.parentId ? "sub" : "box")), parentId: n.parentId ?? null, level: clampLevel(n.level || (n.parentId ? 2 : 1)), title: cleanTitle(n.title || "Untitled"), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || n.noteHtml || n.contentHtml || ""), sort: Number.isFinite(+n.sort) ? +n.sort : i + 1, createdAt: n.createdAt || now(), updatedAt: n.updatedAt || now()
+            id: rememberId(n.id || uid(n.parentId ? "sub" : "box")), parentId: n.parentId ?? null, level: clampLevel(n.level || (n.parentId ? 2 : 1)), title: cleanTitle(n.title || "Untitled"), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || n.noteHtml || n.contentHtml || ""), archivedAt: n.archivedAt || (n.archived ? now() : null), sort: Number.isFinite(+n.sort) ? +n.sort : i + 1, createdAt: n.createdAt || now(), updatedAt: n.updatedAt || now()
           }))
           : seed().boxNodes;
 
@@ -3015,6 +3045,7 @@
           parentId: n.parentId ?? null,
           level: clampLevel(n.level || (n.parentId ? 2 : 1)),
           title: cleanTitle(n.title || "Untitled"),
+          archivedAt: n.archivedAt || null,
           sort: Number.isFinite(+n.sort) ? +n.sort : i + 1,
           sourceBoxNodeId: n.sourceBoxNodeId || n.templateId || n.boxNodeId || null,
           entries: normalizeEntries(n),
@@ -3120,9 +3151,11 @@
           const box = boxById.get(sourceId);
           if (!box) return;
           const nextTitle = cleanTitle(box.title);
-          if (action.title !== nextTitle || action.sourceBoxNodeId !== sourceId) {
+          const nextArchivedAt = box.archivedAt || null;
+          if (action.title !== nextTitle || action.sourceBoxNodeId !== sourceId || (action.archivedAt || null) !== nextArchivedAt) {
             action.title = nextTitle;
             action.sourceBoxNodeId = sourceId;
+            action.archivedAt = nextArchivedAt;
             action.updatedAt = now();
             dayChanged = true;
             changed.value = true;
@@ -3148,7 +3181,7 @@
       return {
         ...state,
         meta: { ...(state.meta || {}), usedIds: Array.from(new Set([...(state.meta?.usedIds || []), ...collectIdsFromState(state)])).map(String) },
-        boxNodes: state.boxNodes.map(n => ({ ...n, id: rememberId(n.id, state), title: cleanTitle(n.title), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || "") })),
+        boxNodes: state.boxNodes.map(n => ({ ...n, id: rememberId(n.id, state), title: cleanTitle(n.title), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || ""), archivedAt: n.archivedAt || null, archived: undefined })),
         actionDays: state.actionDays.map(sanitizedActionDay)
       };
     }
@@ -3734,6 +3767,30 @@
       return Boolean(htmlToText(boxNoteContent(node)));
     }
 
+    function boxIsArchived(node) {
+      return Boolean(node?.archivedAt || node?.archived);
+    }
+
+    function archiveBadge(node) {
+      if (!boxIsArchived(node)) return "";
+      return `<span class="archive-badge" contenteditable="false">archived</span>`;
+    }
+
+    function subtreeBoxIds(id) {
+      return [id, ...descendantsOf(id, db.boxNodes).map(n => n.id)];
+    }
+
+    function boxSubtreeHasStoredData(id) {
+      const ids = new Set(subtreeBoxIds(id));
+      if (db.boxNodes.some(n => ids.has(n.id) && htmlToText(n.boxNoteHtml || ""))) return true;
+      return (db.actionDays || []).some(day => (day.nodes || []).some(n => ids.has(n.sourceBoxNodeId || n.templateId || n.boxNodeId) && entriesFor(n).length > 0));
+    }
+
+    function actionDayHasEntriesForBoxSubtree(day, boxId) {
+      const ids = new Set(subtreeBoxIds(boxId));
+      return (day?.nodes || []).some(n => ids.has(n.sourceBoxNodeId || n.templateId || n.boxNodeId) && entriesFor(n).length > 0);
+    }
+
     function renderBoxNotePill(node, context = "boxes") {
       if (!node || node.level !== 1) return "";
       return `<button class="box-note-pill ${boxHasNote(node) ? "has-note" : ""}" type="button" data-toggle-box-note="${node.id}" data-note-context="${context}" aria-label="Box notes">notes</button>`;
@@ -3745,15 +3802,15 @@
 
     function projectCard(node) {
       return `
-        <article class="project-card${createdFlashId === node.id ? " just-created" : ""}" data-root-card="${node.id}">
+        <article class="project-card${createdFlashId === node.id ? " just-created" : ""}${boxIsArchived(node) ? " is-archived" : ""}" data-root-card="${node.id}">
           <div class="project-head">
             <div class="project-left">
               <button class="drag-handle" type="button" data-drag-handle aria-label="Kéo sắp xếp">☰</button>
-              <div class="editable-title home-title" contenteditable="true" spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên box">${escapeHtml(node.title)}</div>
+              <div class="title-stack"><div class="editable-title home-title" contenteditable="true" spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên box">${escapeHtml(node.title)}</div>${archiveBadge(node)}</div>
             </div>
             <div class="inline-actions">
               ${renderBoxNotePill(node, "boxes")}
-              ${node.level < 5 ? `<button class="round-btn primary small-icon" type="button" data-add-box-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
+              ${!boxIsArchived(node) && node.level < 5 ? `<button class="round-btn primary small-icon" type="button" data-add-box-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
               <button class="round-btn danger small-icon" type="button" data-delete-box-node="${node.id}" aria-label="Xóa box">×</button>
             </div>
           </div>
@@ -3773,14 +3830,14 @@
       const open = (db.ui.expandedBoxNodes || []).includes(node.id);
       const flash = createdFlashId === node.id ? " just-created" : "";
       return `
-        <div class="box-subrow depth-${depth} ${open ? "open" : ""}${flash}" style="--depth:${depth}" data-mini-box-row="${node.id}">
+        <div class="box-subrow depth-${depth} ${open ? "open" : ""}${flash}${boxIsArchived(node) ? " is-archived" : ""}" style="--depth:${depth}" data-mini-box-row="${node.id}">
           <div class="box-subhead" data-toggle-box-node="${node.id}">
             <div class="box-subleft">
               <span class="caret">›</span>
-              <span class="editable-title box-subtitle" contenteditable="true" spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên sub">${escapeHtml(node.title)}</span>
+              <span class="title-stack"><span class="editable-title box-subtitle" contenteditable="true" spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên sub">${escapeHtml(node.title)}</span>${archiveBadge(node)}</span>
             </div>
             <div class="box-subactions">
-              ${node.level < 5 ? `<button class="mini-icon add" type="button" data-add-box-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
+              ${!boxIsArchived(node) && node.level < 5 ? `<button class="mini-icon add" type="button" data-add-box-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
               <button class="mini-icon delete" type="button" data-delete-box-node="${node.id}" aria-label="Xóa sub">×</button>
             </div>
           </div>
@@ -3964,10 +4021,10 @@
             <span class="sync-pill ${syncStatus}" data-sync-pill>${escapeHtml(syncIconForStatus(syncStatus))}</span>
           </div>
           <div class="project-head" style="margin-bottom:14px">
-            <div class="editable-title editor-title" contenteditable="true" spellcheck="false" data-box-title="${root.id}" data-placeholder="Tên box">${escapeHtml(root.title)}</div>
+            <div class="title-stack"><div class="editable-title editor-title" contenteditable="true" spellcheck="false" data-box-title="${root.id}" data-placeholder="Tên box">${escapeHtml(root.title)}</div>${archiveBadge(root)}</div>
             <div class="inline-actions">
               ${renderBoxNotePill(root, "boxes")}
-              ${root.level < 5 ? `<button class="round-btn primary" type="button" data-add-box-child="${root.id}">+</button>` : ""}
+              ${!boxIsArchived(root) && root.level < 5 ? `<button class="round-btn primary" type="button" data-add-box-child="${root.id}">+</button>` : ""}
               <button class="round-btn danger" type="button" data-delete-box-node="${root.id}">×</button>
             </div>
           </div>
@@ -3982,13 +4039,13 @@
       const open = (db.ui.expandedBoxNodes || []).includes(node.id);
       const kids = childrenOf(node.id, db.boxNodes);
       return `
-        <div class="node-shell ${open ? "open" : ""}" data-box-node-shell="${node.id}">
+        <div class="node-shell ${open ? "open" : ""}${boxIsArchived(node) ? " is-archived" : ""}" data-box-node-shell="${node.id}">
           <div class="template-card">
             <div class="node-head" data-toggle-box-node="${node.id}">
               <span class="caret">›</span>
-              <div class="editable-title sub-title" contenteditable="true" spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên sub">${escapeHtml(node.title)}</div>
+              <div class="title-stack"><div class="editable-title sub-title" contenteditable="true" spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên sub">${escapeHtml(node.title)}</div>${archiveBadge(node)}</div>
               <div class="inline-actions">
-                ${node.level < 5 ? `<button class="round-btn primary small-icon" type="button" data-add-box-child="${node.id}">+</button>` : ""}
+                ${!boxIsArchived(node) && node.level < 5 ? `<button class="round-btn primary small-icon" type="button" data-add-box-child="${node.id}">+</button>` : ""}
                 <button class="round-btn danger small-icon" type="button" data-delete-box-node="${node.id}">×</button>
               </div>
             </div>
@@ -4052,14 +4109,14 @@
       const open = !(db.ui.collapsedActionNodes || []).includes(node.id);
       const kids = childrenOf(node.id, day.nodes).filter(child => hasVisibleAction(child, day.nodes));
       const entryCount = entriesFor(node).length;
-      const canAddEntry = node.level > 1;
-      const sourceBox = node.level === 1 ? getBoxNode(node.sourceBoxNodeId || node.templateId || node.boxNodeId) : null;
+      const sourceBox = getBoxNode(node.sourceBoxNodeId || node.templateId || node.boxNodeId);
+      const canAddEntry = node.level > 1 && !boxIsArchived(sourceBox);
       return `
-        <section class="action-node level-${node.level} ${open ? "open" : ""}" data-action-node-id="${node.id}">
+        <section class="action-node level-${node.level} ${open ? "open" : ""}${boxIsArchived(sourceBox) ? " is-archived" : ""}" data-action-node-id="${node.id}">
           <div class="action-head" data-toggle-action-node="${node.id}">
             <div class="action-title-wrap">
               <span class="caret">›</span>
-              <div class="action-title">${escapeHtml(node.title)}</div>
+              <div class="title-stack"><div class="action-title">${escapeHtml(node.title)}</div>${archiveBadge(sourceBox)}</div>
             </div>
             <div class="action-head-actions">
               ${sourceBox ? renderBoxNotePill(sourceBox, "actions") : ""}
@@ -4182,7 +4239,7 @@
 
     function createProject() {
       const t = now();
-      const node = { id: uid("box"), parentId: null, level: 1, title: "Untitled", boxNoteHtml: "", sort: boxRoots().length + 1, createdAt: t, updatedAt: t };
+      const node = { id: uid("box"), parentId: null, level: 1, title: "Untitled", boxNoteHtml: "", archivedAt: null, sort: boxRoots().length + 1, createdAt: t, updatedAt: t };
       db.boxNodes.push(node);
       createdFlashId = node.id;
       syncSelectedActionDayWithBox();
@@ -4201,7 +4258,7 @@
       const parent = getBoxNode(parentId);
       if (!parent || parent.level >= 5) return;
       const t = now();
-      const child = { id: uid("sub"), parentId: parent.id, level: parent.level + 1, title: "Untitled", sort: childrenOf(parent.id, db.boxNodes).length + 1, createdAt: t, updatedAt: t };
+      const child = { id: uid("sub"), parentId: parent.id, level: parent.level + 1, title: "Untitled", boxNoteHtml: "", archivedAt: null, sort: childrenOf(parent.id, db.boxNodes).length + 1, createdAt: t, updatedAt: t };
       parent.updatedAt = t;
       db.boxNodes.push(child);
       createdFlashId = child.id;
@@ -4212,7 +4269,7 @@
       setTimeout(() => { if (createdFlashId === child.id) { createdFlashId = null; render(); } }, 900);
     }
 
-    function deleteBoxNode(id) {
+    function hardDeleteBoxNode(id, message = "Đã xoá") {
       const node = getBoxNode(id);
       if (!node) return;
       const ids = new Set([id, ...descendantsOf(id, db.boxNodes).map(n => n.id)]);
@@ -4222,12 +4279,38 @@
       db.ui.expandedBoxNodes = (db.ui.expandedBoxNodes || []).filter(x => !ids.has(x));
       syncSelectedActionDayWithBox();
       persist({ renderAfter: true });
-      showSnack("Đã xoá", () => {
+      showSnack(message, () => {
         const existing = new Set(db.boxNodes.map(n => n.id));
         snapshot.forEach(n => { if (!existing.has(n.id)) db.boxNodes.push(n); });
         persist({ renderAfter: true });
       });
       if (route().name === "boxEditor" && node.parentId === null) goBoxHome();
+    }
+
+    function archiveBoxNode(id) {
+      const node = getBoxNode(id);
+      if (!node) return;
+      const ids = new Set([id, ...descendantsOf(id, db.boxNodes).map(n => n.id)]);
+      const snapshot = db.boxNodes.filter(n => ids.has(n.id)).map(n => ({ id: n.id, archivedAt: n.archivedAt || null, updatedAt: n.updatedAt }));
+      const t = now();
+      db.boxNodes.forEach(n => { if (ids.has(n.id) && !n.archivedAt) { n.archivedAt = t; n.updatedAt = t; } });
+      syncSelectedActionDayWithBox();
+      persist({ renderAfter: true });
+      showSnack("Đã archive", () => {
+        snapshot.forEach(prev => { const current = getBoxNode(prev.id); if (current) { current.archivedAt = prev.archivedAt; current.updatedAt = prev.updatedAt; } });
+        syncSelectedActionDayWithBox();
+        persist({ renderAfter: true });
+      });
+    }
+
+    function deleteBoxNode(id) {
+      const node = getBoxNode(id);
+      if (!node) return;
+      if (boxSubtreeHasStoredData(id)) {
+        archiveBoxNode(id);
+        return;
+      }
+      hardDeleteBoxNode(id);
     }
 
     function createActionsForDate(date = todayYMD()) {
@@ -4280,6 +4363,7 @@
         title: n.title,
         sort: n.sort,
         sourceBoxNodeId: n.sourceBoxNodeId || null,
+        archivedAt: n.archivedAt || null,
         entryIds: entriesFor(n).map(e => e.id)
       })));
     }
@@ -4297,13 +4381,19 @@
         if (node.sourceBoxNodeId) existingBySource.set(node.sourceBoxNodeId, node);
       });
       const next = [];
+      function shouldIncludeBox(boxNode) {
+        if (!boxIsArchived(boxNode)) return true;
+        return actionDayHasEntriesForBoxSubtree(day, boxNode.id);
+      }
       function clone(boxNode, parentCloneId) {
+        if (!shouldIncludeBox(boxNode)) return null;
         const matched = existingBySource.get(boxNode.id);
         const cloned = {
           id: rememberId(matched?.id || uid("actionnode")),
           parentId: parentCloneId,
           level: boxNode.level,
           title: cleanTitle(boxNode.title),
+          archivedAt: boxNode.archivedAt || null,
           sort: Number.isFinite(+boxNode.sort) ? +boxNode.sort : childrenOf(boxNode.parentId, db.boxNodes).indexOf(boxNode) + 1,
           sourceBoxNodeId: boxNode.id,
           entries: normalizeEntries(matched || {}),
@@ -4313,6 +4403,7 @@
         };
         next.push(cloned);
         childrenOf(boxNode.id, db.boxNodes).forEach(child => clone(child, cloned.id));
+        return cloned;
       }
       boxRoots().forEach(root => clone(root, null));
       day.nodes = next;
