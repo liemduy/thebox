@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+    html, body, #root { min-height: 100%; margin: 0; background: #000; }
+    body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button, input, textarea { font: inherit; }
+    button:disabled { opacity: .35; cursor: not-allowed; }
+    [contenteditable][data-placeholder]:empty::before { content: attr(data-placeholder); color: #555; }
+    .animate-in { animation-duration: 180ms; animation-fill-mode: both; animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); }
+    .fade-in { animation-name: fadeIn; }
+    .zoom-in-95 { animation-name: fadeInZoom; }
+    .slide-in-from-right-4 { animation-name: fadeInRight; }
+    .slide-in-from-left-4 { animation-name: fadeInLeft; }
+    .slide-in-from-bottom-4 { animation-name: fadeInBottom; }
+    .rich-editor b, .rich-editor strong { font-weight: 800; }
+    .rich-editor i, .rich-editor em { font-style: italic; }
+    .rich-editor u { text-decoration: underline; }
+    .rich-editor ul { list-style: disc; padding-left: 1.2rem; }
+    .rich-editor ol { list-style: decimal; padding-left: 1.2rem; }
+    .rich-editor blockquote { border-left: 2px solid #FFD2D7; padding-left: .75rem; color: #ccc; }
+    .thin-scroll::-webkit-scrollbar { width: 8px; }
+    .thin-scroll::-webkit-scrollbar-track { background: transparent; }
+    .thin-scroll::-webkit-scrollbar-thumb { background: #2d2d2d; border-radius: 999px; }
+    .dragging-row { opacity: .45; }
+    .drop-target { outline: 1px solid rgba(255, 210, 215, .55); outline-offset: -1px; }
+    .drag-handle {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-user-drag: none;
+    }
+    .drag-handle svg { pointer-events: none; }
+    body.touch-dragging, body.touch-dragging * {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      -webkit-touch-callout: none !important;
+    }
+    .native-date { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+    .flash-target { animation: flashTarget 900ms cubic-bezier(0.16, 1, 0.3, 1); }
+    .search-hit { color: #FFD2D7; font-weight: 900; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fadeInZoom { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: scale(1); } }
+    @keyframes fadeInRight { from { opacity: 0; transform: translateX(1rem); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes fadeInLeft { from { opacity: 0; transform: translateX(-1rem); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes fadeInBottom { from { opacity: 0; transform: translateY(1rem); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes flashTarget {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 210, 215, 0); background-color: transparent; }
+      18%, 68% { box-shadow: 0 0 0 2px rgba(255, 210, 215, .9), 0 0 30px rgba(255, 210, 215, .12); background-color: rgba(255, 210, 215, .08); }
+    }
+    @media (max-width: 430px) {
+      html, body, #root { min-height: 100dvh; }
+      body { overflow-x: hidden; }
+      .app-shell { max-width: none !important; min-height: 100dvh !important; }
+      .app-header { padding: 16px !important; }
+      .app-main { padding: 16px 16px 92px !important; }
+      .view-title { font-size: 2.12rem !important; line-height: 1.04 !important; }
+      .filter-row { gap: .55rem !important; margin-bottom: 1.35rem !important; }
+    }
