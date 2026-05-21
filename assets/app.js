@@ -909,7 +909,7 @@ function syncActionDayWithBox(state, day) {
     childrenOf(box.id, state.boxNodes).forEach(child => cloneBox(child, actionNode.id));
     return actionNode;
   }
-  boxRoots(state).forEach(root => cloneBox(root, null));
+  childrenOf(null, state.boxNodes).forEach(root => cloneBox(root, null));
   day.nodes = next;
   const after = JSON.stringify(day.nodes.map(n => ({
     id: n.id,
@@ -2574,9 +2574,13 @@ function App() {
       }
       if (!email || !password) throw new Error("Enter email and password");
       if (password.length < 6) throw new Error("Password must have at least 6 characters");
+      const redirectTo = `${location.origin}${location.pathname}`;
       const result = await withTimeout(action === "signup" ? sb.auth.signUp({
         email,
-        password
+        password,
+        options: {
+          emailRedirectTo: redirectTo
+        }
       }) : sb.auth.signInWithPassword({
         email,
         password
@@ -2694,14 +2698,14 @@ function App() {
       const node = getNode(next.boxNodes, id);
       if (!node) return prev;
       if (node.level === 1) next.ui.collapsedBoxNodes = toggleId(next.ui.collapsedBoxNodes, id);else next.ui.expandedBoxNodes = toggleId(next.ui.expandedBoxNodes, id);
-      return next;
+      return markPendingSync(next);
     });
   }
   function toggleBoxTimelineDay(boxId, date) {
     setDb(prev => {
       const next = normalizeState(clone(prev));
       next.ui.expandedBoxActionDays = toggleId(next.ui.expandedBoxActionDays || [], `${boxId}:${date}`);
-      return next;
+      return markPendingSync(next);
     });
   }
   function archiveBox(id) {
@@ -2833,14 +2837,14 @@ function App() {
       const next = normalizeState(clone(prev));
       next.ui.selectedActionDate = date;
       syncSelectedActionDayWithBox(next);
-      return next;
+      return markPendingSync(next);
     });
   }
   function toggleActionOpen(id) {
     setDb(prev => {
       const next = normalizeState(clone(prev));
       next.ui.collapsedActionNodes = toggleId(next.ui.collapsedActionNodes, id);
-      return next;
+      return markPendingSync(next);
     });
   }
   function openActionDate(date, actionNodeId = null, entryId = null) {
@@ -2855,7 +2859,7 @@ function App() {
         state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => !idsToOpen.includes(id));
       }
       syncSelectedActionDayWithBox(state);
-      return state;
+      return markPendingSync(state);
     });
     setCurrentView("actions");
     setIsSearchOpen(false);
@@ -3074,7 +3078,7 @@ function App() {
         if (root) {
           state.ui.boxView = boxIsArchived(root) ? "archived" : boxIsDone(root) ? "done" : "active";
         }
-        return state;
+        return markPendingSync(state);
       });
       setCurrentView("boxes");
       flashAfterNavigation({
@@ -3092,7 +3096,7 @@ function App() {
           state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => !idsToOpen.includes(id));
         }
         syncSelectedActionDayWithBox(state);
-        return state;
+        return markPendingSync(state);
       });
       setCurrentView("actions");
       if (result.entryId) flashAfterNavigation({
@@ -3258,7 +3262,7 @@ function App() {
     key: opt,
     type: "button",
     onClick: () => {
-      setDb(prev => ({
+      setDb(prev => markPendingSync({
         ...prev,
         ui: {
           ...prev.ui,
@@ -3285,7 +3289,7 @@ function App() {
     key: value,
     type: "button",
     onClick: () => {
-      setDb(prev => ({
+      setDb(prev => markPendingSync({
         ...prev,
         ui: {
           ...prev.ui,
@@ -3300,7 +3304,7 @@ function App() {
   }, React.createElement("input", {
     type: "checkbox",
     checked: db.ui.showBoxDays !== false,
-    onChange: e => setDb(prev => ({
+    onChange: e => setDb(prev => markPendingSync({
       ...prev,
       ui: {
         ...prev.ui,
@@ -3315,7 +3319,7 @@ function App() {
   }, "Custom range"), React.createElement("input", {
     type: "date",
     value: db.ui.boxFilterFrom || "",
-    onChange: e => setDb(prev => ({
+    onChange: e => setDb(prev => markPendingSync({
       ...prev,
       ui: {
         ...prev.ui,
@@ -3327,7 +3331,7 @@ function App() {
   }), React.createElement("input", {
     type: "date",
     value: db.ui.boxFilterTo || "",
-    onChange: e => setDb(prev => ({
+    onChange: e => setDb(prev => markPendingSync({
       ...prev,
       ui: {
         ...prev.ui,
@@ -3394,7 +3398,7 @@ function App() {
     key: opt,
     type: "button",
     onClick: () => {
-      setDb(prev => ({
+      setDb(prev => markPendingSync({
         ...prev,
         ui: {
           ...prev.ui,

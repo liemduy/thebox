@@ -601,7 +601,7 @@ function syncActionDayWithBox(state, day) {
     childrenOf(box.id, state.boxNodes).forEach(child => cloneBox(child, actionNode.id));
     return actionNode;
   }
-  boxRoots(state).forEach(root => cloneBox(root, null));
+  childrenOf(null, state.boxNodes).forEach(root => cloneBox(root, null));
   day.nodes = next;
   const after = JSON.stringify(day.nodes.map(n => ({
     id: n.id, parentId: n.parentId, level: n.level, title: n.title, sourceBoxNodeId: n.sourceBoxNodeId, sort: n.sort, entryIds: entriesFor(n).map(e => e.id)
@@ -1798,8 +1798,11 @@ function App() {
       }
       if (!email || !password) throw new Error("Enter email and password");
       if (password.length < 6) throw new Error("Password must have at least 6 characters");
+      const redirectTo = `${location.origin}${location.pathname}`;
       const result = await withTimeout(
-        action === "signup" ? sb.auth.signUp({ email, password }) : sb.auth.signInWithPassword({ email, password }),
+        action === "signup"
+          ? sb.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } })
+          : sb.auth.signInWithPassword({ email, password }),
         CLOUD_READ_TIMEOUT_MS,
         action === "signup" ? "Sign up" : "Login"
       );
@@ -1894,7 +1897,7 @@ function App() {
       if (!node) return prev;
       if (node.level === 1) next.ui.collapsedBoxNodes = toggleId(next.ui.collapsedBoxNodes, id);
       else next.ui.expandedBoxNodes = toggleId(next.ui.expandedBoxNodes, id);
-      return next;
+      return markPendingSync(next);
     });
   }
 
@@ -1902,7 +1905,7 @@ function App() {
     setDb(prev => {
       const next = normalizeState(clone(prev));
       next.ui.expandedBoxActionDays = toggleId(next.ui.expandedBoxActionDays || [], `${boxId}:${date}`);
-      return next;
+      return markPendingSync(next);
     });
   }
 
@@ -2024,7 +2027,7 @@ function App() {
       const next = normalizeState(clone(prev));
       next.ui.selectedActionDate = date;
       syncSelectedActionDayWithBox(next);
-      return next;
+      return markPendingSync(next);
     });
   }
 
@@ -2032,7 +2035,7 @@ function App() {
     setDb(prev => {
       const next = normalizeState(clone(prev));
       next.ui.collapsedActionNodes = toggleId(next.ui.collapsedActionNodes, id);
-      return next;
+      return markPendingSync(next);
     });
   }
 
@@ -2048,7 +2051,7 @@ function App() {
         state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => !idsToOpen.includes(id));
       }
       syncSelectedActionDayWithBox(state);
-      return state;
+      return markPendingSync(state);
     });
     setCurrentView("actions");
     setIsSearchOpen(false);
@@ -2223,7 +2226,7 @@ function App() {
         if (root) {
           state.ui.boxView = boxIsArchived(root) ? "archived" : boxIsDone(root) ? "done" : "active";
         }
-        return state;
+        return markPendingSync(state);
       });
       setCurrentView("boxes");
       flashAfterNavigation({ type: "box", id: result.boxId });
@@ -2238,7 +2241,7 @@ function App() {
           state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => !idsToOpen.includes(id));
         }
         syncSelectedActionDayWithBox(state);
-        return state;
+        return markPendingSync(state);
       });
       setCurrentView("actions");
       if (result.entryId) flashAfterNavigation({ type: "entry", id: result.entryId });
@@ -2335,7 +2338,7 @@ function App() {
                   {isActiveMenuOpen && (
                     <div onClick={e => e.stopPropagation()} className="absolute top-full left-0 mt-2 w-[130px] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] py-1.5 flex flex-col origin-top-left animate-in fade-in zoom-in-95 duration-100">
                       {["active", "archived", "done"].map(opt => (
-                        <button key={opt} type="button" onClick={() => { setDb(prev => ({ ...prev, ui: { ...prev.ui, boxView: opt } })); setIsActiveMenuOpen(false); }} className="px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors capitalize">{opt}</button>
+                        <button key={opt} type="button" onClick={() => { setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxView: opt } })); setIsActiveMenuOpen(false); }} className="px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors capitalize">{opt}</button>
                       ))}
                     </div>
                   )}
@@ -2348,21 +2351,21 @@ function App() {
                   {isDateMenuOpen && (
                     <div onClick={e => e.stopPropagation()} className="absolute top-full left-0 mt-2 w-[180px] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] py-1.5 flex flex-col origin-top-left animate-in fade-in zoom-in-95 duration-100">
                       {[["today", "Today"], ["7", "7 days"], ["15", "15 days"], ["30", "30 days"], ["all", "All"]].map(([value, label]) => (
-                        <button key={value} type="button" onClick={() => { setDb(prev => ({ ...prev, ui: { ...prev.ui, boxFilter: value } })); setIsDateMenuOpen(false); }} className="px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors">{label}</button>
+                        <button key={value} type="button" onClick={() => { setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: value } })); setIsDateMenuOpen(false); }} className="px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors">{label}</button>
                       ))}
                       <label className="border-t border-[#3E3E3E] mt-1 flex items-center gap-2.5 px-4 py-2.5 text-[14px] font-bold text-white hover:bg-[#3E3E3E] transition-colors cursor-pointer select-none">
                         <input
                           type="checkbox"
                           checked={db.ui.showBoxDays !== false}
-                          onChange={(e) => setDb(prev => ({ ...prev, ui: { ...prev.ui, showBoxDays: e.target.checked } }))}
+                          onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, showBoxDays: e.target.checked } }))}
                           className="h-4 w-4 accent-[#FFD2D7] cursor-pointer"
                         />
                         Show days
                       </label>
                       <div className="border-t border-[#3E3E3E] mt-1 pt-2 px-3 pb-2">
                         <div className="text-[11px] text-[#A7A7A7] uppercase tracking-wider font-bold mb-2">Custom range</div>
-                        <input type="date" value={db.ui.boxFilterFrom || ""} onChange={(e) => setDb(prev => ({ ...prev, ui: { ...prev.ui, boxFilter: "custom", boxFilterFrom: e.target.value } }))} className="mb-2 w-full bg-[#111] border border-[#333] rounded-lg px-2 py-1.5 text-[13px] text-white" />
-                        <input type="date" value={db.ui.boxFilterTo || ""} onChange={(e) => setDb(prev => ({ ...prev, ui: { ...prev.ui, boxFilter: "custom", boxFilterTo: e.target.value } }))} className="w-full bg-[#111] border border-[#333] rounded-lg px-2 py-1.5 text-[13px] text-white" />
+                        <input type="date" value={db.ui.boxFilterFrom || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom", boxFilterFrom: e.target.value } }))} className="mb-2 w-full bg-[#111] border border-[#333] rounded-lg px-2 py-1.5 text-[13px] text-white" />
+                        <input type="date" value={db.ui.boxFilterTo || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom", boxFilterTo: e.target.value } }))} className="w-full bg-[#111] border border-[#333] rounded-lg px-2 py-1.5 text-[13px] text-white" />
                       </div>
                     </div>
                   )}
@@ -2399,7 +2402,7 @@ function App() {
                   {isActionsMenuOpen && (
                     <div onClick={e => e.stopPropagation()} className="absolute top-full left-0 mt-2 w-[130px] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] py-1.5 flex flex-col origin-top-left animate-in fade-in zoom-in-95 duration-100">
                       {["all", "undone", "done", "notes"].map(opt => (
-                        <button key={opt} type="button" onClick={() => { setDb(prev => ({ ...prev, ui: { ...prev.ui, actionFilter: opt } })); setIsActionsMenuOpen(false); }} className="px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors capitalize">{opt}</button>
+                        <button key={opt} type="button" onClick={() => { setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, actionFilter: opt } })); setIsActionsMenuOpen(false); }} className="px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors capitalize">{opt}</button>
                       ))}
                     </div>
                   )}

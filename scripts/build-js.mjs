@@ -1,25 +1,14 @@
 import fs from "node:fs/promises";
-import vm from "node:vm";
+import { transformAsync } from "@babel/core";
+import presetReact from "@babel/preset-react";
 
-const BABEL_URL = "https://unpkg.com/@babel/standalone@7.26.10/babel.min.js";
+const source = await fs.readFile("src/app.jsx", "utf8");
 
-async function loadBabel() {
-  const response = await fetch(BABEL_URL);
-  if (!response.ok) throw new Error(`Could not download Babel: ${response.status}`);
-  const source = await response.text();
-  const sandbox = {};
-  vm.createContext(sandbox);
-  vm.runInContext(source, sandbox);
-  return sandbox.Babel;
-}
-
-const [source, Babel] = await Promise.all([
-  fs.readFile("src/app.jsx", "utf8"),
-  loadBabel()
-]);
-
-const result = Babel.transform(source, {
-  presets: [["react", { runtime: "classic" }]],
+const result = await transformAsync(source, {
+  filename: "src/app.jsx",
+  babelrc: false,
+  configFile: false,
+  presets: [[presetReact, { runtime: "classic" }]],
   comments: false,
   compact: false
 });

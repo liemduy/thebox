@@ -16,9 +16,10 @@ Static single-page planner app with Supabase Auth, cloud sync, export/import JSO
 
 ## Build
 
-Runtime no longer depends on browser Babel or Tailwind CDN. After editing source files, rebuild:
+Runtime no longer depends on browser Babel or Tailwind CDN, and the build uses pinned local dev dependencies from `package-lock.json`. After editing source files:
 
 ```bash
+npm install
 npm run build
 ```
 
