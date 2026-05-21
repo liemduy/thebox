@@ -1558,6 +1558,57 @@ function App() {
     };
   }, [flashTarget, currentView, db]);
 
+  function scheduleCloudSync(snapshot, user, delay = 850) {
+    const clean = sanitizedState(snapshot);
+    clearTimeout(cloudTimerRef.current);
+    if (!clean.meta?.pendingSync) {
+      setSyncStatus(navigator.onLine ? "saved" : "offline");
+      setSyncLabel(navigator.onLine ? "Saved" : "Local saved");
+      return;
+    }
+    if (!sb || !user?.id || user.id === "local" || !navigator.onLine) {
+      setSyncStatus("offline");
+      setSyncLabel("Local saved");
+      return;
+    }
+    setSyncStatus("saving");
+    setSyncLabel("Saving");
+    cloudTimerRef.current = setTimeout(() => pushCloudState(clean, user), delay);
+  }
+
+  function reconcileSyncStatus(delay = 200) {
+    if (!hydratedRef.current || !currentUser) return;
+    const clean = sanitizedState(db);
+    const localState = loadLocalForUser(currentUser.id);
+    let snapshot = clean;
+
+    if (localState) {
+      const localClean = normalizeState(localState);
+      const localTime = timestampMs(localClean.meta?.localUpdatedAt);
+      const cleanTime = timestampMs(clean.meta?.localUpdatedAt);
+      const localSettledSameEdit = localTime >= cleanTime && !localClean.meta?.pendingSync && clean.meta?.pendingSync;
+      const localHasNewerEdit = localTime > cleanTime && localClean.meta?.pendingSync;
+
+      if (localSettledSameEdit) {
+        snapshot = normalizeState({
+          ...clean,
+          meta: {
+            ...clean.meta,
+            pendingSync: false,
+            cloudUpdatedAt: localClean.meta?.cloudUpdatedAt || clean.meta?.cloudUpdatedAt,
+            lastSyncedAt: localClean.meta?.lastSyncedAt || clean.meta?.lastSyncedAt
+          }
+        });
+        setDb(snapshot);
+      } else if (localHasNewerEdit) {
+        snapshot = localClean;
+        setDb(localClean);
+      }
+    }
+
+    scheduleCloudSync(snapshot, currentUser, delay);
+  }
+
   async function pushCloudState(snapshot, user, options = {}) {
     if (!sb || !user?.id || user.id === "local" || !navigator.onLine) {
       setSyncStatus("offline");
@@ -1580,11 +1631,36 @@ function App() {
       );
       if (stateResult?.error) throw stateResult.error;
       const currentLocal = loadLocalForUser(user.id);
-      if (!currentLocal || timestampMs(currentLocal.meta?.localUpdatedAt) <= timestampMs(cloudSnapshot.meta?.localUpdatedAt)) {
+      const pushedTime = timestampMs(cloudSnapshot.meta?.localUpdatedAt);
+      const hasNewerLocalEdit = Boolean(
+        currentLocal?.meta?.pendingSync &&
+        timestampMs(currentLocal.meta?.localUpdatedAt) > pushedTime
+      );
+      if (!hasNewerLocalEdit) {
         saveLocal(cloudSnapshot, user.id);
       }
-      setSyncStatus("saved");
-      setSyncLabel("Saved");
+      setDb(prev => {
+        const current = normalizeState(prev);
+        if (timestampMs(current.meta?.localUpdatedAt) > pushedTime && current.meta?.pendingSync) return current;
+        return normalizeState({
+          ...current,
+          meta: {
+            ...current.meta,
+            pendingSync: false,
+            cloudUpdatedAt: syncedAt,
+            lastSyncedAt: syncedAt
+          }
+        });
+      });
+      if (hasNewerLocalEdit) {
+        setSyncStatus("saving");
+        setSyncLabel("Saving");
+        clearTimeout(cloudTimerRef.current);
+        cloudTimerRef.current = setTimeout(() => pushCloudState(currentLocal, user), 850);
+      } else {
+        setSyncStatus("saved");
+        setSyncLabel("Saved");
+      }
     } catch (error) {
       console.warn(error);
       setSyncStatus("offline");
@@ -1608,30 +1684,48 @@ function App() {
 
   useEffect(() => {
     if (!hydratedRef.current || !currentUser) return;
+    const clean = sanitizedState(db);
     if (skipNextAutoSaveRef.current) {
       skipNextAutoSaveRef.current = false;
-      saveLocal(db, currentUser.id);
+      saveLocal(clean, currentUser.id);
+      clearTimeout(saveTimerRef.current);
+      clearTimeout(cloudTimerRef.current);
       setSyncStatus("offline");
       setSyncLabel("Local saved");
       return;
     }
-    saveLocal(db, currentUser.id);
-    setSyncStatus(navigator.onLine ? "saving" : "offline");
-    setSyncLabel(navigator.onLine ? "Saving" : "Local saved");
+    saveLocal(clean, currentUser.id);
     clearTimeout(saveTimerRef.current);
-    clearTimeout(cloudTimerRef.current);
-    saveTimerRef.current = setTimeout(() => saveLocal(db, currentUser.id), 120);
-    cloudTimerRef.current = setTimeout(() => pushCloudState(db, currentUser), 850);
+    saveTimerRef.current = setTimeout(() => saveLocal(clean, currentUser.id), 120);
+    scheduleCloudSync(clean, currentUser, 850);
   }, [db, currentUser?.id]);
 
   useEffect(() => {
-    const online = () => { setSyncStatus("saving"); setSyncLabel("Saving"); pushCloudState(db, currentUser); };
-    const offline = () => { setSyncStatus("offline"); setSyncLabel("Local saved"); };
+    const online = () => reconcileSyncStatus(150);
+    const offline = () => {
+      clearTimeout(cloudTimerRef.current);
+      setSyncStatus("offline");
+      setSyncLabel("Local saved");
+    };
+    const resume = () => {
+      if (document.visibilityState === "hidden") {
+        const clean = sanitizedState(db);
+        if (!clean.meta?.pendingSync) clearTimeout(cloudTimerRef.current);
+        return;
+      }
+      reconcileSyncStatus(150);
+    };
     window.addEventListener("online", online);
     window.addEventListener("offline", offline);
+    window.addEventListener("focus", resume);
+    window.addEventListener("pageshow", resume);
+    document.addEventListener("visibilitychange", resume);
     return () => {
       window.removeEventListener("online", online);
       window.removeEventListener("offline", offline);
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("pageshow", resume);
+      document.removeEventListener("visibilitychange", resume);
     };
   }, [db, currentUser?.id]);
 

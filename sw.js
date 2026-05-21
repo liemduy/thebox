@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v40-offline-sync-cache-1';
+const CACHE_NAME = 'idea-box-v41-ios-sync-resume-cache-1';
 const APP_SHELL = [
   './',
   './index.html',
