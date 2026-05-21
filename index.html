@@ -38,6 +38,19 @@
     .thin-scroll::-webkit-scrollbar-thumb { background: #2d2d2d; border-radius: 999px; }
     .dragging-row { opacity: .45; }
     .drop-target { outline: 1px solid rgba(255, 210, 215, .55); outline-offset: -1px; }
+    .drag-handle {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-user-drag: none;
+    }
+    .drag-handle svg { pointer-events: none; }
+    body.touch-dragging, body.touch-dragging * {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      -webkit-touch-callout: none !important;
+    }
     .native-date { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
     .flash-target { animation: flashTarget 900ms cubic-bezier(0.16, 1, 0.3, 1); }
     .search-hit { color: #FFD2D7; font-weight: 900; }
@@ -251,6 +264,99 @@ function defaultUI() {
     expandedBoxActionDays: [],
     collapsedActionNodes: []
   };
+}
+
+const BOX_VIEW_VALUES = new Set(["active", "archived", "done"]);
+const BOX_FILTER_VALUES = new Set(["today", "7", "15", "30", "all", "custom"]);
+const ACTION_FILTER_VALUES = new Set(["all", "undone", "done", "notes"]);
+
+function validYMD(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+}
+function boolParam(value, fallback = true) {
+  if (value === "0" || value === "false" || value === "no") return false;
+  if (value === "1" || value === "true" || value === "yes") return true;
+  return fallback;
+}
+function parseBoxRouteParams(params) {
+  const ui = {};
+  const view = params.get("view");
+  const range = params.get("range");
+  if (BOX_VIEW_VALUES.has(view)) ui.boxView = view;
+  if (BOX_FILTER_VALUES.has(range)) ui.boxFilter = range;
+  if (params.has("showDays")) ui.showBoxDays = boolParam(params.get("showDays"), true);
+  const from = params.get("from");
+  const to = params.get("to");
+  if (validYMD(from)) ui.boxFilterFrom = from;
+  if (validYMD(to)) ui.boxFilterTo = to;
+  return ui;
+}
+function parseActionRouteParams(params) {
+  const ui = {};
+  const date = params.get("date");
+  const filter = params.get("filter");
+  if (validYMD(date)) ui.selectedActionDate = date;
+  if (ACTION_FILTER_VALUES.has(filter)) ui.actionFilter = filter;
+  return ui;
+}
+function parseRouteHash(hash = window.location.hash) {
+  const raw = String(hash || "").replace(/^#/, "");
+  const [pathRaw, queryRaw = ""] = raw.split("?");
+  const path = pathRaw || "/boxes";
+  const params = new URLSearchParams(queryRaw);
+  const parts = path.split("/").filter(Boolean);
+  const name = parts[0] || "boxes";
+  if (name === "actions") return { name: "actions", ui: parseActionRouteParams(params) };
+  if (name === "search") {
+    const tab = params.get("tab") === "actions" ? "actions" : "boxes";
+    return {
+      name: "search",
+      tab,
+      query: params.get("q") || "",
+      ui: tab === "actions" ? parseActionRouteParams(params) : parseBoxRouteParams(params)
+    };
+  }
+  return { name: "boxes", ui: parseBoxRouteParams(params) };
+}
+function applyRouteToState(state, route) {
+  const ui = route?.ui || {};
+  Object.assign(state.ui, ui);
+  if (route?.name === "actions" || route?.tab === "actions") syncSelectedActionDayWithBox(state);
+  return state;
+}
+function routeView(route) {
+  if (route?.name === "actions") return "actions";
+  if (route?.name === "search") return route.tab === "actions" ? "actions" : "boxes";
+  return "boxes";
+}
+function appendBoxRouteParams(params, ui) {
+  params.set("view", BOX_VIEW_VALUES.has(ui.boxView) ? ui.boxView : "active");
+  params.set("range", BOX_FILTER_VALUES.has(ui.boxFilter) ? ui.boxFilter : "today");
+  params.set("showDays", ui.showBoxDays === false ? "0" : "1");
+  if (ui.boxFilter === "custom") {
+    if (validYMD(ui.boxFilterFrom)) params.set("from", ui.boxFilterFrom);
+    if (validYMD(ui.boxFilterTo)) params.set("to", ui.boxFilterTo);
+  }
+}
+function appendActionRouteParams(params, ui) {
+  params.set("date", validYMD(ui.selectedActionDate) ? ui.selectedActionDate : todayYMD());
+  params.set("filter", ACTION_FILTER_VALUES.has(ui.actionFilter) ? ui.actionFilter : "all");
+}
+function buildAppHash({ currentView, ui, isSearchOpen, searchQuery }) {
+  const params = new URLSearchParams();
+  if (isSearchOpen) {
+    params.set("tab", currentView === "actions" ? "actions" : "boxes");
+    if (String(searchQuery || "").trim()) params.set("q", String(searchQuery || "").trim());
+    if (currentView === "actions") appendActionRouteParams(params, ui);
+    else appendBoxRouteParams(params, ui);
+    return `#/search?${params.toString()}`;
+  }
+  if (currentView === "actions") {
+    appendActionRouteParams(params, ui);
+    return `#/actions?${params.toString()}`;
+  }
+  appendBoxRouteParams(params, ui);
+  return `#/boxes?${params.toString()}`;
 }
 
 function seed() {
@@ -784,7 +890,63 @@ function BoxTreeItem({ state, node, level, view, menuOpenId, setMenuOpenId, menu
   const menuOpen = menuOpenId === menuId;
   const menuMeta = menuPlacements?.[menuId] || { direction: "down", maxHeight: inactive ? 72 : 248 };
   const dragging = dragState?.id === node.id;
-  const dropTarget = dragState?.id && dragState.id !== node.id && dragState.parentId === (node.parentId ?? null);
+  const dropTarget = dragState?.overId === node.id;
+  const pointerDragRef = useRef(null);
+
+  function setDragOver(targetId) {
+    if (!targetId || targetId === node.id) {
+      pointerDragRef.current = pointerDragRef.current ? { ...pointerDragRef.current, overId: null } : null;
+      setDragState(prev => prev?.id === node.id ? { ...prev, overId: null } : prev);
+      return;
+    }
+    const target = getNode(state.boxNodes, targetId);
+    if (!target || (target.parentId ?? null) !== (node.parentId ?? null)) return;
+    pointerDragRef.current = pointerDragRef.current ? { ...pointerDragRef.current, overId: targetId } : null;
+    setDragState(prev => prev?.id === node.id ? { ...prev, overId: targetId } : prev);
+  }
+
+  function sameLevelDropIdFromPoint(x, y) {
+    let boxEl = document.elementFromPoint(x, y)?.closest?.("[data-box-node-id]");
+    while (boxEl) {
+      const targetId = boxEl.getAttribute("data-box-node-id");
+      const target = getNode(state.boxNodes, targetId);
+      if (target && targetId !== node.id && (target.parentId ?? null) === (node.parentId ?? null)) return targetId;
+      boxEl = boxEl.parentElement?.closest?.("[data-box-node-id]");
+    }
+    return null;
+  }
+
+  function onTouchDragStart(e) {
+    if (inactive || e.pointerType === "mouse" || e.button > 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const start = { id: node.id, parentId: node.parentId ?? null, overId: null, pointerId: e.pointerId };
+    pointerDragRef.current = start;
+    document.body.classList.add("touch-dragging");
+    setMenuOpenId(null);
+    setDragState(start);
+
+    const move = (event) => {
+      if (!pointerDragRef.current || event.pointerId !== pointerDragRef.current.pointerId) return;
+      event.preventDefault();
+      setDragOver(sameLevelDropIdFromPoint(event.clientX, event.clientY));
+    };
+    const finish = (event) => {
+      if (!pointerDragRef.current || event.pointerId !== pointerDragRef.current.pointerId) return;
+      event.preventDefault();
+      const overId = pointerDragRef.current.overId;
+      pointerDragRef.current = null;
+      document.body.classList.remove("touch-dragging");
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", finish);
+      document.removeEventListener("pointercancel", finish);
+      if (overId && overId !== node.id) handlers.reorderBox(node.id, overId);
+      setDragState(null);
+    };
+    document.addEventListener("pointermove", move, { passive: false });
+    document.addEventListener("pointerup", finish, { passive: false });
+    document.addEventListener("pointercancel", finish, { passive: false });
+  }
 
   function onDrop(e) {
     e.preventDefault();
@@ -794,15 +956,27 @@ function BoxTreeItem({ state, node, level, view, menuOpenId, setMenuOpenId, menu
   }
 
   return (
-    <div data-box-node-id={node.id} className={`flex flex-col w-full ${flashTarget?.type === "box" && flashTarget.id === node.id ? "flash-target" : ""} ${menuOpen ? "relative z-50" : ""} ${dragging ? "dragging-row" : ""} ${dropTarget ? "drop-target" : ""}`} onDragOver={(e) => { if (dropTarget) e.preventDefault(); }} onDrop={onDrop}>
+    <div
+      data-box-node-id={node.id}
+      className={`flex flex-col w-full ${flashTarget?.type === "box" && flashTarget.id === node.id ? "flash-target" : ""} ${menuOpen ? "relative z-50" : ""} ${dragging ? "dragging-row" : ""} ${dropTarget ? "drop-target" : ""}`}
+      onDragOver={(e) => {
+        if (dragState?.id && dragState.id !== node.id && dragState.parentId === (node.parentId ?? null)) {
+          e.preventDefault();
+          setDragState(prev => prev?.overId === node.id ? prev : { ...prev, overId: node.id });
+        }
+      }}
+      onDrop={onDrop}
+    >
       <div className={`flex items-center px-4 hover:bg-white/[0.04] transition-colors relative ${isRoot ? "py-3.5" : "py-2.5 border-t border-white/[0.05]"}`}>
         <button
           type="button"
           draggable={!inactive}
-          onDragStart={(e) => { e.stopPropagation(); setDragState({ id: node.id, parentId: node.parentId ?? null }); }}
+          onPointerDown={onTouchDragStart}
+          onContextMenu={(e) => e.preventDefault()}
+          onDragStart={(e) => { e.stopPropagation(); e.dataTransfer?.setData("text/plain", node.id); setDragState({ id: node.id, parentId: node.parentId ?? null, overId: null }); }}
           onDragEnd={() => setDragState(null)}
           onClick={(e) => e.stopPropagation()}
-          className={`${isRoot ? "text-[#A7A7A7]" : "text-[#666666]"} mr-3 cursor-grab active:cursor-grabbing hover:text-white shrink-0 h-8 w-5 grid place-items-center`}
+          className={`drag-handle ${isRoot ? "text-[#A7A7A7]" : "text-[#666666]"} mr-3 cursor-grab active:cursor-grabbing hover:text-white shrink-0 h-8 w-5 grid place-items-center`}
           aria-label="Drag"
         >
           <GripVertical size={isRoot ? 20 : 16} />
@@ -1084,15 +1258,17 @@ function AuthScreen({ authView, authBusy, authMessage, onAuth, onSwitchView }) {
 }
 
 function App() {
-  const [db, setDb] = useState(() => loadLocalForUser(null) || loadLegacyLocal() || seed());
+  const initialRouteRef = useRef(null);
+  if (!initialRouteRef.current) initialRouteRef.current = parseRouteHash();
+  const [db, setDb] = useState(() => normalizeState(applyRouteToState(loadLocalForUser(null) || loadLegacyLocal() || seed(), initialRouteRef.current)));
   const [booting, setBooting] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [authView, setAuthView] = useState("login");
-  const [currentView, setCurrentView] = useState("boxes");
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [currentView, setCurrentView] = useState(() => routeView(initialRouteRef.current));
+  const [isSearchOpen, setIsSearchOpen] = useState(() => initialRouteRef.current?.name === "search");
+  const [searchQuery, setSearchQuery] = useState(() => initialRouteRef.current?.query || "");
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState(null);
   const [menuPlacements, setMenuPlacements] = useState({});
@@ -1113,6 +1289,7 @@ function App() {
   const cloudTimerRef = useRef(null);
   const undoRef = useRef([]);
   const redoRef = useRef([]);
+  const routeApplyRef = useRef(false);
 
   const selectedDate = db.ui.selectedActionDate || todayYMD();
   const selectedDay = db.actionDays.find(day => day.date === selectedDate);
@@ -1146,6 +1323,29 @@ function App() {
     window.setTimeout(() => setFlashTarget(target), 30);
   }
 
+  function setRuntimeFromRoute(route) {
+    setCurrentView(routeView(route));
+    setIsSearchOpen(route?.name === "search");
+    setSearchQuery(route?.name === "search" ? (route.query || "") : "");
+    setIsHeaderMenuOpen(false);
+    setActiveMenu(null);
+    setMenuPlacements({});
+    setIsActiveMenuOpen(false);
+    setIsDateMenuOpen(false);
+    setIsActionsMenuOpen(false);
+  }
+
+  function applyHashRoute(route = parseRouteHash()) {
+    routeApplyRef.current = true;
+    setRuntimeFromRoute(route);
+    setDb(prev => {
+      const next = normalizeState(clone(prev));
+      applyRouteToState(next, route);
+      return normalizeState(next);
+    });
+    window.setTimeout(() => { routeApplyRef.current = false; }, 0);
+  }
+
   async function hydrateUserState(user) {
     const userId = user?.id;
     let next = loadLocalForUser(userId) || loadLegacyLocal() || seed();
@@ -1165,6 +1365,9 @@ function App() {
         setSyncLabel("Local saved");
       }
     }
+    const route = parseRouteHash();
+    applyRouteToState(next, route);
+    setRuntimeFromRoute(route);
     syncSelectedActionDayWithBox(next);
     setDb(normalizeState(next));
     setBooting(false);
@@ -1222,6 +1425,31 @@ function App() {
       navigator.serviceWorker.register("./sw.js").catch(error => console.warn("Service worker skipped", error));
     }
   }, []);
+
+  useEffect(() => {
+    const onHashChange = () => applyHashRoute(parseRouteHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    if (routeApplyRef.current) return;
+    const nextHash = buildAppHash({ currentView, ui: db.ui, isSearchOpen, searchQuery });
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${nextHash}`);
+    }
+  }, [
+    currentView,
+    isSearchOpen,
+    searchQuery,
+    db.ui.boxView,
+    db.ui.boxFilter,
+    db.ui.boxFilterFrom,
+    db.ui.boxFilterTo,
+    db.ui.showBoxDays,
+    db.ui.selectedActionDate,
+    db.ui.actionFilter
+  ]);
 
   useEffect(() => {
     if (!flashTarget) return;
