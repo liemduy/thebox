@@ -1,0 +1,10 @@
+{
+  "name": "liems-planner",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "npm run build:js && npm run build:css",
+    "build:js": "node scripts/build-js.mjs",
+    "build:css": "npx tailwindcss@3.4.17 -i src/styles.css -o assets/styles.css --content index.html --content src/app.jsx --minify"
+  }
+}
