@@ -2837,6 +2837,91 @@
   .node-shell.is-archived .editable-title,
   .action-node.is-archived .action-title { color: var(--text-sub) !important; }
 </style>
+
+
+<style id="archive-done-vault-v1">
+  .vault-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 10px 0 12px 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .vault-tabs::-webkit-scrollbar { display: none; }
+  .vault-tab {
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.04);
+    color: var(--text-sub);
+    border-radius: 999px;
+    min-height: 32px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .vault-tab.active {
+    color: var(--black-text);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .vault-count { opacity: .76; font-weight: 700; }
+  .status-badge {
+    margin-top: 3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: fit-content;
+    color: var(--text-sub);
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    opacity: .82;
+    user-select: none;
+  }
+  .status-badge::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: currentColor;
+    opacity: .8;
+  }
+  .status-badge.archived { color: var(--text-sub); }
+  .status-badge.done { color: var(--done); }
+  .archive-badge { color: inherit; }
+  .project-card.is-done,
+  .box-subrow.is-done,
+  .node-shell.is-done,
+  .action-node.is-done { opacity: .82; }
+  .project-card.is-done .editable-title,
+  .box-subrow.is-done .editable-title,
+  .node-shell.is-done .editable-title,
+  .action-node.is-done .action-title { color: var(--done) !important; }
+  .project-card.vault-card .drag-handle { opacity: .24; cursor: default; }
+  .round-btn.success, .mini-icon.done {
+    color: var(--done) !important;
+    border-color: rgba(96,165,250,.24) !important;
+    background: rgba(96,165,250,.10) !important;
+  }
+  .round-btn.restore, .mini-icon.restore {
+    color: var(--accent) !important;
+    border-color: rgba(255,200,210,.28) !important;
+    background: rgba(255,200,210,.10) !important;
+  }
+  .vault-path-note {
+    color: var(--text-sub);
+    font-size: 11px;
+    line-height: 16px;
+    opacity: .68;
+    margin-top: 2px;
+  }
+</style>
 </head>
 <body>
   <main class="phone" id="app"></main>
@@ -3558,7 +3643,30 @@
     function getBoxNode(id) { return db.boxNodes.find(n => n.id === id); }
     function getActionNode(dayId, nodeId) { return nodesForDay(dayId).find(n => n.id === nodeId); }
     function childrenOf(parentId, nodes) { return nodes.filter(n => (n.parentId ?? null) === (parentId ?? null)).sort((a, b) => (a.sort || 0) - (b.sort || 0)); }
-    function boxRoots() { return childrenOf(null, db.boxNodes); }
+    function allBoxRoots() { return childrenOf(null, db.boxNodes); }
+    function boxRoots() { return allBoxRoots().filter(node => !boxIsInactive(node)); }
+    function currentBoxView() {
+      const value = db?.ui?.boxView || "active";
+      return ["active", "archived", "done"].includes(value) ? value : "active";
+    }
+    function subtreeHasBoxStatus(id, status) {
+      const ids = new Set([id, ...descendantsOf(id, db.boxNodes).map(n => n.id)]);
+      return db.boxNodes.some(n => ids.has(n.id) && (status === "done" ? boxIsDone(n) : boxIsArchived(n)));
+    }
+    function vaultRoots(mode = currentBoxView()) {
+      if (mode === "archived") return allBoxRoots().filter(root => subtreeHasBoxStatus(root.id, "archived"));
+      if (mode === "done") return allBoxRoots().filter(root => subtreeHasBoxStatus(root.id, "done"));
+      return boxRoots();
+    }
+    function nodeMatchesBoxView(node, mode = currentBoxView()) {
+      if (!node) return false;
+      if (mode === "archived") return boxIsArchived(node) || descendantsOf(node.id, db.boxNodes).some(boxIsArchived);
+      if (mode === "done") return boxIsDone(node) || descendantsOf(node.id, db.boxNodes).some(boxIsDone);
+      return !boxIsInactive(node);
+    }
+    function childrenForBoxView(parentId, mode = currentBoxView()) {
+      return childrenOf(parentId, db.boxNodes).filter(child => nodeMatchesBoxView(child, mode));
+    }
     function descendantsOf(id, nodes) {
       const out = [];
       function walk(nodeId) { childrenOf(nodeId, nodes).forEach(child => { out.push(child); walk(child.id); }); }
@@ -3681,14 +3789,17 @@
     }
 
     function renderBoxHome() {
-      const items = boxRoots();
+      const view = currentBoxView();
+      const items = vaultRoots(view);
+      const emptyText = view === "archived" ? "Archive is empty." : view === "done" ? "Done is empty." : "No boxes yet.";
       app.innerHTML = `
         <section class="screen">
           ${renderHeader("box")}
           ${renderBoxSearchPanel()}
+          ${renderBoxVaultTabs()}
           ${renderBoxFilters()}
-          <div class="project-stack" id="projectStack">
-            ${items.length ? items.map(projectCard).join("") : `<div class="empty-hint">No boxes yet.</div>`}
+          <div class="project-stack ${view !== "active" ? "vault-stack" : ""}" id="projectStack" data-box-view-current="${view}">
+            ${items.length ? items.map(item => projectCard(item, view)).join("") : `<div class="empty-hint">${emptyText}</div>`}
           </div>
           ${renderTools()}
           ${renderEntryModal()}
@@ -3755,6 +3866,17 @@
       </div>`;
     }
 
+    function renderBoxVaultTabs() {
+      const view = currentBoxView();
+      const archivedCount = db.boxNodes.filter(boxIsArchived).length;
+      const doneCount = db.boxNodes.filter(boxIsDone).length;
+      return `<div class="vault-tabs" aria-label="Box vaults">
+        <button class="vault-tab ${view === "active" ? "active" : ""}" type="button" data-box-view="active">Active</button>
+        <button class="vault-tab ${view === "archived" ? "active" : ""}" type="button" data-box-view="archived">Archived <span class="vault-count">${archivedCount}</span></button>
+        <button class="vault-tab ${view === "done" ? "active" : ""}" type="button" data-box-view="done">Done <span class="vault-count">${doneCount}</span></button>
+      </div>`;
+    }
+
     function filterChip(kind, value, label, active) {
       return `<button class="chip ${active ? "active" : ""}" type="button" data-filter-kind="${kind}" data-filter-value="${value}">${label}</button>`;
     }
@@ -3771,9 +3893,22 @@
       return Boolean(node?.archivedAt || node?.archived);
     }
 
+    function boxIsDone(node) {
+      return Boolean(node?.doneAt || node?.done);
+    }
+
+    function boxIsInactive(node) {
+      return boxIsArchived(node) || boxIsDone(node);
+    }
+
+    function statusBadge(node) {
+      if (boxIsDone(node)) return `<span class="status-badge done" contenteditable="false">done</span>`;
+      if (boxIsArchived(node)) return `<span class="status-badge archived archive-badge" contenteditable="false">archived</span>`;
+      return "";
+    }
+
     function archiveBadge(node) {
-      if (!boxIsArchived(node)) return "";
-      return `<span class="archive-badge" contenteditable="false">archived</span>`;
+      return statusBadge(node);
     }
 
     function subtreeBoxIds(id) {
@@ -3800,49 +3935,64 @@
       return "";
     }
 
-    function projectCard(node) {
+    function projectCard(node, mode = currentBoxView()) {
+      const inactive = boxIsInactive(node);
+      const canEdit = mode === "active" && !inactive;
+      const canRestore = (mode === "archived" && boxIsArchived(node)) || (mode === "done" && boxIsDone(node));
+      const contextOnly = mode !== "active" && !canRestore;
       return `
-        <article class="project-card${createdFlashId === node.id ? " just-created" : ""}${boxIsArchived(node) ? " is-archived" : ""}" data-root-card="${node.id}">
+        <article class="project-card${createdFlashId === node.id ? " just-created" : ""}${boxIsArchived(node) ? " is-archived" : ""}${boxIsDone(node) ? " is-done" : ""}${mode !== "active" ? " vault-card" : ""}" data-root-card="${node.id}">
           <div class="project-head">
             <div class="project-left">
-              <button class="drag-handle" type="button" data-drag-handle aria-label="Kéo sắp xếp">☰</button>
-              <div class="title-stack"><div class="editable-title home-title" contenteditable="true" spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên box">${escapeHtml(node.title)}</div>${archiveBadge(node)}</div>
+              ${mode === "active" ? `<button class="drag-handle" type="button" data-drag-handle aria-label="Kéo sắp xếp">☰</button>` : `<span class="drag-handle" aria-hidden="true">☰</span>`}
+              <div class="title-stack">
+                <div class="editable-title home-title" ${canEdit ? `contenteditable="true"` : `contenteditable="false"`} spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên box">${escapeHtml(node.title)}</div>
+                ${statusBadge(node)}
+                ${contextOnly ? `<div class="vault-path-note">contains ${mode === "archived" ? "archived" : "done"} items</div>` : ""}
+              </div>
             </div>
             <div class="inline-actions">
-              ${renderBoxNotePill(node, "boxes")}
-              ${!boxIsArchived(node) && node.level < 5 ? `<button class="round-btn primary small-icon" type="button" data-add-box-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
-              <button class="round-btn danger small-icon" type="button" data-delete-box-node="${node.id}" aria-label="Xóa box">×</button>
+              ${canEdit ? renderBoxNotePill(node, "boxes") : ""}
+              ${canEdit && node.level < 5 ? `<button class="round-btn primary small-icon" type="button" data-add-box-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
+              ${canEdit ? `<button class="round-btn success small-icon" type="button" data-done-box-node="${node.id}" aria-label="Move to Done">✓</button>` : ""}
+              ${canEdit ? `<button class="round-btn danger small-icon" type="button" data-delete-box-node="${node.id}" aria-label="Archive or delete box">×</button>` : ""}
+              ${canRestore ? `<button class="round-btn restore small-icon" type="button" data-restore-box-node="${node.id}" data-restore-status="${mode}" aria-label="Restore box">↩</button>` : ""}
             </div>
           </div>
-          ${renderBoxNotePanel(node, "boxes")}
-          ${renderMiniTree(node.id)}
+          ${canEdit ? renderBoxNotePanel(node, "boxes") : ""}
+          ${renderMiniTree(node.id, mode)}
         </article>`;
     }
 
-    function renderMiniTree(rootId) {
-      const kids = childrenOf(rootId, db.boxNodes);
+    function renderMiniTree(rootId, mode = currentBoxView()) {
+      const kids = childrenForBoxView(rootId, mode);
       if (!kids.length) return "";
-      return `<div class="box-subtree">${kids.map(child => renderMiniRow(child, 0)).join("")}</div>`;
+      return `<div class="box-subtree">${kids.map(child => renderMiniRow(child, 0, mode)).join("")}</div>`;
     }
 
-    function renderMiniRow(node, depth) {
-      const kids = childrenOf(node.id, db.boxNodes);
+    function renderMiniRow(node, depth, mode = currentBoxView()) {
+      const kids = childrenForBoxView(node.id, mode);
       const open = (db.ui.expandedBoxNodes || []).includes(node.id);
       const flash = createdFlashId === node.id ? " just-created" : "";
+      const inactive = boxIsInactive(node);
+      const canEdit = mode === "active" && !inactive;
+      const canRestore = (mode === "archived" && boxIsArchived(node)) || (mode === "done" && boxIsDone(node));
       return `
-        <div class="box-subrow depth-${depth} ${open ? "open" : ""}${flash}${boxIsArchived(node) ? " is-archived" : ""}" style="--depth:${depth}" data-mini-box-row="${node.id}">
+        <div class="box-subrow depth-${depth} ${open ? "open" : ""}${flash}${boxIsArchived(node) ? " is-archived" : ""}${boxIsDone(node) ? " is-done" : ""}" style="--depth:${depth}" data-mini-box-row="${node.id}">
           <div class="box-subhead" data-toggle-box-node="${node.id}">
             <div class="box-subleft">
               <span class="caret">›</span>
-              <span class="title-stack"><span class="editable-title box-subtitle" contenteditable="true" spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên sub">${escapeHtml(node.title)}</span>${archiveBadge(node)}</span>
+              <span class="title-stack"><span class="editable-title box-subtitle" ${canEdit ? `contenteditable="true"` : `contenteditable="false"`} spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên sub">${escapeHtml(node.title)}</span>${statusBadge(node)}</span>
             </div>
             <div class="box-subactions">
-              ${!boxIsArchived(node) && node.level < 5 ? `<button class="mini-icon add" type="button" data-add-box-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
-              <button class="mini-icon delete" type="button" data-delete-box-node="${node.id}" aria-label="Xóa sub">×</button>
+              ${canEdit && node.level < 5 ? `<button class="mini-icon add" type="button" data-add-box-child="${node.id}" aria-label="Thêm sub">+</button>` : ""}
+              ${canEdit ? `<button class="mini-icon done" type="button" data-done-box-node="${node.id}" aria-label="Move to Done">✓</button>` : ""}
+              ${canEdit ? `<button class="mini-icon delete" type="button" data-delete-box-node="${node.id}" aria-label="Archive or delete sub">×</button>` : ""}
+              ${canRestore ? `<button class="mini-icon restore" type="button" data-restore-box-node="${node.id}" data-restore-status="${mode}" aria-label="Restore sub">↩</button>` : ""}
             </div>
           </div>
           ${renderNodeSummary(node)}
-          ${open && kids.length ? `<div class="box-subchildren">${kids.map(child => renderMiniRow(child, depth + 1)).join("")}</div>` : ""}
+          ${open && kids.length ? `<div class="box-subchildren">${kids.map(child => renderMiniRow(child, depth + 1, mode)).join("")}</div>` : ""}
         </div>`;
     }
 
@@ -4023,9 +4173,10 @@
           <div class="project-head" style="margin-bottom:14px">
             <div class="title-stack"><div class="editable-title editor-title" contenteditable="true" spellcheck="false" data-box-title="${root.id}" data-placeholder="Tên box">${escapeHtml(root.title)}</div>${archiveBadge(root)}</div>
             <div class="inline-actions">
-              ${renderBoxNotePill(root, "boxes")}
-              ${!boxIsArchived(root) && root.level < 5 ? `<button class="round-btn primary" type="button" data-add-box-child="${root.id}">+</button>` : ""}
-              <button class="round-btn danger" type="button" data-delete-box-node="${root.id}">×</button>
+              ${!boxIsInactive(root) ? renderBoxNotePill(root, "boxes") : ""}
+              ${!boxIsInactive(root) && root.level < 5 ? `<button class="round-btn primary" type="button" data-add-box-child="${root.id}">+</button>` : ""}
+              ${!boxIsInactive(root) ? `<button class="round-btn success" type="button" data-done-box-node="${root.id}">✓</button>` : ""}
+              ${!boxIsInactive(root) ? `<button class="round-btn danger" type="button" data-delete-box-node="${root.id}">×</button>` : `<button class="round-btn restore" type="button" data-restore-box-node="${root.id}">↩</button>`}
             </div>
           </div>
           ${renderBoxNotePanel(root, "boxes")}
@@ -4045,8 +4196,9 @@
               <span class="caret">›</span>
               <div class="title-stack"><div class="editable-title sub-title" contenteditable="true" spellcheck="false" data-box-title="${node.id}" data-placeholder="Tên sub">${escapeHtml(node.title)}</div>${archiveBadge(node)}</div>
               <div class="inline-actions">
-                ${!boxIsArchived(node) && node.level < 5 ? `<button class="round-btn primary small-icon" type="button" data-add-box-child="${node.id}">+</button>` : ""}
-                <button class="round-btn danger small-icon" type="button" data-delete-box-node="${node.id}">×</button>
+                ${!boxIsInactive(node) && node.level < 5 ? `<button class="round-btn primary small-icon" type="button" data-add-box-child="${node.id}">+</button>` : ""}
+                ${!boxIsInactive(node) ? `<button class="round-btn success small-icon" type="button" data-done-box-node="${node.id}">✓</button>` : ""}
+                ${!boxIsInactive(node) ? `<button class="round-btn danger small-icon" type="button" data-delete-box-node="${node.id}">×</button>` : `<button class="round-btn restore small-icon" type="button" data-restore-box-node="${node.id}">↩</button>`}
               </div>
             </div>
             ${open && kids.length ? `<div class="sub-children">${kids.map(child => renderBoxNode(child)).join("")}</div>` : ""}
@@ -4110,9 +4262,9 @@
       const kids = childrenOf(node.id, day.nodes).filter(child => hasVisibleAction(child, day.nodes));
       const entryCount = entriesFor(node).length;
       const sourceBox = getBoxNode(node.sourceBoxNodeId || node.templateId || node.boxNodeId);
-      const canAddEntry = node.level > 1 && !boxIsArchived(sourceBox);
+      const canAddEntry = node.level > 1 && !boxIsInactive(sourceBox);
       return `
-        <section class="action-node level-${node.level} ${open ? "open" : ""}${boxIsArchived(sourceBox) ? " is-archived" : ""}" data-action-node-id="${node.id}">
+        <section class="action-node level-${node.level} ${open ? "open" : ""}${boxIsArchived(sourceBox) ? " is-archived" : ""}${boxIsDone(sourceBox) ? " is-done" : ""}" data-action-node-id="${node.id}">
           <div class="action-head" data-toggle-action-node="${node.id}">
             <div class="action-title-wrap">
               <span class="caret">›</span>
@@ -4241,6 +4393,7 @@
       const t = now();
       const node = { id: uid("box"), parentId: null, level: 1, title: "Untitled", boxNoteHtml: "", archivedAt: null, sort: boxRoots().length + 1, createdAt: t, updatedAt: t };
       db.boxNodes.push(node);
+      db.ui.boxView = "active";
       createdFlashId = node.id;
       syncSelectedActionDayWithBox();
       if (route().name !== "box") {
@@ -4291,13 +4444,67 @@
       const node = getBoxNode(id);
       if (!node) return;
       const ids = new Set([id, ...descendantsOf(id, db.boxNodes).map(n => n.id)]);
-      const snapshot = db.boxNodes.filter(n => ids.has(n.id)).map(n => ({ id: n.id, archivedAt: n.archivedAt || null, updatedAt: n.updatedAt }));
+      const snapshot = db.boxNodes.filter(n => ids.has(n.id)).map(n => ({ id: n.id, archivedAt: n.archivedAt || null, doneAt: n.doneAt || null, updatedAt: n.updatedAt }));
       const t = now();
-      db.boxNodes.forEach(n => { if (ids.has(n.id) && !n.archivedAt) { n.archivedAt = t; n.updatedAt = t; } });
+      db.boxNodes.forEach(n => {
+        if (ids.has(n.id)) {
+          n.archivedAt = t;
+          n.doneAt = null;
+          n.updatedAt = t;
+        }
+      });
       syncSelectedActionDayWithBox();
       persist({ renderAfter: true });
-      showSnack("Đã archive", () => {
-        snapshot.forEach(prev => { const current = getBoxNode(prev.id); if (current) { current.archivedAt = prev.archivedAt; current.updatedAt = prev.updatedAt; } });
+      showSnack("Đã đưa vào Archive", () => {
+        snapshot.forEach(prev => { const current = getBoxNode(prev.id); if (current) { current.archivedAt = prev.archivedAt; current.doneAt = prev.doneAt; current.updatedAt = prev.updatedAt; } });
+        syncSelectedActionDayWithBox();
+        persist({ renderAfter: true });
+      });
+    }
+
+    function doneBoxNode(id) {
+      const node = getBoxNode(id);
+      if (!node) return;
+      const ids = new Set([id, ...descendantsOf(id, db.boxNodes).map(n => n.id)]);
+      const snapshot = db.boxNodes.filter(n => ids.has(n.id)).map(n => ({ id: n.id, archivedAt: n.archivedAt || null, doneAt: n.doneAt || null, updatedAt: n.updatedAt }));
+      const t = now();
+      db.boxNodes.forEach(n => {
+        if (ids.has(n.id)) {
+          n.doneAt = t;
+          n.archivedAt = null;
+          n.updatedAt = t;
+        }
+      });
+      db.ui.boxView = "done";
+      syncSelectedActionDayWithBox();
+      persist({ renderAfter: true });
+      showSnack("Đã đưa vào Done", () => {
+        snapshot.forEach(prev => { const current = getBoxNode(prev.id); if (current) { current.archivedAt = prev.archivedAt; current.doneAt = prev.doneAt; current.updatedAt = prev.updatedAt; } });
+        db.ui.boxView = "active";
+        syncSelectedActionDayWithBox();
+        persist({ renderAfter: true });
+      });
+    }
+
+    function restoreBoxNode(id) {
+      const node = getBoxNode(id);
+      if (!node) return;
+      const ids = new Set([id, ...descendantsOf(id, db.boxNodes).map(n => n.id)]);
+      ancestorsOf(id, db.boxNodes).forEach(n => ids.add(n.id));
+      const snapshot = db.boxNodes.filter(n => ids.has(n.id)).map(n => ({ id: n.id, archivedAt: n.archivedAt || null, doneAt: n.doneAt || null, updatedAt: n.updatedAt }));
+      const t = now();
+      db.boxNodes.forEach(n => {
+        if (ids.has(n.id)) {
+          n.archivedAt = null;
+          n.doneAt = null;
+          n.updatedAt = t;
+        }
+      });
+      db.ui.boxView = "active";
+      syncSelectedActionDayWithBox();
+      persist({ renderAfter: true });
+      showSnack("Đã khôi phục", () => {
+        snapshot.forEach(prev => { const current = getBoxNode(prev.id); if (current) { current.archivedAt = prev.archivedAt; current.doneAt = prev.doneAt; current.updatedAt = prev.updatedAt; } });
         syncSelectedActionDayWithBox();
         persist({ renderAfter: true });
       });
@@ -4382,7 +4589,7 @@
       });
       const next = [];
       function shouldIncludeBox(boxNode) {
-        if (!boxIsArchived(boxNode)) return true;
+        if (!boxIsInactive(boxNode)) return true;
         return actionDayHasEntriesForBoxSubtree(day, boxNode.id);
       }
       function clone(boxNode, parentCloneId) {
@@ -4692,6 +4899,14 @@
       if (back) { back.dataset.backHome === "actions" ? goActionsHome() : goBoxHome(); return; }
       if (target.closest("[data-back-smart]")) { history.length > 1 ? history.back() : goBoxHome(); return; }
 
+      const boxView = target.closest("[data-box-view]");
+      if (boxView) {
+        db.ui.boxView = boxView.dataset.boxView || "active";
+        db.ui.boxDateRangeOpen = false;
+        persist({ renderAfter: true });
+        return;
+      }
+
       const chip = target.closest("[data-filter-kind]");
       if (chip) {
         if (chip.dataset.filterKind === "box-filter") { db.ui.boxFilter = chip.dataset.filterValue; db.ui.boxDateRangeOpen = false; }
@@ -4766,6 +4981,10 @@
       }
       const add = target.closest("[data-add-box-child]");
       if (add) { event.stopPropagation(); createBoxChild(add.dataset.addBoxChild); return; }
+      const doneBox = target.closest("[data-done-box-node]");
+      if (doneBox) { event.stopPropagation(); doneBoxNode(doneBox.dataset.doneBoxNode); return; }
+      const restoreBox = target.closest("[data-restore-box-node]");
+      if (restoreBox) { event.stopPropagation(); restoreBoxNode(restoreBox.dataset.restoreBoxNode); return; }
       const del = target.closest("[data-delete-box-node]");
       if (del) { event.stopPropagation(); deleteBoxNode(del.dataset.deleteBoxNode); return; }
       const toggleBox = target.closest("[data-toggle-box-node]");
