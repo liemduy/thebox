@@ -998,6 +998,10 @@ function noteBodyText(note) {
 function noteHasContent(note) {
   return Boolean(cleanOptionalTitle(note?.title || "") || noteBodyText(note));
 }
+function entryTagList(entry) {
+  if (entry?.type === "note") return normalizeTags(entry.tags || [], entry.title || "", entry.bodyHtml || "");
+  return normalizeTags(entry?.tags || [], entry?.text || "");
+}
 function boxNoteId(boxId) {
   return `boxnote_${boxId}`;
 }
@@ -1120,20 +1124,25 @@ function seed() {
 function normalizeEntry(entry, index = 0) {
   const t = now();
   if (entry?.type === "note") {
+    const title = cleanTitle(entry.title || entry.text || "Note");
+    const bodyHtml = sanitizeHtml(entry.bodyHtml || entry.contentHtml || entry.body || "");
     return {
       id: rememberId(entry.id || uid("entry")),
       type: "note",
-      title: cleanTitle(entry.title || entry.text || "Note"),
-      bodyHtml: sanitizeHtml(entry.bodyHtml || entry.contentHtml || entry.body || ""),
+      title,
+      bodyHtml,
+      tags: normalizeTags(entry.tags || [], title, bodyHtml),
       sort: Number.isFinite(+entry.sort) ? +entry.sort : index + 1,
       createdAt: entry.createdAt || t,
       updatedAt: entry.updatedAt || t
     };
   }
+  const text = cleanTitle(entry?.text || entry?.title || "Action");
   return {
     id: rememberId(entry?.id || uid("entry")),
     type: "action",
-    text: cleanTitle(entry?.text || entry?.title || "Action"),
+    text,
+    tags: normalizeTags(entry?.tags || [], text),
     done: Boolean(entry?.done),
     sort: Number.isFinite(+entry?.sort) ? +entry.sort : index + 1,
     createdAt: entry?.createdAt || t,
@@ -1521,7 +1530,10 @@ function noteTitle(entry) {
   return cleanTitle(entry?.title || "Note");
 }
 function entryText(entry) {
-  return entry?.type === "note" ? `${noteTitle(entry)} ${htmlToText(entry.bodyHtml || "")}` : entry?.text || "";
+  const base = entry?.type === "note" ? `${noteTitle(entry)} ${htmlToText(entry.bodyHtml || "")}`.trim() : String(entry?.text || "").trim();
+  const inlineTags = new Set(tagsFromText(base));
+  const extraTags = entryTagList(entry).filter(tag => !inlineTags.has(tag)).map(tag => `#${tag}`).join(" ");
+  return `${base} ${extraTags}`.trim();
 }
 function boxHasNote(node) {
   return Boolean(cleanOptionalTitle(node?.boxNoteTitle || "") || htmlToText(node?.boxNoteHtml || ""));
@@ -1852,6 +1864,85 @@ function renderHashtagSegments(text, keyPrefix = "tag") {
   }
   if (last < source.length) pieces.push(source.slice(last));
   return pieces.length ? pieces : source;
+}
+function caretTextOffset(root) {
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount || !root?.contains(selection.anchorNode)) return null;
+  const range = selection.getRangeAt(0).cloneRange();
+  range.selectNodeContents(root);
+  range.setEnd(selection.anchorNode, selection.anchorOffset);
+  return range.toString().length;
+}
+function restoreCaretTextOffset(root, offset) {
+  if (!root || offset === null || offset === undefined) return;
+  const selection = window.getSelection();
+  if (!selection) return;
+  const range = document.createRange();
+  let remaining = Math.max(0, offset);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    const length = node.textContent.length;
+    if (remaining <= length) {
+      range.setStart(node, remaining);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return;
+    }
+    remaining -= length;
+    node = walker.nextNode();
+  }
+  range.selectNodeContents(root);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+function unwrapLiveHashtagSpans(root) {
+  root?.querySelectorAll?.("span.note-hashtag").forEach(span => {
+    span.replaceWith(document.createTextNode(span.textContent || ""));
+  });
+  root?.normalize?.();
+}
+function wrapHashtagsInTextNode(node) {
+  const source = node.textContent || "";
+  const regex = /(^|[^\p{L}\p{N}_-])#([\p{L}\p{N}_-]{1,48})/gu;
+  let match;
+  let last = 0;
+  const fragment = document.createDocumentFragment();
+  let changed = false;
+  while (match = regex.exec(source)) {
+    const tagStart = match.index + match[1].length;
+    const tagEnd = tagStart + match[2].length + 1;
+    if (tagStart > last) fragment.appendChild(document.createTextNode(source.slice(last, tagStart)));
+    const span = document.createElement("span");
+    span.className = "note-hashtag";
+    span.textContent = source.slice(tagStart, tagEnd);
+    fragment.appendChild(span);
+    last = tagEnd;
+    changed = true;
+  }
+  if (!changed) return;
+  if (last < source.length) fragment.appendChild(document.createTextNode(source.slice(last)));
+  node.replaceWith(fragment);
+}
+function highlightEditableHashtags(root) {
+  if (!root) return;
+  const offset = caretTextOffset(root);
+  unwrapLiveHashtagSpans(root);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node.textContent?.includes("#") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    }
+  });
+  const nodes = [];
+  let node = walker.nextNode();
+  while (node) {
+    nodes.push(node);
+    node = walker.nextNode();
+  }
+  nodes.forEach(wrapHashtagsInTextNode);
+  restoreCaretTextOffset(root, offset);
 }
 function HighlightText({
   text,
@@ -2574,6 +2665,9 @@ function EntryRow({
   flashTarget
 }) {
   const rowFlash = flashTarget?.type === "entry" && flashTarget.id === entry.id;
+  const entryTags = entryTagList(entry);
+  const titleOnlyTags = new Set(tagsFromText(noteTitle(entry)));
+  const visibleEntryTags = entryTags.filter(tag => !titleOnlyTags.has(tag)).slice(0, 2);
   if (entry.type === "note") {
     return React.createElement("div", {
       "data-action-entry-id": entry.id,
@@ -2586,7 +2680,11 @@ function EntryRow({
       className: "mt-[1px] px-1.5 py-[2px] bg-[#FFD2D7] text-black text-[9px] font-extrabold tracking-wider uppercase rounded-[4px] mr-3 shrink-0"
     }, "Note"), React.createElement("span", {
       className: "text-[14px] font-bold text-[#CCCCCC] group-hover:text-white leading-snug truncate"
-    }, noteTitle(entry))), React.createElement("button", {
+    }, React.createElement(HighlightText, {
+      text: noteTitle(entry)
+    }), visibleEntryTags.length ? React.createElement("span", {
+      className: "ml-2 text-[#FFD2D7]"
+    }, visibleEntryTags.map(tag => `#${tag}`).join(" ")) : null)), React.createElement("button", {
       type: "button",
       onClick: () => handlers.deleteEntry(day.id, node.id, entry.id),
       className: "text-[#666] hover:text-red-300 p-1"
@@ -2609,6 +2707,8 @@ function EntryRow({
     contentEditable: true,
     suppressContentEditableWarning: true,
     spellCheck: "true",
+    onInput: e => highlightEditableHashtags(e.currentTarget),
+    onCompositionEnd: e => highlightEditableHashtags(e.currentTarget),
     onKeyDown: e => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -2617,7 +2717,9 @@ function EntryRow({
     },
     onBlur: e => handlers.renameEntry(day.id, node.id, entry.id, e.currentTarget.textContent),
     className: `flex-1 min-w-0 outline-none text-[14.5px] leading-snug transition-colors ${entry.done ? "text-[#555555] line-through" : "text-[#CCCCCC] group-hover:text-white"}`
-  }, entry.text), React.createElement("button", {
+  }, React.createElement(HighlightText, {
+    text: entry.text
+  })), React.createElement("button", {
     type: "button",
     onClick: () => handlers.deleteEntry(day.id, node.id, entry.id),
     className: "text-[#666] hover:text-red-300 p-1 ml-2"
@@ -2773,7 +2875,10 @@ function RichNoteModal({
   const initialTitle = isCentralNote ? centralNote?.title || "" : isBoxNote ? box?.boxNoteTitle || "" : entry?.title || "";
   const canDelete = Boolean(onDelete && (isCentralNote ? centralNote : isBoxNote ? boxHasNote(box) : entry));
   useEffect(() => {
-    if (editorRef.current) editorRef.current.innerHTML = sanitizeHtml(initialHtml);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = sanitizeHtml(initialHtml);
+      window.requestAnimationFrame(() => highlightEditableHashtags(editorRef.current));
+    }
     if (titleRef.current) titleRef.current.value = initialTitle;
     setTimeout(() => (titleRef.current || editorRef.current)?.focus(), 40);
   }, [modal]);
@@ -2996,6 +3101,10 @@ function RichNoteModal({
     suppressContentEditableWarning: true,
     spellCheck: "true",
     "data-placeholder": "Write your note here...",
+    onInput: e => {
+      if (!e.nativeEvent?.isComposing) highlightEditableHashtags(e.currentTarget);
+    },
+    onCompositionEnd: e => highlightEditableHashtags(e.currentTarget),
     className: editorClassName
   }), React.createElement("div", {
     className: "flex gap-3"
@@ -4143,6 +4252,7 @@ function App() {
       if (entry) {
         entry.title = cleanTitle(title || "Note");
         entry.bodyHtml = sanitizeHtml(bodyHtml || "");
+        entry.tags = entryTagList(entry);
         entry.updatedAt = t;
       } else {
         const nextEntry = normalizeEntry({
@@ -4232,6 +4342,7 @@ function App() {
       const entry = node ? entriesFor(node).find(e => e.id === entryId) : null;
       if (!day || !node || !entry || entry.type !== "action" || entry.text === nextText) return false;
       entry.text = nextText;
+      entry.tags = entryTagList(entry);
       entry.updatedAt = now();
       node.entries = node.entries.map(e => e.id === entry.id ? entry : e);
       node.updatedAt = entry.updatedAt;

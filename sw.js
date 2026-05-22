@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v53-box-note-badges-1';
+const CACHE_NAME = 'idea-box-v54-live-hashtags-1';
 const APP_SHELL = [
   './',
   './index.html',
