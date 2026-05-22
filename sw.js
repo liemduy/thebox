@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v51-note-filter-editor-1';
+const CACHE_NAME = 'idea-box-v52-hashtag-filter-1';
 const APP_SHELL = [
   './',
   './index.html',

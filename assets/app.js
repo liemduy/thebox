@@ -940,7 +940,27 @@ function sanitizeHtml(input) {
 function htmlToText(html) {
   const div = document.createElement("div");
   div.innerHTML = sanitizeHtml(html || "");
-  return (div.textContent || "").replace(/\s+/g, " ").trim();
+  const blockTags = new Set(["DIV", "P", "LI", "H2", "H3", "BLOCKQUOTE"]);
+  const chunks = [];
+  function walk(node) {
+    [...node.childNodes].forEach(child => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        chunks.push(child.textContent || "");
+        return;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) return;
+      if (child.tagName === "BR") {
+        chunks.push(" ");
+        return;
+      }
+      const isBlock = blockTags.has(child.tagName);
+      if (isBlock) chunks.push(" ");
+      walk(child);
+      if (isBlock) chunks.push(" ");
+    });
+  }
+  walk(div);
+  return chunks.join("").replace(/\s+/g, " ").trim();
 }
 function validNoteDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? String(value) : todayYMD();
@@ -957,13 +977,13 @@ function tagsFromText(value) {
   });
   return [...tags];
 }
-function normalizeTags(tags, title = "", bodyHtml = "") {
+function normalizeTags(tags, title = "", bodyHtml = "", bodyText = "") {
   const out = new Set();
   (Array.isArray(tags) ? tags : []).forEach(tag => {
     const cleaned = normalizeTag(tag);
     if (cleaned) out.add(cleaned);
   });
-  tagsFromText(`${title} ${htmlToText(bodyHtml)}`).forEach(tag => out.add(tag));
+  tagsFromText(`${title} ${htmlToText(bodyHtml)} ${bodyText}`).forEach(tag => out.add(tag));
   return [...out].sort();
 }
 function noteBodyText(note) {
@@ -1141,7 +1161,7 @@ function normalizeNote(note, index = 0) {
     bodyHtml,
     bodyText,
     noteDate: validNoteDate(note?.noteDate || note?.note_date || String(createdAt).slice(0, 10)),
-    tags: normalizeTags(note?.tags || [], title, bodyHtml),
+    tags: normalizeTags(note?.tags || [], title, bodyHtml, bodyText),
     pinnedAt: validTimestamp(note?.pinnedAt || note?.pinned_at) || null,
     archivedAt: validTimestamp(note?.archivedAt || note?.archived_at) || null,
     deletedAt: validTimestamp(note?.deletedAt || note?.deleted_at) || null,
@@ -1521,8 +1541,11 @@ function notePreview(note) {
 function activeNotes(state) {
   return (state.notes || []).filter(note => !note.deletedAt && !note.archivedAt && noteHasContent(note));
 }
+function noteTagList(note) {
+  return normalizeTags(note?.tags || [], note?.title || "", note?.bodyHtml || "", note?.bodyText || "");
+}
 function allNoteTags(state) {
-  return [...new Set(activeNotes(state).flatMap(note => note.tags || []))].sort();
+  return [...new Set(activeNotes(state).flatMap(noteTagList))].sort();
 }
 function linkLabel(state, link) {
   if (!link) return "Free note";
@@ -1585,7 +1608,7 @@ function filteredNotes(state) {
   const view = state.ui.notesView || "linked";
   const tags = exportTagsFromInput(state.ui.notesTagsInput || state.ui.notesTag || "");
   const dateFilters = parseExportDateFilters(state.ui.notesDatesInput || "");
-  return activeNotes(state).filter(note => view === "all" || (view === "linked" ? noteIsLinked(state, note.id) : !noteIsLinked(state, note.id))).filter(note => !tags.length || tags.every(tag => (note.tags || []).includes(tag))).filter(note => noteMatchesExportDates(note, dateFilters)).sort((a, b) => {
+  return activeNotes(state).filter(note => view === "all" || (view === "linked" ? noteIsLinked(state, note.id) : !noteIsLinked(state, note.id))).filter(note => !tags.length || tags.every(tag => noteTagList(note).includes(tag))).filter(note => noteMatchesExportDates(note, dateFilters)).sort((a, b) => {
     const pin = timestampMs(b.pinnedAt) - timestampMs(a.pinnedAt);
     if (pin) return pin;
     return b.noteDate.localeCompare(a.noteDate) || timestampMs(b.updatedAt) - timestampMs(a.updatedAt);
@@ -1769,7 +1792,8 @@ function collectSearchResults(state, query, filters = {
   }
   if (filters.note !== false) {
     activeNotes(state).forEach(note => {
-      const text = `${noteDisplayTitle(note)} ${noteBodyText(note)} ${(note.tags || []).map(tag => `#${tag}`).join(" ")}`.toLowerCase();
+      const noteTags = noteTagList(note);
+      const text = `${noteDisplayTitle(note)} ${noteBodyText(note)} ${noteTags.map(tag => `#${tag}`).join(" ")}`.toLowerCase();
       if (text.includes(term)) {
         const links = noteLinksFor(state, note.id);
         out.push({
@@ -1777,7 +1801,7 @@ function collectSearchResults(state, query, filters = {
           kind: "note",
           meta: links.length ? linkLabel(state, links[0]) : "free",
           title: noteDisplayTitle(note),
-          text: notePreview(note) || (note.tags || []).map(tag => `#${tag}`).join(" "),
+          text: notePreview(note) || noteTags.map(tag => `#${tag}`).join(" "),
           noteId: note.id
         });
       }
@@ -1804,6 +1828,25 @@ function MenuItem({
 function escapeRegExp(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+function renderHashtagSegments(text, keyPrefix = "tag") {
+  const source = String(text || "");
+  const pieces = [];
+  const regex = /(^|[^\p{L}\p{N}_-])#([\p{L}\p{N}_-]{1,48})/gu;
+  let last = 0;
+  let match;
+  while (match = regex.exec(source)) {
+    const tagStart = match.index + match[1].length;
+    const tagEnd = tagStart + match[2].length + 1;
+    if (tagStart > last) pieces.push(source.slice(last, tagStart));
+    pieces.push(React.createElement("span", {
+      key: `${keyPrefix}-${tagStart}`,
+      className: "text-[#FFD2D7] font-bold"
+    }, "#", match[2]));
+    last = tagEnd;
+  }
+  if (last < source.length) pieces.push(source.slice(last));
+  return pieces.length ? pieces : source;
+}
 function HighlightText({
   text,
   query,
@@ -1813,7 +1856,7 @@ function HighlightText({
   const term = String(query || "").trim();
   if (!term) return React.createElement("span", {
     className: className
-  }, source);
+  }, renderHashtagSegments(source));
   const parts = source.split(new RegExp(`(${escapeRegExp(term)})`, "ig"));
   return React.createElement("span", {
     className: className
@@ -1822,7 +1865,7 @@ function HighlightText({
     className: "search-hit bg-transparent"
   }, part) : React.createElement(React.Fragment, {
     key: index
-  }, part)));
+  }, renderHashtagSegments(part, `tag-${index}`))));
 }
 function searchKindLabel(kind) {
   if (kind === "act") return "Act";
@@ -4259,7 +4302,7 @@ function App() {
     const tags = exportTagsFromInput(options.tagsInput || "");
     const dateFilters = parseExportDateFilters(options.datesInput || "");
     const selected = notesForView.filter(note => {
-      const noteTags = note.tags || [];
+      const noteTags = noteTagList(note);
       const tagMatch = !tags.length || tags.every(tag => noteTags.includes(tag));
       return tagMatch && noteMatchesExportDates(note, dateFilters);
     });
@@ -4269,7 +4312,7 @@ function App() {
     }
     const markdown = selected.map(note => {
       const links = noteLinksFor(db, note.id).map(link => linkLabel(db, link));
-      const tags = (note.tags || []).map(tag => `#${tag}`).join(" ");
+      const tags = noteTagList(note).map(tag => `#${tag}`).join(" ");
       return [`# ${noteDisplayTitle(note)}`, "", `Date: ${note.noteDate}`, `Type: ${links.length ? "Linked" : "Free"}`, links.length ? `Linked: ${links.join("; ")}` : "", tags ? `Tags: ${tags}` : "", "", noteBodyText(note) || "(empty)", ""].filter(line => line !== "").join("\n");
     }).join("\n---\n\n");
     const blob = new Blob([markdown], {
