@@ -407,6 +407,108 @@
 
 
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+function Header({
+  syncStatus,
+  syncLabel,
+  isSearchOpen,
+  setIsSearchOpen,
+  isHeaderMenuOpen,
+  setIsHeaderMenuOpen,
+  onSyncNow,
+  onExport,
+  onImportClick,
+  onSignOut,
+  fileInputRef,
+  onImportFile
+}) {
+  const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
+  const syncColor = syncStatus === "saved" ? "#FFD2D7" : syncStatus === "error" ? "#fb7185" : syncStatus === "saving" ? "#FFD2D7" : "#666666";
+  return React.createElement("header", {
+    className: "app-header flex justify-between items-center p-5 border-b border-[#333333] bg-[#0a0a0a] relative z-40"
+  }, React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, React.createElement("div", {
+    className: "relative w-[40px] h-[40px] flex items-center justify-center bg-gradient-to-tr from-[#FFD2D7] to-[#e4b3b9] rounded-[12px] shadow-[0_0_15px_rgba(255,210,215,0.2)]"
+  }, React.createElement("span", {
+    className: "font-black text-[20px] text-[#111] tracking-tighter"
+  }, "LP"), React.createElement("div", {
+    className: "absolute -top-1 -right-1 w-3 h-3 bg-black rounded-full border-2 border-[#FFD2D7]"
+  })), React.createElement("h1", {
+    className: "font-extrabold text-[20px] tracking-tight text-white flex items-baseline gap-1.5"
+  }, "Liem's ", React.createElement("span", {
+    className: "text-[#FFD2D7] font-medium text-[17px] italic font-serif"
+  }, "Planner"))), React.createElement("div", {
+    className: "flex gap-4 text-[#A7A7A7] items-center"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      onSyncNow();
+    },
+    title: syncLabel || syncText,
+    "aria-label": syncLabel || syncText,
+    className: "transition-transform hover:scale-110 active:scale-95",
+    style: {
+      color: syncColor
+    }
+  }, syncStatus === "saving" ? React.createElement(MoreHorizontal, {
+    size: 20,
+    className: "animate-pulse"
+  }) : React.createElement(Check, {
+    size: 20
+  })), React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      setIsSearchOpen(!isSearchOpen);
+    },
+    className: `transition-colors outline-none ${isSearchOpen ? "text-[#FFD2D7]" : "hover:text-white"}`,
+    "aria-label": "Search"
+  }, React.createElement(Search, {
+    size: 20
+  })), React.createElement("div", {
+    className: "relative"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      setIsHeaderMenuOpen(!isHeaderMenuOpen);
+    },
+    className: `p-1.5 rounded-full transition-colors ${isHeaderMenuOpen ? "bg-[#222] text-white" : "hover:text-white"}`,
+    "aria-label": "Tools"
+  }, React.createElement(MoreHorizontal, {
+    size: 20
+  })), isHeaderMenuOpen && React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "absolute right-0 top-full mt-2 w-48 bg-[#1A1A1A] rounded-2xl shadow-2xl border border-[#333333] p-1.5 animate-in fade-in zoom-in-95 duration-100 z-50"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: onExport,
+    className: "flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
+  }, React.createElement(Download, {
+    size: 16
+  }), " Export JSON"), React.createElement("button", {
+    type: "button",
+    onClick: onImportClick,
+    className: "flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
+  }, React.createElement(Upload, {
+    size: 16
+  }), " Import JSON"), React.createElement("div", {
+    className: "h-px bg-[#333] my-1"
+  }), React.createElement("button", {
+    type: "button",
+    onClick: onSignOut,
+    className: "flex items-center gap-3 w-full px-3 py-2.5 text-red-400 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
+  }, React.createElement(LogOut, {
+    size: 16
+  }), " Log out"))), React.createElement("input", {
+    ref: fileInputRef,
+    onChange: onImportFile,
+    className: "hidden",
+    type: "file",
+    accept: "application/json"
+  })));
+}
 const {
   useEffect,
   useMemo,
@@ -1251,108 +1353,6 @@ function MenuItem({
   }, React.createElement("span", {
     className: danger || accent ? "" : "text-[#A7A7A7]"
   }, icon), label);
-}
-function Header({
-  syncStatus,
-  syncLabel,
-  isSearchOpen,
-  setIsSearchOpen,
-  isHeaderMenuOpen,
-  setIsHeaderMenuOpen,
-  onSyncNow,
-  onExport,
-  onImportClick,
-  onSignOut,
-  fileInputRef,
-  onImportFile
-}) {
-  const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
-  const syncColor = syncStatus === "saved" ? "#FFD2D7" : syncStatus === "error" ? "#fb7185" : syncStatus === "saving" ? "#FFD2D7" : "#666666";
-  return React.createElement("header", {
-    className: "app-header flex justify-between items-center p-5 border-b border-[#333333] bg-[#0a0a0a] relative z-40"
-  }, React.createElement("div", {
-    className: "flex items-center gap-3"
-  }, React.createElement("div", {
-    className: "relative w-[40px] h-[40px] flex items-center justify-center bg-gradient-to-tr from-[#FFD2D7] to-[#e4b3b9] rounded-[12px] shadow-[0_0_15px_rgba(255,210,215,0.2)]"
-  }, React.createElement("span", {
-    className: "font-black text-[20px] text-[#111] tracking-tighter"
-  }, "LP"), React.createElement("div", {
-    className: "absolute -top-1 -right-1 w-3 h-3 bg-black rounded-full border-2 border-[#FFD2D7]"
-  })), React.createElement("h1", {
-    className: "font-extrabold text-[20px] tracking-tight text-white flex items-baseline gap-1.5"
-  }, "Liem's ", React.createElement("span", {
-    className: "text-[#FFD2D7] font-medium text-[17px] italic font-serif"
-  }, "Planner"))), React.createElement("div", {
-    className: "flex gap-4 text-[#A7A7A7] items-center"
-  }, React.createElement("button", {
-    type: "button",
-    onClick: e => {
-      e.stopPropagation();
-      onSyncNow();
-    },
-    title: syncLabel || syncText,
-    "aria-label": syncLabel || syncText,
-    className: "transition-transform hover:scale-110 active:scale-95",
-    style: {
-      color: syncColor
-    }
-  }, syncStatus === "saving" ? React.createElement(MoreHorizontal, {
-    size: 20,
-    className: "animate-pulse"
-  }) : React.createElement(Check, {
-    size: 20
-  })), React.createElement("button", {
-    type: "button",
-    onClick: e => {
-      e.stopPropagation();
-      setIsSearchOpen(!isSearchOpen);
-    },
-    className: `transition-colors outline-none ${isSearchOpen ? "text-[#FFD2D7]" : "hover:text-white"}`,
-    "aria-label": "Search"
-  }, React.createElement(Search, {
-    size: 20
-  })), React.createElement("div", {
-    className: "relative"
-  }, React.createElement("button", {
-    type: "button",
-    onClick: e => {
-      e.stopPropagation();
-      setIsHeaderMenuOpen(!isHeaderMenuOpen);
-    },
-    className: `p-1.5 rounded-full transition-colors ${isHeaderMenuOpen ? "bg-[#222] text-white" : "hover:text-white"}`,
-    "aria-label": "Tools"
-  }, React.createElement(MoreHorizontal, {
-    size: 20
-  })), isHeaderMenuOpen && React.createElement("div", {
-    onClick: e => e.stopPropagation(),
-    className: "absolute right-0 top-full mt-2 w-48 bg-[#1A1A1A] rounded-2xl shadow-2xl border border-[#333333] p-1.5 animate-in fade-in zoom-in-95 duration-100 z-50"
-  }, React.createElement("button", {
-    type: "button",
-    onClick: onExport,
-    className: "flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
-  }, React.createElement(Download, {
-    size: 16
-  }), " Export JSON"), React.createElement("button", {
-    type: "button",
-    onClick: onImportClick,
-    className: "flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
-  }, React.createElement(Upload, {
-    size: 16
-  }), " Import JSON"), React.createElement("div", {
-    className: "h-px bg-[#333] my-1"
-  }), React.createElement("button", {
-    type: "button",
-    onClick: onSignOut,
-    className: "flex items-center gap-3 w-full px-3 py-2.5 text-red-400 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
-  }, React.createElement(LogOut, {
-    size: 16
-  }), " Log out"))), React.createElement("input", {
-    ref: fileInputRef,
-    onChange: onImportFile,
-    className: "hidden",
-    type: "file",
-    accept: "application/json"
-  })));
 }
 function escapeRegExp(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
