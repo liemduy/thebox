@@ -102,3 +102,59 @@ test("computes date helpers predictably with explicit today", () => {
   assert.equal(core.displayDate("2026-05-22", false, "2026-05-22"), "22/05/2026 (today)");
   assert.equal(core.daysFromToday("2026-05-20", "2026-05-22"), 2);
 });
+
+test("walks box trees and produces stable paths", () => {
+  const nodes = [
+    { id: "root", parentId: null, title: "Root", sort: 2 },
+    { id: "other", parentId: null, title: "Other", sort: 1 },
+    { id: "child", parentId: "root", title: "Child", sort: 1 },
+    { id: "grand", parentId: "child", title: "Grand", sort: 1 }
+  ];
+
+  assert.deepEqual(core.childrenOf(null, nodes).map(node => node.id), ["other", "root"]);
+  assert.deepEqual(core.descendantsOf("root", nodes).map(node => node.id), ["child", "grand"]);
+  assert.equal(core.rootOf(core.getNode(nodes, "grand"), nodes).id, "root");
+  assert.equal(core.pathOf(core.getNode(nodes, "grand"), nodes), "Root > Child > Grand");
+});
+
+test("sorts entries and filters visible action branches", () => {
+  const parent = { id: "parent", entries: [] };
+  const child = {
+    id: "child",
+    parentId: "parent",
+    entries: [
+      { id: "done", type: "action", done: true, sort: 2 },
+      { id: "note", type: "note", sort: 1 }
+    ]
+  };
+
+  assert.deepEqual(core.entriesFor(child).map(entry => entry.id), ["note", "done"]);
+  assert.deepEqual(core.visibleEntriesFor(child, "done").map(entry => entry.id), ["done"]);
+  assert.equal(core.hasVisibleAction(parent, [parent, child], "notes"), true);
+  assert.equal(core.hasVisibleAction(parent, [parent, child], "undone"), false);
+});
+
+test("summarizes root progress without merging sibling roots", () => {
+  const state = {
+    ui: { boxFilter: "all" },
+    boxNodes: [
+      { id: "root", parentId: null, title: "Root", sort: 1 },
+      { id: "child", parentId: "root", title: "Child", sort: 1 },
+      { id: "other", parentId: null, title: "Other", sort: 2 }
+    ],
+    actionDays: [{
+      id: "day",
+      date: "2026-05-22",
+      nodes: [
+        { id: "rootAction", sourceBoxNodeId: "root", entries: [{ id: "a", type: "action", done: true, sort: 1 }] },
+        { id: "childAction", sourceBoxNodeId: "child", entries: [{ id: "b", type: "action", done: false, sort: 1 }] },
+        { id: "otherAction", sourceBoxNodeId: "other", entries: [{ id: "c", type: "action", done: false, sort: 1 }] }
+      ]
+    }]
+  };
+
+  const summary = core.summariesForRoot(state, core.getNode(state.boxNodes, "root"));
+  assert.equal(summary.length, 1);
+  assert.deepEqual(summary[0].progress, { total: 2, done: 1 });
+  assert.equal(core.rootHasEntriesOnDay(state, core.getNode(state.boxNodes, "root"), state.actionDays[0]), true);
+});

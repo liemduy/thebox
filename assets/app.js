@@ -128,6 +128,183 @@
     return `#/boxes?${params.toString()}`;
   }
 
+  function childrenOf(parentId, nodes) {
+    return (nodes || []).filter(n => (n.parentId ?? null) === (parentId ?? null)).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+  }
+
+  function getNode(nodes, id) {
+    return (nodes || []).find(n => n.id === id);
+  }
+
+  function ancestorsOf(id, nodes) {
+    const out = [];
+    let cur = getNode(nodes, id);
+    while (cur?.parentId) {
+      cur = getNode(nodes, cur.parentId);
+      if (cur) out.unshift(cur);
+    }
+    return out;
+  }
+
+  function descendantsOf(id, nodes) {
+    const out = [];
+    function walk(nodeId) {
+      childrenOf(nodeId, nodes).forEach(child => {
+        out.push(child);
+        walk(child.id);
+      });
+    }
+    walk(id);
+    return out;
+  }
+
+  function rootOf(node, nodes) {
+    let cur = node;
+    while (cur?.parentId) cur = getNode(nodes, cur.parentId);
+    return cur;
+  }
+
+  function pathOf(node, nodes) {
+    return [...ancestorsOf(node.id, nodes), node].map(n => n.title).join(" > ");
+  }
+
+  function boxIsArchived(node) {
+    return Boolean(node?.archivedAt);
+  }
+
+  function boxIsDone(node) {
+    return Boolean(node?.doneAt);
+  }
+
+  function boxIsInactive(node) {
+    return boxIsArchived(node) || (Number(node?.level || 1) === 1 && boxIsDone(node));
+  }
+
+  function entriesFor(node, type = null) {
+    const entries = Array.isArray(node?.entries) ? node.entries.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0)) : [];
+    return type ? entries.filter(e => e.type === type) : entries;
+  }
+
+  function actionEntriesFor(node) {
+    return entriesFor(node, "action");
+  }
+
+  function noteEntriesFor(node) {
+    return entriesFor(node, "note");
+  }
+
+  function progressForNodes(nodes) {
+    const actions = (nodes || []).flatMap(n => actionEntriesFor(n));
+    return { total: actions.length, done: actions.filter(e => e.done).length };
+  }
+
+  function boxRoots(state) {
+    return childrenOf(null, state.boxNodes).filter(root => !boxIsArchived(root) && !boxIsDone(root));
+  }
+
+  function vaultRoots(state, view) {
+    const roots = childrenOf(null, state.boxNodes);
+    if (view === "archived") return roots.filter(boxIsArchived);
+    if (view === "done") return roots.filter(boxIsDone);
+    return roots.filter(root => !boxIsArchived(root) && !boxIsDone(root));
+  }
+
+  function shouldShowChildInView(node, view) {
+    if (view === "active") return !boxIsArchived(node);
+    return true;
+  }
+
+  function isBoxOpen(state, node) {
+    if (Number(node.level || 1) === 1) return !(state.ui.collapsedBoxNodes || []).includes(node.id);
+    return (state.ui.expandedBoxNodes || []).includes(node.id);
+  }
+
+  function setBoxOpen(state, node, open) {
+    if (Number(node.level || 1) === 1) {
+      const collapsed = new Set(state.ui.collapsedBoxNodes || []);
+      open ? collapsed.delete(node.id) : collapsed.add(node.id);
+      state.ui.collapsedBoxNodes = [...collapsed];
+    } else {
+      const expanded = new Set(state.ui.expandedBoxNodes || []);
+      open ? expanded.add(node.id) : expanded.delete(node.id);
+      state.ui.expandedBoxNodes = [...expanded];
+    }
+  }
+
+  function isActionOpen(state, node) {
+    return !(state.ui.collapsedActionNodes || []).includes(node.id);
+  }
+
+  function setActionOpen(state, node, open) {
+    const collapsed = new Set(state.ui.collapsedActionNodes || []);
+    open ? collapsed.delete(node.id) : collapsed.add(node.id);
+    state.ui.collapsedActionNodes = [...collapsed];
+  }
+
+  function visibleEntriesFor(node, filter) {
+    const entries = entriesFor(node);
+    if (filter === "undone") return entries.filter(e => e.type === "action" && !e.done);
+    if (filter === "done") return entries.filter(e => e.type === "action" && e.done);
+    if (filter === "notes") return entries.filter(e => e.type === "note");
+    return entries;
+  }
+
+  function hasVisibleAction(node, nodes, filter) {
+    const self = filter === "all" ? true : visibleEntriesFor(node, filter).length > 0;
+    return self || childrenOf(node.id, nodes).some(child => hasVisibleAction(child, nodes, filter));
+  }
+
+  function dateInBoxFilter(date, ui) {
+    const f = ui.boxFilter || "today";
+    if (f === "all") return true;
+    if (f === "custom") {
+      const from = ui.boxFilterFrom || "0000-01-01";
+      const to = ui.boxFilterTo || "9999-12-31";
+      return date >= from && date <= to;
+    }
+    const diff = daysFromToday(date);
+    if (f === "today") return diff === 0;
+    const days = Number(f);
+    return Number.isFinite(days) ? diff >= 0 && diff <= days : true;
+  }
+
+  function rootHasEntriesOnDay(state, rootBox, day) {
+    const ids = new Set([rootBox.id, ...descendantsOf(rootBox.id, state.boxNodes).map(n => n.id)]);
+    return (day.nodes || []).some(actionNode => ids.has(actionNode.sourceBoxNodeId) && entriesFor(actionNode).length);
+  }
+
+  function summariesForRoot(state, rootBox) {
+    return (state.actionDays || [])
+      .filter(day => dateInBoxFilter(day.date, state.ui) && rootHasEntriesOnDay(state, rootBox, day))
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 6)
+      .map(day => ({ day, progress: progressForNodes(day.nodes.filter(n => rootOf(getNode(state.boxNodes, n.sourceBoxNodeId) || {}, state.boxNodes)?.id === rootBox.id)) }));
+  }
+
+  function actionTimelineForBox(state, boxNode) {
+    return (state.actionDays || [])
+      .filter(day => dateInBoxFilter(day.date, state.ui))
+      .map(day => {
+        const items = [];
+        (day.nodes || []).forEach(actionNode => {
+          if (actionNode.sourceBoxNodeId !== boxNode.id) return;
+          entriesFor(actionNode).forEach(entry => {
+            items.push({
+              entry,
+              actionNode
+            });
+          });
+        });
+        return items.length ? { day, items } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const distance = Math.abs(daysFromToday(b.day.date)) - Math.abs(daysFromToday(a.day.date));
+        return distance || a.day.date.localeCompare(b.day.date);
+      })
+      .slice(0, 8);
+  }
+
   function cascadeMaxDepth(node, getChildren, hasOwnContent = () => false) {
     const children = getChildren(node);
     if (children.length) return 1 + Math.max(0, ...children.map(child => cascadeMaxDepth(child, getChildren, hasOwnContent)));
@@ -191,6 +368,32 @@
     appendBoxRouteParams,
     appendActionRouteParams,
     buildAppHash,
+    childrenOf,
+    getNode,
+    ancestorsOf,
+    descendantsOf,
+    rootOf,
+    pathOf,
+    boxIsArchived,
+    boxIsDone,
+    boxIsInactive,
+    entriesFor,
+    actionEntriesFor,
+    noteEntriesFor,
+    progressForNodes,
+    boxRoots,
+    vaultRoots,
+    shouldShowChildInView,
+    isBoxOpen,
+    setBoxOpen,
+    isActionOpen,
+    setActionOpen,
+    visibleEntriesFor,
+    hasVisibleAction,
+    dateInBoxFilter,
+    rootHasEntriesOnDay,
+    summariesForRoot,
+    actionTimelineForBox,
     cascadeMaxDepth,
     cascadeOpenDepth,
     closeCascade,
@@ -234,6 +437,32 @@ const {
   parseRouteHash,
   routeView,
   buildAppHash,
+  childrenOf,
+  getNode,
+  ancestorsOf,
+  descendantsOf,
+  rootOf,
+  pathOf,
+  boxIsArchived,
+  boxIsDone,
+  boxIsInactive,
+  entriesFor,
+  actionEntriesFor,
+  noteEntriesFor,
+  progressForNodes,
+  boxRoots,
+  vaultRoots,
+  shouldShowChildInView,
+  isBoxOpen,
+  setBoxOpen,
+  isActionOpen,
+  setActionOpen,
+  visibleEntriesFor,
+  hasVisibleAction,
+  dateInBoxFilter,
+  rootHasEntriesOnDay,
+  summariesForRoot,
+  actionTimelineForBox,
   cascadeMaxDepth,
   cascadeOpenDepth,
   applyCascadeDepth,
@@ -868,59 +1097,6 @@ function saveLocal(state, userId) {
     localStorage.setItem(localKey(userId), JSON.stringify(sanitizedState(state)));
   } catch {}
 }
-function childrenOf(parentId, nodes) {
-  return (nodes || []).filter(n => (n.parentId ?? null) === (parentId ?? null)).sort((a, b) => (a.sort || 0) - (b.sort || 0));
-}
-function getNode(nodes, id) {
-  return (nodes || []).find(n => n.id === id);
-}
-function ancestorsOf(id, nodes) {
-  const out = [];
-  let cur = getNode(nodes, id);
-  while (cur?.parentId) {
-    cur = getNode(nodes, cur.parentId);
-    if (cur) out.unshift(cur);
-  }
-  return out;
-}
-function descendantsOf(id, nodes) {
-  const out = [];
-  function walk(nodeId) {
-    childrenOf(nodeId, nodes).forEach(child => {
-      out.push(child);
-      walk(child.id);
-    });
-  }
-  walk(id);
-  return out;
-}
-function rootOf(node, nodes) {
-  let cur = node;
-  while (cur?.parentId) cur = getNode(nodes, cur.parentId);
-  return cur;
-}
-function pathOf(node, nodes) {
-  return [...ancestorsOf(node.id, nodes), node].map(n => n.title).join(" > ");
-}
-function boxIsArchived(node) {
-  return Boolean(node?.archivedAt);
-}
-function boxIsDone(node) {
-  return Boolean(node?.doneAt);
-}
-function boxIsInactive(node) {
-  return boxIsArchived(node) || Number(node?.level || 1) === 1 && boxIsDone(node);
-}
-function entriesFor(node, type = null) {
-  const entries = Array.isArray(node?.entries) ? node.entries.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0)) : [];
-  return type ? entries.filter(e => e.type === type) : entries;
-}
-function actionEntriesFor(node) {
-  return entriesFor(node, "action");
-}
-function noteEntriesFor(node) {
-  return entriesFor(node, "note");
-}
 function noteTitle(entry) {
   return cleanTitle(entry?.title || "Note");
 }
@@ -932,49 +1108,6 @@ function boxHasNote(node) {
 }
 function boxNoteLabel(node) {
   return cleanOptionalTitle(node?.boxNoteTitle || "") || "Note";
-}
-function progressForNodes(nodes) {
-  const actions = (nodes || []).flatMap(n => actionEntriesFor(n));
-  return {
-    total: actions.length,
-    done: actions.filter(e => e.done).length
-  };
-}
-function boxRoots(state) {
-  return childrenOf(null, state.boxNodes).filter(root => !boxIsArchived(root) && !boxIsDone(root));
-}
-function vaultRoots(state, view) {
-  const roots = childrenOf(null, state.boxNodes);
-  if (view === "archived") return roots.filter(boxIsArchived);
-  if (view === "done") return roots.filter(boxIsDone);
-  return roots.filter(root => !boxIsArchived(root) && !boxIsDone(root));
-}
-function shouldShowChildInView(node, view) {
-  if (view === "active") return !boxIsArchived(node);
-  return true;
-}
-function isBoxOpen(state, node) {
-  if (Number(node.level || 1) === 1) return !(state.ui.collapsedBoxNodes || []).includes(node.id);
-  return (state.ui.expandedBoxNodes || []).includes(node.id);
-}
-function setBoxOpen(state, node, open) {
-  if (Number(node.level || 1) === 1) {
-    const collapsed = new Set(state.ui.collapsedBoxNodes || []);
-    open ? collapsed.delete(node.id) : collapsed.add(node.id);
-    state.ui.collapsedBoxNodes = [...collapsed];
-  } else {
-    const expanded = new Set(state.ui.expandedBoxNodes || []);
-    open ? expanded.add(node.id) : expanded.delete(node.id);
-    state.ui.expandedBoxNodes = [...expanded];
-  }
-}
-function isActionOpen(state, node) {
-  return !(state.ui.collapsedActionNodes || []).includes(node.id);
-}
-function setActionOpen(state, node, open) {
-  const collapsed = new Set(state.ui.collapsedActionNodes || []);
-  open ? collapsed.delete(node.id) : collapsed.add(node.id);
-  state.ui.collapsedActionNodes = [...collapsed];
 }
 function toggleId(list, id) {
   const set = new Set(list || []);
@@ -1064,61 +1197,6 @@ function syncActionDayWithBox(state, day) {
 function syncSelectedActionDayWithBox(state) {
   const day = state.actionDays.find(item => item.date === (state.ui.selectedActionDate || todayYMD()));
   return day ? syncActionDayWithBox(state, day) : false;
-}
-function visibleEntriesFor(node, filter) {
-  const entries = entriesFor(node);
-  if (filter === "undone") return entries.filter(e => e.type === "action" && !e.done);
-  if (filter === "done") return entries.filter(e => e.type === "action" && e.done);
-  if (filter === "notes") return entries.filter(e => e.type === "note");
-  return entries;
-}
-function hasVisibleAction(node, nodes, filter) {
-  const self = filter === "all" ? true : visibleEntriesFor(node, filter).length > 0;
-  return self || childrenOf(node.id, nodes).some(child => hasVisibleAction(child, nodes, filter));
-}
-function dateInBoxFilter(date, ui) {
-  const f = ui.boxFilter || "today";
-  if (f === "all") return true;
-  if (f === "custom") {
-    const from = ui.boxFilterFrom || "0000-01-01";
-    const to = ui.boxFilterTo || "9999-12-31";
-    return date >= from && date <= to;
-  }
-  const diff = daysFromToday(date);
-  if (f === "today") return diff === 0;
-  const days = Number(f);
-  return Number.isFinite(days) ? diff >= 0 && diff <= days : true;
-}
-function rootHasEntriesOnDay(state, rootBox, day) {
-  const ids = new Set([rootBox.id, ...descendantsOf(rootBox.id, state.boxNodes).map(n => n.id)]);
-  return (day.nodes || []).some(actionNode => ids.has(actionNode.sourceBoxNodeId) && entriesFor(actionNode).length);
-}
-function summariesForRoot(state, rootBox) {
-  return (state.actionDays || []).filter(day => dateInBoxFilter(day.date, state.ui) && rootHasEntriesOnDay(state, rootBox, day)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6).map(day => ({
-    day,
-    progress: progressForNodes(day.nodes.filter(n => rootOf(getNode(state.boxNodes, n.sourceBoxNodeId) || {}, state.boxNodes)?.id === rootBox.id))
-  }));
-}
-function actionTimelineForBox(state, boxNode) {
-  return (state.actionDays || []).filter(day => dateInBoxFilter(day.date, state.ui)).map(day => {
-    const items = [];
-    (day.nodes || []).forEach(actionNode => {
-      if (actionNode.sourceBoxNodeId !== boxNode.id) return;
-      entriesFor(actionNode).forEach(entry => {
-        items.push({
-          entry,
-          actionNode
-        });
-      });
-    });
-    return items.length ? {
-      day,
-      items
-    } : null;
-  }).filter(Boolean).sort((a, b) => {
-    const distance = Math.abs(daysFromToday(b.day.date)) - Math.abs(daysFromToday(a.day.date));
-    return distance || a.day.date.localeCompare(b.day.date);
-  }).slice(0, 8);
 }
 function collectSearchResults(state, query) {
   const term = String(query || "").trim().toLowerCase();
