@@ -1,4 +1,4 @@
-function Header({ syncStatus, syncLabel, isSearchOpen, setIsSearchOpen, isHeaderMenuOpen, setIsHeaderMenuOpen, onSyncNow, onExport, onImportClick, onSignOut, fileInputRef, onImportFile }) {
+function Header({ syncStatus, syncLabel, isSearchOpen, setIsSearchOpen, isHeaderMenuOpen, setIsHeaderMenuOpen, onSyncNow, onExport, onImportClick, onOpenDebug, onSignOut, fileInputRef, onImportFile }) {
   const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
   const syncColor = syncStatus === "saved"
     ? "#FFD2D7"
@@ -33,6 +33,7 @@ function Header({ syncStatus, syncLabel, isSearchOpen, setIsSearchOpen, isHeader
             <div onClick={e => e.stopPropagation()} className="absolute right-0 top-full mt-2 w-48 bg-[#1A1A1A] rounded-2xl shadow-2xl border border-[#333333] p-1.5 animate-in fade-in zoom-in-95 duration-100 z-50">
               <button type="button" onClick={onExport} className="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"><Download size={16} /> Export JSON</button>
               <button type="button" onClick={onImportClick} className="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"><Upload size={16} /> Import JSON</button>
+              <button type="button" onClick={onOpenDebug} className="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"><FileText size={16} /> Debug</button>
               <div className="h-px bg-[#333] my-1" />
               <button type="button" onClick={onSignOut} className="flex items-center gap-3 w-full px-3 py-2.5 text-red-400 hover:bg-[#333] rounded-lg transition-colors text-[14px]"><LogOut size={16} /> Log out</button>
             </div>

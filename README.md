@@ -12,7 +12,8 @@ Static single-page planner app with Supabase Auth, cloud sync, export/import JSO
 - `manifest.json` - Add to Home / PWA metadata.
 - `sw.js` - offline app shell cache.
 - `icon.svg`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` - PWA/app icons.
-- `supabase_schema.sql` - Supabase schema and RLS policies.
+- `supabase_schema.sql` - one-file Supabase schema and RLS policies for fresh setup.
+- `supabase/migrations/` - ordered, idempotent Supabase upgrade scripts.
 
 ## Build
 
@@ -27,7 +28,9 @@ npm run build
 
 Upload this folder to GitHub Pages. The site should open at `/` and the PWA `start_url` is also `/`.
 
-Existing Supabase projects should keep `idea_box_states` as the source of truth and may also run the note mirror tables in `supabase_schema.sql` (`idea_notes`, `idea_note_links`, `idea_note_events`). Older `idea_box_action_days` tables can remain, but the app no longer reads or writes them.
+Existing Supabase projects should keep `idea_box_states` as the source of truth and should run the files in `supabase/migrations/` in order. Older `idea_box_action_days` tables can remain, but the app no longer reads or writes them.
+
+For fresh Supabase setup, `supabase_schema.sql` is the one-file equivalent. Supabase may warn about destructive operations or RLS while reviewing the script because it creates tables, drops/recreates policies, and enables RLS in the same batch. That is expected; every client-facing table has Row Level Security enabled.
 
 ## Offline Sync
 

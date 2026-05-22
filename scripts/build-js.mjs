@@ -4,7 +4,21 @@ import presetReact from "@babel/preset-react";
 
 const core = await fs.readFile("src/core.js", "utf8");
 const componentFiles = [
-  "src/components/header.jsx"
+  "src/config.js",
+  "src/ui/icons.jsx",
+  "src/components/header.jsx",
+  "src/state/schema.js",
+  "src/sync/localStore.js",
+  "src/sync/noteMirror.js",
+  "src/state/notes.js",
+  "src/ui/menuHelpers.js",
+  "src/state/actions.js",
+  "src/ui/search.jsx",
+  "src/ui/notes.jsx",
+  "src/ui/boxes.jsx",
+  "src/ui/actions.jsx",
+  "src/ui/modals.jsx",
+  "src/ui/auth.jsx"
 ];
 const components = await Promise.all(componentFiles.map(file => fs.readFile(file, "utf8")));
 const source = await fs.readFile("src/app.jsx", "utf8");

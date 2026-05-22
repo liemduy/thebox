@@ -220,3 +220,47 @@ test("summarizes root progress without merging sibling roots", () => {
   assert.deepEqual(summary[0].progress, { total: 2, done: 1 });
   assert.equal(core.rootHasEntriesOnDay(state, core.getNode(state.boxNodes, "root"), state.actionDays[0]), true);
 });
+
+test("marks action-note mirrors deleted without touching entries directly", () => {
+  const timestamp = "2026-05-22T12:00:00.000Z";
+  const state = {
+    notes: [
+      { id: core.actionNoteId("entry-note"), title: "Linked note" },
+      { id: "free", title: "Free note" }
+    ],
+    noteLinks: [
+      { id: core.actionNoteLinkId("entry-note"), noteId: core.actionNoteId("entry-note") },
+      { id: "free-link", noteId: "free" }
+    ]
+  };
+
+  const next = core.markActionNoteMirrorDeleted(state, "entry-note", timestamp);
+  assert.equal(next.notes.find(note => note.id === core.actionNoteId("entry-note")).deletedAt, timestamp);
+  assert.deepEqual(next.noteLinks.map(link => link.id), ["free-link"]);
+  assert.equal(state.notes[0].deletedAt, undefined);
+});
+
+test("wraps v2 backup envelope while accepting legacy JSON", () => {
+  const data = {
+    version: 5,
+    boxNodes: [{ id: "box" }],
+    actionDays: [{
+      id: "day",
+      nodes: [
+        { id: "node", entries: [{ id: "a", type: "action" }, { id: "n", type: "note" }] }
+      ]
+    }],
+    notes: [{ id: "note" }],
+    noteLinks: [{ id: "link", noteId: "note" }]
+  };
+  const envelope = core.createBackupEnvelope(data, {
+    appVersion: "test",
+    exportedAt: "2026-05-22T00:00:00.000Z"
+  });
+
+  assert.equal(envelope.kind, core.BACKUP_KIND);
+  assert.equal(envelope.version, core.BACKUP_VERSION);
+  assert.deepEqual(envelope.summary, { boxes: 1, actionDays: 1, actionEntries: 1, actionNotes: 1, notes: 1, noteLinks: 1 });
+  assert.equal(core.readBackupEnvelope(JSON.stringify(envelope)).legacy, false);
+  assert.equal(core.readBackupEnvelope(JSON.stringify(data)).legacy, true);
+});

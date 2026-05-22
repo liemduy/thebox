@@ -4,6 +4,8 @@
   const ACTION_FILTER_VALUES = new Set(["all", "undone", "done", "notes"]);
   const NOTES_VIEW_VALUES = new Set(["linked", "free", "all"]);
   const NOTES_DATE_VALUES = new Set(["all", "today", "7", "30"]);
+  const BACKUP_KIND = "liems-planner-backup";
+  const BACKUP_VERSION = 2;
 
   function todayYMD(date = new Date()) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -48,6 +50,15 @@
     if (value === "1" || value === "true" || value === "yes") return true;
     return fallback;
   }
+
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function boxNoteId(boxId) { return `boxnote_${boxId}`; }
+  function boxNoteLinkId(boxId) { return `link_box_${boxId}`; }
+  function actionNoteId(entryId) { return `actionnote_${entryId}`; }
+  function actionNoteLinkId(entryId) { return `link_action_${entryId}`; }
 
   function parseBoxRouteParams(params) {
     const ui = {};
@@ -322,6 +333,62 @@
       .map(day => ({ day, progress: progressForNodes(day.nodes.filter(n => rootOf(getNode(state.boxNodes, n.sourceBoxNodeId) || {}, state.boxNodes)?.id === rootBox.id)) }));
   }
 
+  function markActionNoteMirrorDeleted(state, entryId, timestamp = new Date().toISOString()) {
+    const noteId = actionNoteId(entryId);
+    const next = clone(state || {});
+    next.notes = Array.isArray(next.notes) ? next.notes.map(note => {
+      if (note?.id !== noteId) return note;
+      return {
+        ...note,
+        deletedAt: timestamp,
+        updatedAt: timestamp,
+        clientUpdatedAt: timestamp
+      };
+    }) : [];
+    next.noteLinks = Array.isArray(next.noteLinks) ? next.noteLinks.filter(link => link?.noteId !== noteId) : [];
+    return next;
+  }
+
+  function backupSummary(data) {
+    const state = data?.data && data?.kind === BACKUP_KIND ? data.data : data;
+    const boxNodes = Array.isArray(state?.boxNodes) ? state.boxNodes : [];
+    const actionDays = Array.isArray(state?.actionDays) ? state.actionDays : [];
+    const notes = Array.isArray(state?.notes) ? state.notes : [];
+    const noteLinks = Array.isArray(state?.noteLinks) ? state.noteLinks : [];
+    const actionEntries = actionDays.reduce((sum, day) => sum + (day.nodes || []).reduce((nodeSum, node) => nodeSum + entriesFor(node, "action").length, 0), 0);
+    const actionNotes = actionDays.reduce((sum, day) => sum + (day.nodes || []).reduce((nodeSum, node) => nodeSum + entriesFor(node, "note").length, 0), 0);
+    return {
+      boxes: boxNodes.length,
+      actionDays: actionDays.length,
+      actionEntries,
+      actionNotes,
+      notes: notes.length,
+      noteLinks: noteLinks.length
+    };
+  }
+
+  function createBackupEnvelope(data, options = {}) {
+    return {
+      kind: BACKUP_KIND,
+      version: BACKUP_VERSION,
+      appVersion: options.appVersion || String(data?.version || ""),
+      exportedAt: options.exportedAt || new Date().toISOString(),
+      summary: backupSummary(data),
+      data
+    };
+  }
+
+  function readBackupEnvelope(input) {
+    const parsed = typeof input === "string" ? JSON.parse(input) : input;
+    if (parsed?.kind === BACKUP_KIND && parsed.version === BACKUP_VERSION && parsed.data && typeof parsed.data === "object") {
+      return { data: parsed.data, envelope: parsed, legacy: false, summary: parsed.summary || backupSummary(parsed.data) };
+    }
+    if (parsed && typeof parsed === "object") {
+      return { data: parsed, envelope: null, legacy: true, summary: backupSummary(parsed) };
+    }
+    throw new Error("Invalid planner backup");
+  }
+
   function actionTimelineForBox(state, boxNode) {
     return (state.actionDays || [])
       .filter(day => dateInBoxFilter(day.date, state.ui))
@@ -404,6 +471,12 @@
     normalizeModeMap,
     validYMD,
     boolParam,
+    BACKUP_KIND,
+    BACKUP_VERSION,
+    boxNoteId,
+    boxNoteLinkId,
+    actionNoteId,
+    actionNoteLinkId,
     parseBoxRouteParams,
     parseActionRouteParams,
     parseNotesRouteParams,
@@ -438,6 +511,10 @@
     dateInBoxFilter,
     rootHasEntriesOnDay,
     summariesForRoot,
+    markActionNoteMirrorDeleted,
+    backupSummary,
+    createBackupEnvelope,
+    readBackupEnvelope,
     actionTimelineForBox,
     cascadeMaxDepth,
     cascadeOpenDepth,

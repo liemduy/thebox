@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v56-route-reset-offline-fetch';
+const CACHE_NAME = 'idea-box-v57-stability-hardening';
 const APP_SHELL = [
   './',
   './index.html',

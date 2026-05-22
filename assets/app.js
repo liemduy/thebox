@@ -4,6 +4,8 @@
   const ACTION_FILTER_VALUES = new Set(["all", "undone", "done", "notes"]);
   const NOTES_VIEW_VALUES = new Set(["linked", "free", "all"]);
   const NOTES_DATE_VALUES = new Set(["all", "today", "7", "30"]);
+  const BACKUP_KIND = "liems-planner-backup";
+  const BACKUP_VERSION = 2;
 
   function todayYMD(date = new Date()) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -48,6 +50,15 @@
     if (value === "1" || value === "true" || value === "yes") return true;
     return fallback;
   }
+
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function boxNoteId(boxId) { return `boxnote_${boxId}`; }
+  function boxNoteLinkId(boxId) { return `link_box_${boxId}`; }
+  function actionNoteId(entryId) { return `actionnote_${entryId}`; }
+  function actionNoteLinkId(entryId) { return `link_action_${entryId}`; }
 
   function parseBoxRouteParams(params) {
     const ui = {};
@@ -322,6 +333,62 @@
       .map(day => ({ day, progress: progressForNodes(day.nodes.filter(n => rootOf(getNode(state.boxNodes, n.sourceBoxNodeId) || {}, state.boxNodes)?.id === rootBox.id)) }));
   }
 
+  function markActionNoteMirrorDeleted(state, entryId, timestamp = new Date().toISOString()) {
+    const noteId = actionNoteId(entryId);
+    const next = clone(state || {});
+    next.notes = Array.isArray(next.notes) ? next.notes.map(note => {
+      if (note?.id !== noteId) return note;
+      return {
+        ...note,
+        deletedAt: timestamp,
+        updatedAt: timestamp,
+        clientUpdatedAt: timestamp
+      };
+    }) : [];
+    next.noteLinks = Array.isArray(next.noteLinks) ? next.noteLinks.filter(link => link?.noteId !== noteId) : [];
+    return next;
+  }
+
+  function backupSummary(data) {
+    const state = data?.data && data?.kind === BACKUP_KIND ? data.data : data;
+    const boxNodes = Array.isArray(state?.boxNodes) ? state.boxNodes : [];
+    const actionDays = Array.isArray(state?.actionDays) ? state.actionDays : [];
+    const notes = Array.isArray(state?.notes) ? state.notes : [];
+    const noteLinks = Array.isArray(state?.noteLinks) ? state.noteLinks : [];
+    const actionEntries = actionDays.reduce((sum, day) => sum + (day.nodes || []).reduce((nodeSum, node) => nodeSum + entriesFor(node, "action").length, 0), 0);
+    const actionNotes = actionDays.reduce((sum, day) => sum + (day.nodes || []).reduce((nodeSum, node) => nodeSum + entriesFor(node, "note").length, 0), 0);
+    return {
+      boxes: boxNodes.length,
+      actionDays: actionDays.length,
+      actionEntries,
+      actionNotes,
+      notes: notes.length,
+      noteLinks: noteLinks.length
+    };
+  }
+
+  function createBackupEnvelope(data, options = {}) {
+    return {
+      kind: BACKUP_KIND,
+      version: BACKUP_VERSION,
+      appVersion: options.appVersion || String(data?.version || ""),
+      exportedAt: options.exportedAt || new Date().toISOString(),
+      summary: backupSummary(data),
+      data
+    };
+  }
+
+  function readBackupEnvelope(input) {
+    const parsed = typeof input === "string" ? JSON.parse(input) : input;
+    if (parsed?.kind === BACKUP_KIND && parsed.version === BACKUP_VERSION && parsed.data && typeof parsed.data === "object") {
+      return { data: parsed.data, envelope: parsed, legacy: false, summary: parsed.summary || backupSummary(parsed.data) };
+    }
+    if (parsed && typeof parsed === "object") {
+      return { data: parsed, envelope: null, legacy: true, summary: backupSummary(parsed) };
+    }
+    throw new Error("Invalid planner backup");
+  }
+
   function actionTimelineForBox(state, boxNode) {
     return (state.actionDays || [])
       .filter(day => dateInBoxFilter(day.date, state.ui))
@@ -404,6 +471,12 @@
     normalizeModeMap,
     validYMD,
     boolParam,
+    BACKUP_KIND,
+    BACKUP_VERSION,
+    boxNoteId,
+    boxNoteLinkId,
+    actionNoteId,
+    actionNoteLinkId,
     parseBoxRouteParams,
     parseActionRouteParams,
     parseNotesRouteParams,
@@ -438,6 +511,10 @@
     dateInBoxFilter,
     rootHasEntriesOnDay,
     summariesForRoot,
+    markActionNoteMirrorDeleted,
+    backupSummary,
+    createBackupEnvelope,
+    readBackupEnvelope,
     actionTimelineForBox,
     cascadeMaxDepth,
     cascadeOpenDepth,
@@ -452,108 +529,6 @@
 
 
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-function Header({
-  syncStatus,
-  syncLabel,
-  isSearchOpen,
-  setIsSearchOpen,
-  isHeaderMenuOpen,
-  setIsHeaderMenuOpen,
-  onSyncNow,
-  onExport,
-  onImportClick,
-  onSignOut,
-  fileInputRef,
-  onImportFile
-}) {
-  const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
-  const syncColor = syncStatus === "saved" ? "#FFD2D7" : syncStatus === "error" ? "#fb7185" : syncStatus === "saving" ? "#FFD2D7" : "#666666";
-  return React.createElement("header", {
-    className: "app-header flex justify-between items-center p-5 border-b border-[#333333] bg-[#0a0a0a] relative z-40"
-  }, React.createElement("div", {
-    className: "flex items-center gap-3"
-  }, React.createElement("div", {
-    className: "relative w-[40px] h-[40px] flex items-center justify-center bg-gradient-to-tr from-[#FFD2D7] to-[#e4b3b9] rounded-[12px] shadow-[0_0_15px_rgba(255,210,215,0.2)]"
-  }, React.createElement("span", {
-    className: "font-black text-[20px] text-[#111] tracking-tighter"
-  }, "LP"), React.createElement("div", {
-    className: "absolute -top-1 -right-1 w-3 h-3 bg-black rounded-full border-2 border-[#FFD2D7]"
-  })), React.createElement("h1", {
-    className: "font-extrabold text-[20px] tracking-tight text-white flex items-baseline gap-1.5"
-  }, "Liem's ", React.createElement("span", {
-    className: "text-[#FFD2D7] font-medium text-[17px] italic font-serif"
-  }, "Planner"))), React.createElement("div", {
-    className: "flex gap-4 text-[#A7A7A7] items-center"
-  }, React.createElement("button", {
-    type: "button",
-    onClick: e => {
-      e.stopPropagation();
-      onSyncNow();
-    },
-    title: syncLabel || syncText,
-    "aria-label": syncLabel || syncText,
-    className: "transition-transform hover:scale-110 active:scale-95",
-    style: {
-      color: syncColor
-    }
-  }, syncStatus === "saving" ? React.createElement(MoreHorizontal, {
-    size: 20,
-    className: "animate-pulse"
-  }) : React.createElement(Check, {
-    size: 20
-  })), React.createElement("button", {
-    type: "button",
-    onClick: e => {
-      e.stopPropagation();
-      setIsSearchOpen(!isSearchOpen);
-    },
-    className: `transition-colors outline-none ${isSearchOpen ? "text-[#FFD2D7]" : "hover:text-white"}`,
-    "aria-label": "Search"
-  }, React.createElement(Search, {
-    size: 20
-  })), React.createElement("div", {
-    className: "relative"
-  }, React.createElement("button", {
-    type: "button",
-    onClick: e => {
-      e.stopPropagation();
-      setIsHeaderMenuOpen(!isHeaderMenuOpen);
-    },
-    className: `p-1.5 rounded-full transition-colors ${isHeaderMenuOpen ? "bg-[#222] text-white" : "hover:text-white"}`,
-    "aria-label": "Tools"
-  }, React.createElement(MoreHorizontal, {
-    size: 20
-  })), isHeaderMenuOpen && React.createElement("div", {
-    onClick: e => e.stopPropagation(),
-    className: "absolute right-0 top-full mt-2 w-48 bg-[#1A1A1A] rounded-2xl shadow-2xl border border-[#333333] p-1.5 animate-in fade-in zoom-in-95 duration-100 z-50"
-  }, React.createElement("button", {
-    type: "button",
-    onClick: onExport,
-    className: "flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
-  }, React.createElement(Download, {
-    size: 16
-  }), " Export JSON"), React.createElement("button", {
-    type: "button",
-    onClick: onImportClick,
-    className: "flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
-  }, React.createElement(Upload, {
-    size: 16
-  }), " Import JSON"), React.createElement("div", {
-    className: "h-px bg-[#333] my-1"
-  }), React.createElement("button", {
-    type: "button",
-    onClick: onSignOut,
-    className: "flex items-center gap-3 w-full px-3 py-2.5 text-red-400 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
-  }, React.createElement(LogOut, {
-    size: 16
-  }), " Log out"))), React.createElement("input", {
-    ref: fileInputRef,
-    onChange: onImportFile,
-    className: "hidden",
-    type: "file",
-    accept: "application/json"
-  })));
-}
 const {
   useEffect,
   useMemo,
@@ -566,6 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
+const APP_BUILD_ID = "2026-05-22-stability-hardening";
+const APP_CACHE_NAME = "idea-box-v57-stability-hardening";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -585,6 +562,9 @@ const {
   daysFromToday,
   normalizeModeMap,
   validYMD,
+  createBackupEnvelope,
+  readBackupEnvelope,
+  BACKUP_VERSION,
   parseRouteHash,
   routeView,
   buildAppHash,
@@ -900,6 +880,115 @@ const List = makeIcon("List");
 const Download = makeIcon("Download");
 const Upload = makeIcon("Upload");
 const LogOut = makeIcon("LogOut");
+function Header({
+  syncStatus,
+  syncLabel,
+  isSearchOpen,
+  setIsSearchOpen,
+  isHeaderMenuOpen,
+  setIsHeaderMenuOpen,
+  onSyncNow,
+  onExport,
+  onImportClick,
+  onOpenDebug,
+  onSignOut,
+  fileInputRef,
+  onImportFile
+}) {
+  const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
+  const syncColor = syncStatus === "saved" ? "#FFD2D7" : syncStatus === "error" ? "#fb7185" : syncStatus === "saving" ? "#FFD2D7" : "#666666";
+  return React.createElement("header", {
+    className: "app-header flex justify-between items-center p-5 border-b border-[#333333] bg-[#0a0a0a] relative z-40"
+  }, React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, React.createElement("div", {
+    className: "relative w-[40px] h-[40px] flex items-center justify-center bg-gradient-to-tr from-[#FFD2D7] to-[#e4b3b9] rounded-[12px] shadow-[0_0_15px_rgba(255,210,215,0.2)]"
+  }, React.createElement("span", {
+    className: "font-black text-[20px] text-[#111] tracking-tighter"
+  }, "LP"), React.createElement("div", {
+    className: "absolute -top-1 -right-1 w-3 h-3 bg-black rounded-full border-2 border-[#FFD2D7]"
+  })), React.createElement("h1", {
+    className: "font-extrabold text-[20px] tracking-tight text-white flex items-baseline gap-1.5"
+  }, "Liem's ", React.createElement("span", {
+    className: "text-[#FFD2D7] font-medium text-[17px] italic font-serif"
+  }, "Planner"))), React.createElement("div", {
+    className: "flex gap-4 text-[#A7A7A7] items-center"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      onSyncNow();
+    },
+    title: syncLabel || syncText,
+    "aria-label": syncLabel || syncText,
+    className: "transition-transform hover:scale-110 active:scale-95",
+    style: {
+      color: syncColor
+    }
+  }, syncStatus === "saving" ? React.createElement(MoreHorizontal, {
+    size: 20,
+    className: "animate-pulse"
+  }) : React.createElement(Check, {
+    size: 20
+  })), React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      setIsSearchOpen(!isSearchOpen);
+    },
+    className: `transition-colors outline-none ${isSearchOpen ? "text-[#FFD2D7]" : "hover:text-white"}`,
+    "aria-label": "Search"
+  }, React.createElement(Search, {
+    size: 20
+  })), React.createElement("div", {
+    className: "relative"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      setIsHeaderMenuOpen(!isHeaderMenuOpen);
+    },
+    className: `p-1.5 rounded-full transition-colors ${isHeaderMenuOpen ? "bg-[#222] text-white" : "hover:text-white"}`,
+    "aria-label": "Tools"
+  }, React.createElement(MoreHorizontal, {
+    size: 20
+  })), isHeaderMenuOpen && React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "absolute right-0 top-full mt-2 w-48 bg-[#1A1A1A] rounded-2xl shadow-2xl border border-[#333333] p-1.5 animate-in fade-in zoom-in-95 duration-100 z-50"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: onExport,
+    className: "flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
+  }, React.createElement(Download, {
+    size: 16
+  }), " Export JSON"), React.createElement("button", {
+    type: "button",
+    onClick: onImportClick,
+    className: "flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
+  }, React.createElement(Upload, {
+    size: 16
+  }), " Import JSON"), React.createElement("button", {
+    type: "button",
+    onClick: onOpenDebug,
+    className: "flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
+  }, React.createElement(FileText, {
+    size: 16
+  }), " Debug"), React.createElement("div", {
+    className: "h-px bg-[#333] my-1"
+  }), React.createElement("button", {
+    type: "button",
+    onClick: onSignOut,
+    className: "flex items-center gap-3 w-full px-3 py-2.5 text-red-400 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
+  }, React.createElement(LogOut, {
+    size: 16
+  }), " Log out"))), React.createElement("input", {
+    ref: fileInputRef,
+    onChange: onImportFile,
+    className: "hidden",
+    type: "file",
+    accept: "application/json"
+  })));
+}
 let idSequence = 0;
 const runtimeUsedIds = new Set();
 const HISTORY_LIMIT = 30;
@@ -1431,6 +1520,71 @@ function sanitizedState(state) {
       ...(normalized.ui || {})
     }
   };
+}
+function mergeById(currentItems = [], importedItems = []) {
+  const byId = new Map();
+  currentItems.forEach(item => {
+    if (item?.id) byId.set(item.id, item);
+  });
+  importedItems.forEach(item => {
+    if (item?.id) byId.set(item.id, item);
+  });
+  return [...byId.values()];
+}
+function mergeActionDayNodes(currentNodes = [], importedNodes = []) {
+  const keyOf = node => node?.sourceBoxNodeId ? `source:${node.sourceBoxNodeId}` : `id:${node?.id}`;
+  const byKey = new Map();
+  currentNodes.forEach(node => {
+    if (node?.id) byKey.set(keyOf(node), node);
+  });
+  importedNodes.forEach(node => {
+    if (!node?.id) return;
+    const key = keyOf(node);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, node);
+      return;
+    }
+    byKey.set(key, {
+      ...existing,
+      ...node,
+      entries: mergeById(normalizeEntries(existing), normalizeEntries(node))
+    });
+  });
+  return [...byKey.values()];
+}
+function mergeActionDays(currentDays = [], importedDays = []) {
+  const byDate = new Map();
+  currentDays.forEach(day => {
+    if (day?.date) byDate.set(day.date, day);
+  });
+  importedDays.forEach(day => {
+    if (!day?.date) return;
+    const existing = byDate.get(day.date);
+    if (!existing) {
+      byDate.set(day.date, day);
+      return;
+    }
+    byDate.set(day.date, {
+      ...existing,
+      ...day,
+      nodes: mergeActionDayNodes(existing.nodes || [], day.nodes || [])
+    });
+  });
+  return [...byDate.values()];
+}
+function mergeImportedState(current, imported) {
+  const base = normalizeState(current);
+  const incoming = normalizeState(imported);
+  return normalizeState({
+    ...base,
+    boxNodes: mergeById(base.boxNodes, incoming.boxNodes),
+    actionDays: mergeActionDays(base.actionDays, incoming.actionDays),
+    notes: mergeById(base.notes, incoming.notes),
+    noteLinks: mergeById(base.noteLinks, incoming.noteLinks),
+    ui: base.ui,
+    meta: base.meta
+  });
 }
 function localKey(userId) {
   return userId ? `${STORAGE_KEY}:${userId}` : `${STORAGE_KEY}:guest`;
@@ -2135,6 +2289,9 @@ function NotesPanel({
   const tagHints = tagHintsForInput(tags, tagsInput);
   const dateFilters = parseExportDateFilters(datesInput);
   const hasViewBy = Boolean(selectedTags.length || datesInput.trim());
+  const dateFilterLabel = datesInput.trim() ? dateFilters.length ? `${dateFilters.length} date${dateFilters.length > 1 ? "s" : ""}` : "Invalid date" : "";
+  const emptyTitle = hasViewBy ? "No notes match" : "No notes yet";
+  const emptyAction = hasViewBy ? "Clear filters" : "Create note";
   return React.createElement("div", {
     className: "animate-in fade-in slide-in-from-bottom-4 duration-300 flex-1 flex flex-col"
   }, React.createElement("div", {
@@ -2223,7 +2380,23 @@ function NotesPanel({
     onClick: onCreateNote,
     className: "ml-auto px-5 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform",
     "aria-label": "Create note"
-  }, "+note")), groups.length ? React.createElement("div", {
+  }, "+note")), hasViewBy && React.createElement("div", {
+    className: "-mt-2 mb-5 flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold"
+  }, selectedTags.slice(0, 3).map(tag => React.createElement("span", {
+    key: tag,
+    className: "px-2 py-1 rounded-full bg-[#FFD2D7]/[0.08] text-[#FFD2D7]"
+  }, "#", tag)), selectedTags.length > 3 ? React.createElement("span", {
+    className: "px-2 py-1 rounded-full bg-[#111111] text-[#A7A7A7]"
+  }, "+", selectedTags.length - 3) : null, dateFilterLabel ? React.createElement("span", {
+    className: `px-2 py-1 rounded-full bg-[#111111] ${dateFilters.length ? "text-[#A7A7A7]" : "text-red-300"}`
+  }, dateFilterLabel) : null, React.createElement("button", {
+    type: "button",
+    onClick: () => onSetViewBy({
+      tagsInput: "",
+      datesInput: ""
+    }),
+    className: "px-2 py-1 text-[#A7A7A7] hover:text-white transition-colors"
+  }, "Clear")), groups.length ? React.createElement("div", {
     className: "space-y-5"
   }, groups.map(group => React.createElement("section", {
     key: group.date
@@ -2247,13 +2420,18 @@ function NotesPanel({
     className: "text-[#A7A7A7]"
   })), React.createElement("h3", {
     className: "text-white font-bold text-[18px] mb-2"
-  }, "No notes yet"), React.createElement("button", {
+  }, emptyTitle), React.createElement("button", {
     type: "button",
-    onClick: onCreateNote,
+    onClick: hasViewBy ? () => onSetViewBy({
+      tagsInput: "",
+      datesInput: ""
+    }) : onCreateNote,
     className: "mt-4 bg-[#FFD2D7] text-black font-bold px-7 py-3 rounded-full flex items-center gap-2"
-  }, React.createElement(Plus, {
+  }, hasViewBy ? React.createElement(X, {
     size: 18
-  }), " Create note")));
+  }) : React.createElement(Plus, {
+    size: 18
+  }), " ", emptyAction)));
 }
 function replaceLastCsvToken(input, value) {
   const parts = String(input || "").split(",");
@@ -2491,6 +2669,7 @@ function BoxTreeItem({
       pointerId: e.pointerId
     };
     pointerDragRef.current = start;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     document.body.classList.add("touch-dragging");
     setMenuOpenId(null);
     setDragState(start);
@@ -2503,6 +2682,9 @@ function BoxTreeItem({
       if (!pointerDragRef.current || event.pointerId !== pointerDragRef.current.pointerId) return;
       event.preventDefault();
       const overId = pointerDragRef.current.overId;
+      try {
+        e.currentTarget?.releasePointerCapture?.(event.pointerId);
+      } catch {}
       pointerDragRef.current = null;
       document.body.classList.remove("touch-dragging");
       document.removeEventListener("pointermove", move);
@@ -2906,7 +3088,8 @@ function RichNoteModal({
   state,
   onClose,
   onSave,
-  onDelete
+  onDelete,
+  onConfirmDelete
 }) {
   const editorRef = useRef(null);
   const titleRef = useRef(null);
@@ -3090,16 +3273,22 @@ function RichNoteModal({
   }
   function deleteNote() {
     if (!canDelete) return;
-    if (!window.confirm("Delete this note?")) return;
-    if (isCentralNote) onDelete({
-      noteId: modal.noteId
-    });else if (isBoxNote) onDelete({
-      boxId: modal.boxId
-    });else onDelete({
-      dayId: modal.dayId,
-      nodeId: modal.nodeId,
-      entryId: modal.entryId
-    });
+    const runDelete = () => {
+      if (isCentralNote) onDelete({
+        noteId: modal.noteId
+      });else if (isBoxNote) onDelete({
+        boxId: modal.boxId
+      });else onDelete({
+        dayId: modal.dayId,
+        nodeId: modal.nodeId,
+        entryId: modal.entryId
+      });
+    };
+    if (onConfirmDelete) {
+      onConfirmDelete(runDelete);
+      return;
+    }
+    runDelete();
   }
   const mobileToolbarRoom = toolbarFrame.keyboardOpen ? toolbarFrame.bottom + 66 : 92;
   const modalShellStyle = toolbarFrame.mobile ? {
@@ -3209,6 +3398,134 @@ function RichNoteModal({
     onClick: () => applyFormat("heading"),
     className: "text-[#A7A7A7] hover:text-[#FFD2D7] transition-colors font-serif font-bold text-[16px] leading-none tracking-tight"
   }, "Aa")));
+}
+function ConfirmModal({
+  dialog,
+  onCancel,
+  onConfirm
+}) {
+  if (!dialog) return null;
+  return React.createElement("div", {
+    className: "fixed inset-0 z-[70] flex items-center justify-center bg-black/75 backdrop-blur-sm px-5 animate-in fade-in duration-150",
+    onClick: onCancel
+  }, React.createElement("div", {
+    className: "w-full max-w-[320px] bg-[#1A1A1A] border border-[#323232] rounded-[18px] p-5 shadow-2xl animate-in zoom-in-95 duration-150",
+    onClick: e => e.stopPropagation()
+  }, React.createElement("h3", {
+    className: "text-white text-[18px] font-extrabold leading-tight"
+  }, dialog.title || "Are you sure?"), dialog.body ? React.createElement("p", {
+    className: "mt-2 text-[#A7A7A7] text-[13px] leading-relaxed"
+  }, dialog.body) : null, React.createElement("div", {
+    className: "mt-5 grid grid-cols-2 gap-2.5"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: onCancel,
+    className: "px-4 py-3 rounded-[12px] bg-[#2D2D2D] text-white text-[13px] font-extrabold hover:bg-[#3E3E3E] transition-colors"
+  }, "Cancel"), React.createElement("button", {
+    type: "button",
+    onClick: onConfirm,
+    className: `px-4 py-3 rounded-[12px] text-[13px] font-extrabold transition-colors ${dialog.danger ? "bg-red-400 text-black hover:bg-red-300" : "bg-[#FFD2D7] text-black hover:bg-[#ffe1e5]"}`
+  }, dialog.confirmLabel || "Confirm"))));
+}
+function ImportPreviewModal({
+  modal,
+  onClose,
+  onImport
+}) {
+  const summary = modal.summary || {};
+  const rows = [["Boxes", summary.boxes || 0], ["Action days", summary.actionDays || 0], ["Actions", summary.actionEntries || 0], ["Action notes", summary.actionNotes || 0], ["Notes", summary.notes || 0], ["Note links", summary.noteLinks || 0]];
+  return React.createElement("div", {
+    className: "fixed inset-0 z-[65] flex items-center justify-center bg-black/75 backdrop-blur-sm px-5 animate-in fade-in duration-150",
+    onClick: onClose
+  }, React.createElement("div", {
+    className: "w-full max-w-[340px] bg-[#1A1A1A] border border-[#323232] rounded-[20px] p-5 shadow-2xl animate-in zoom-in-95 duration-150",
+    onClick: e => e.stopPropagation()
+  }, React.createElement("div", {
+    className: "flex items-start justify-between gap-4 mb-4"
+  }, React.createElement("div", null, React.createElement("h3", {
+    className: "text-white text-[18px] font-extrabold leading-tight"
+  }, "Import preview"), React.createElement("p", {
+    className: "mt-1 text-[#A7A7A7] text-[12px] leading-relaxed truncate max-w-[240px]"
+  }, modal.fileName || "backup.json")), React.createElement("button", {
+    type: "button",
+    onClick: onClose,
+    className: "text-[#A7A7A7] hover:text-white transition-colors p-1.5 bg-[#2D2D2D] hover:bg-[#3E3E3E] rounded-full",
+    "aria-label": "Close"
+  }, React.createElement(X, {
+    size: 18
+  }))), React.createElement("div", {
+    className: "grid grid-cols-2 gap-2 mb-4"
+  }, rows.map(([label, value]) => React.createElement("div", {
+    key: label,
+    className: "bg-[#111111] border border-[#2D2D2D] rounded-[12px] px-3 py-2.5"
+  }, React.createElement("div", {
+    className: "text-[#A7A7A7] text-[11px] font-bold"
+  }, label), React.createElement("div", {
+    className: "text-white text-[18px] font-extrabold"
+  }, value)))), React.createElement("p", {
+    className: "text-[#A7A7A7] text-[12px] leading-relaxed mb-4"
+  }, modal.legacy ? "Legacy backup detected. It will be normalized before import." : `Backup v${modal.backupVersion || BACKUP_VERSION} detected.`), React.createElement("div", {
+    className: "grid grid-cols-2 gap-2.5"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: () => onImport("merge"),
+    className: "px-4 py-3 rounded-[12px] bg-[#2D2D2D] text-white text-[13px] font-extrabold hover:bg-[#3E3E3E] transition-colors"
+  }, "Merge"), React.createElement("button", {
+    type: "button",
+    onClick: () => onImport("replace"),
+    className: "px-4 py-3 rounded-[12px] bg-[#FFD2D7] text-black text-[13px] font-extrabold hover:bg-[#ffe1e5] transition-colors"
+  }, "Replace"))));
+}
+function DebugPanel({
+  info,
+  onClose
+}) {
+  const rows = [["Build", info.buildId], ["Cache", info.cacheName], ["Route", info.route], ["User", info.user], ["Online", info.online ? "yes" : "no"], ["Standalone", info.standalone ? "yes" : "no"], ["Service worker", info.serviceWorker], ["Sync", `${info.syncStatus} - ${info.syncLabel}`], ["Pending sync", info.pendingSync ? "yes" : "no"], ["Local updated", info.localUpdatedAt || "n/a"], ["Cloud updated", info.cloudUpdatedAt || "n/a"], ["Last synced", info.lastSyncedAt || "n/a"], ["Snapshot", `${info.snapshotKb} KB`], ["Boxes", String(info.counts.boxes)], ["Action days", String(info.counts.actionDays)], ["Entries", String(info.counts.entries)], ["Notes", String(info.counts.notes)], ["Note links", String(info.counts.noteLinks)]];
+  function exportDebug() {
+    const blob = new Blob([JSON.stringify(info, null, 2)], {
+      type: "application/json"
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `liems-planner-debug-${todayYMD()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 500);
+  }
+  return React.createElement("div", {
+    className: "fixed inset-0 z-[65] flex items-center justify-center bg-black/75 backdrop-blur-sm px-5 animate-in fade-in duration-150",
+    onClick: onClose
+  }, React.createElement("div", {
+    className: "w-full max-w-[380px] max-h-[82dvh] overflow-auto thin-scroll bg-[#1A1A1A] border border-[#323232] rounded-[20px] p-5 shadow-2xl animate-in zoom-in-95 duration-150",
+    onClick: e => e.stopPropagation()
+  }, React.createElement("div", {
+    className: "flex items-start justify-between gap-4 mb-4"
+  }, React.createElement("div", null, React.createElement("h3", {
+    className: "text-white text-[18px] font-extrabold leading-tight"
+  }, "Debug"), React.createElement("p", {
+    className: "mt-1 text-[#A7A7A7] text-[12px] leading-relaxed"
+  }, "Local, sync, and PWA status.")), React.createElement("button", {
+    type: "button",
+    onClick: onClose,
+    className: "text-[#A7A7A7] hover:text-white transition-colors p-1.5 bg-[#2D2D2D] hover:bg-[#3E3E3E] rounded-full",
+    "aria-label": "Close"
+  }, React.createElement(X, {
+    size: 18
+  }))), React.createElement("div", {
+    className: "space-y-1.5"
+  }, rows.map(([label, value]) => React.createElement("div", {
+    key: label,
+    className: "grid grid-cols-[108px_1fr] gap-3 bg-[#111111] border border-[#2D2D2D] rounded-[10px] px-3 py-2"
+  }, React.createElement("div", {
+    className: "text-[#A7A7A7] text-[11px] font-bold"
+  }, label), React.createElement("div", {
+    className: "text-white text-[12px] font-bold break-words"
+  }, value)))), React.createElement("button", {
+    type: "button",
+    onClick: exportDebug,
+    className: "mt-4 w-full px-4 py-3 rounded-[12px] bg-[#FFD2D7] text-black text-[13px] font-extrabold hover:bg-[#ffe1e5] transition-colors"
+  }, "Export debug JSON")));
 }
 function ActionLinesModal({
   modal,
@@ -3374,6 +3691,7 @@ function App() {
   const [isNotesViewMenuOpen, setIsNotesViewMenuOpen] = useState(false);
   const [isNotesViewByMenuOpen, setIsNotesViewByMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const [toast, setToast] = useState("");
   const [flashTarget, setFlashTarget] = useState(null);
   const [syncStatus, setSyncStatus] = useState(navigator.onLine ? "saved" : "offline");
@@ -3398,6 +3716,23 @@ function App() {
   function showToast(message) {
     setToast(message);
     setTimeout(() => setToast(""), 2600);
+  }
+  function requestConfirm(options, onConfirm) {
+    setConfirmDialog({
+      title: options?.title || "Are you sure?",
+      body: options?.body || "",
+      confirmLabel: options?.confirmLabel || "Confirm",
+      danger: options?.danger !== false,
+      onConfirm
+    });
+  }
+  function confirmDeleteNote(onConfirm) {
+    requestConfirm({
+      title: "Delete note?",
+      body: "This removes the note from this workspace. You can restore only from backup.",
+      confirmLabel: "Delete",
+      danger: true
+    }, onConfirm);
   }
   function closeFloating() {
     setIsHeaderMenuOpen(false);
@@ -4453,12 +4788,16 @@ function App() {
     });
   }
   function exportJson() {
-    const blob = new Blob([JSON.stringify(sanitizedState(db), null, 2)], {
+    const clean = sanitizedState(db);
+    const backup = createBackupEnvelope(clean, {
+      appVersion: `state-v${clean.version || 1}`
+    });
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
       type: "application/json"
     });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `liems-planner-backup-${todayYMD()}.json`;
+    a.download = `liems-planner-backup-v${BACKUP_VERSION}-${todayYMD()}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -4469,25 +4808,86 @@ function App() {
     if (!file) return;
     try {
       const text = await file.text();
-      const next = normalizeState(JSON.parse(text));
-      commit("Import JSON", state => {
-        state.version = next.version;
-        state.meta = next.meta;
-        state.boxNodes = next.boxNodes;
-        state.actionDays = next.actionDays;
-        state.notes = next.notes;
-        state.noteLinks = next.noteLinks;
-        state.ui = next.ui;
-      }, {
-        sync: false
+      const parsed = readBackupEnvelope(text);
+      const next = normalizeState(parsed.data);
+      setModal({
+        type: "importPreview",
+        state: next,
+        summary: parsed.summary,
+        legacy: parsed.legacy,
+        backupVersion: parsed.envelope?.version,
+        fileName: file.name
       });
-      showToast("Imported JSON");
+      showToast("Backup ready to import");
     } catch (error) {
       console.warn(error);
       showToast("Invalid JSON file");
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  }
+  function applyImportedState(mode) {
+    if (modal?.type !== "importPreview") return;
+    const next = mode === "merge" ? mergeImportedState(db, modal.state) : normalizeState(modal.state);
+    commit(mode === "merge" ? "Merge JSON" : "Replace JSON", state => {
+      state.version = next.version;
+      state.meta = next.meta;
+      state.boxNodes = next.boxNodes;
+      state.actionDays = next.actionDays;
+      state.notes = next.notes;
+      state.noteLinks = next.noteLinks;
+      state.ui = next.ui;
+    }, {
+      sync: false
+    });
+    setModal(null);
+    showToast(mode === "merge" ? "Merged backup" : "Imported backup");
+  }
+  function countNodeEntries(nodes = []) {
+    return nodes.reduce((total, node) => total + entriesFor(node).length, 0);
+  }
+  function makeDebugInfo() {
+    const clean = sanitizedState(db);
+    const payload = JSON.stringify(clean);
+    const key = localKey(currentUser?.id);
+    let localBytes = 0;
+    try {
+      localBytes = snapshotPayloadBytes(localStorage.getItem(key) || "");
+    } catch {}
+    const entries = (clean.actionDays || []).reduce((total, day) => total + countNodeEntries(day.nodes || []), 0);
+    return {
+      buildId: APP_BUILD_ID,
+      cacheName: APP_CACHE_NAME,
+      route: window.location.hash || "#/boxes",
+      user: currentUser?.email || currentUser?.id || "local",
+      online: navigator.onLine,
+      standalone: Boolean(window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator?.standalone),
+      serviceWorker: navigator.serviceWorker?.controller ? "controlled" : "serviceWorker" in navigator ? "registered/pending" : "unavailable",
+      syncStatus,
+      syncLabel,
+      pendingSync: Boolean(clean.meta?.pendingSync),
+      localUpdatedAt: clean.meta?.localUpdatedAt || "",
+      cloudUpdatedAt: clean.meta?.cloudUpdatedAt || "",
+      lastSyncedAt: clean.meta?.lastSyncedAt || "",
+      snapshotBytes: snapshotPayloadBytes(payload),
+      snapshotKb: Math.ceil(snapshotPayloadBytes(payload) / 1024),
+      localStorageKey: key,
+      localStorageBytes: localBytes,
+      counts: {
+        boxes: (clean.boxNodes || []).length,
+        actionDays: (clean.actionDays || []).length,
+        entries,
+        notes: (clean.notes || []).filter(note => !note.deletedAt).length,
+        noteLinks: (clean.noteLinks || []).length
+      }
+    };
+  }
+  function openDebugPanel() {
+    setModal({
+      type: "debug",
+      info: makeDebugInfo()
+    });
+    setIsHeaderMenuOpen(false);
   }
   function exportAiNotes(options = {}) {
     const tags = exportTagsFromInput(options.tagsInput || "");
@@ -4554,6 +4954,10 @@ function App() {
       noteId
     });
   }
+  function preferredFreeNoteDate() {
+    const filters = parseExportDateFilters(db.ui.notesDatesInput || "");
+    return filters.length === 1 && filters[0].type === "date" ? filters[0].date : todayYMD();
+  }
   function createFreeNote() {
     setDb(prev => markPendingSync({
       ...prev,
@@ -4566,14 +4970,13 @@ function App() {
     setModal({
       type: "centralNote",
       noteId: null,
-      noteDate: todayYMD()
+      noteDate: preferredFreeNoteDate()
     });
   }
   function requestDeleteCentralNote(noteId) {
-    if (!window.confirm("Delete this note?")) return;
-    deleteCentralNote({
+    confirmDeleteNote(() => deleteCentralNote({
       noteId
-    });
+    }));
   }
   function openNotesExport() {
     setModal({
@@ -4691,12 +5094,11 @@ function App() {
       entryId
     }),
     deleteActionNote: (dayId, nodeId, entryId) => {
-      if (!window.confirm("Delete this note?")) return;
-      deleteActionNote({
+      confirmDeleteNote(() => deleteActionNote({
         dayId,
         nodeId,
         entryId
-      });
+      }));
     },
     toggleEntry,
     renameEntry,
@@ -4722,6 +5124,7 @@ function App() {
     onSyncNow: syncNow,
     onExport: exportJson,
     onImportClick: () => fileInputRef.current?.click(),
+    onOpenDebug: openDebugPanel,
     onImportFile: e => importJson(e.target.files?.[0]),
     onSignOut: signOut,
     fileInputRef: fileInputRef
@@ -5040,27 +5443,45 @@ function App() {
     state: db,
     onClose: () => setModal(null),
     onSave: saveBoxNote,
-    onDelete: deleteBoxNote
+    onDelete: deleteBoxNote,
+    onConfirmDelete: confirmDeleteNote
   }), modal?.type === "actionNote" && React.createElement(RichNoteModal, {
     modal: modal,
     state: db,
     onClose: () => setModal(null),
     onSave: saveActionNote,
-    onDelete: deleteActionNote
+    onDelete: deleteActionNote,
+    onConfirmDelete: confirmDeleteNote
   }), modal?.type === "centralNote" && React.createElement(RichNoteModal, {
     modal: modal,
     state: db,
     onClose: () => setModal(null),
     onSave: saveCentralNote,
-    onDelete: deleteCentralNote
+    onDelete: deleteCentralNote,
+    onConfirmDelete: confirmDeleteNote
   }), modal?.type === "notesExport" && React.createElement(ExportNotesModal, {
     tags: noteTags,
     onClose: () => setModal(null),
     onExport: exportAiNotes
+  }), modal?.type === "importPreview" && React.createElement(ImportPreviewModal, {
+    modal: modal,
+    onClose: () => setModal(null),
+    onImport: applyImportedState
+  }), modal?.type === "debug" && React.createElement(DebugPanel, {
+    info: modal.info || makeDebugInfo(),
+    onClose: () => setModal(null)
   }), modal?.type === "actionLines" && React.createElement(ActionLinesModal, {
     modal: modal,
     onClose: () => setModal(null),
     onSave: addActionEntries
+  }), React.createElement(ConfirmModal, {
+    dialog: confirmDialog,
+    onCancel: () => setConfirmDialog(null),
+    onConfirm: () => {
+      const run = confirmDialog?.onConfirm;
+      setConfirmDialog(null);
+      run?.();
+    }
   }), toast && React.createElement("div", {
     className: "fixed left-1/2 bottom-6 -translate-x-1/2 z-[60] bg-[#1A1A1A] border border-[#444] text-white text-[13px] font-bold px-4 py-3 rounded-full shadow-2xl"
   }, toast)));
