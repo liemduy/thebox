@@ -51,6 +51,8 @@ test("parses and builds notes route filters", () => {
   assert.equal(core.routeView(route), "notes");
   assert.deepEqual(route.ui, {
     notesView: "free",
+    notesDate: "all",
+    notesTag: "",
     notesTagsInput: "idea,work",
     notesDatesInput: "22/05/2026, 01/05/2026 - 22/05/2026"
   });
@@ -71,7 +73,8 @@ test("keeps legacy note route params compatible", () => {
     notesView: "free",
     notesDate: "30",
     notesTagsInput: "idea",
-    notesTag: "idea"
+    notesTag: "idea",
+    notesDatesInput: ""
   });
   assert.equal(
     core.buildAppHash({
@@ -82,6 +85,26 @@ test("keeps legacy note route params compatible", () => {
     }),
     "#/notes?view=linked&tags=project&date=today"
   );
+});
+
+test("resets omitted note route filters to defaults", () => {
+  const route = core.parseRouteHash("#/notes?view=all");
+  assert.deepEqual(route.ui, {
+    notesView: "all",
+    notesDate: "all",
+    notesTag: "",
+    notesTagsInput: "",
+    notesDatesInput: ""
+  });
+
+  const search = core.parseRouteHash("#/search?tab=notes&q=idea");
+  assert.deepEqual(search.ui, {
+    notesView: "linked",
+    notesDate: "all",
+    notesTag: "",
+    notesTagsInput: "",
+    notesDatesInput: ""
+  });
 });
 
 test("normalizes cascade mode maps without keeping garbage", () => {

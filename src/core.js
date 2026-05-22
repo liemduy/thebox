@@ -73,7 +73,13 @@
   }
 
   function parseNotesRouteParams(params) {
-    const ui = {};
+    const ui = {
+      notesView: "linked",
+      notesDate: "all",
+      notesTag: "",
+      notesTagsInput: "",
+      notesDatesInput: ""
+    };
     const view = params.get("view");
     const date = params.get("date");
     const tags = params.get("tags");
@@ -82,8 +88,8 @@
     if (NOTES_VIEW_VALUES.has(view)) ui.notesView = view;
     if (NOTES_DATE_VALUES.has(date)) ui.notesDate = date;
     if (tags !== null) ui.notesTagsInput = tags;
-    else if (legacyTag) ui.notesTagsInput = legacyTag;
-    if (legacyTag) ui.notesTag = legacyTag;
+    else if (legacyTag !== null) ui.notesTagsInput = legacyTag;
+    if (legacyTag !== null) ui.notesTag = legacyTag;
     if (dates !== null) ui.notesDatesInput = dates;
     return ui;
   }

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v55-hardening-routes-sync';
+const CACHE_NAME = 'idea-box-v56-route-reset-offline-fetch';
 const APP_SHELL = [
   './',
   './index.html',
@@ -54,7 +54,7 @@ self.addEventListener('fetch', event => {
           caches.open(CACHE_NAME).then(cache => cache.put(request, clone)).catch(() => {});
         }
         return response;
-      });
+      }).catch(() => cached || Response.error());
       return cached || fetched;
     })
   );
