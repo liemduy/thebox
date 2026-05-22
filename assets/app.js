@@ -996,6 +996,8 @@ function defaultUI() {
     notesView: "linked",
     notesTag: "",
     notesDate: "all",
+    notesTagsInput: "",
+    notesDatesInput: "",
     collapsedBoxNodes: [],
     expandedBoxNodes: [],
     expandedBoxActionDays: [],
@@ -1581,7 +1583,9 @@ function exportTagsFromInput(input) {
 }
 function filteredNotes(state) {
   const view = state.ui.notesView || "linked";
-  return activeNotes(state).filter(note => view === "all" || (view === "linked" ? noteIsLinked(state, note.id) : !noteIsLinked(state, note.id))).sort((a, b) => {
+  const tags = exportTagsFromInput(state.ui.notesTagsInput || state.ui.notesTag || "");
+  const dateFilters = parseExportDateFilters(state.ui.notesDatesInput || "");
+  return activeNotes(state).filter(note => view === "all" || (view === "linked" ? noteIsLinked(state, note.id) : !noteIsLinked(state, note.id))).filter(note => !tags.length || tags.every(tag => (note.tags || []).includes(tag))).filter(note => noteMatchesExportDates(note, dateFilters)).sort((a, b) => {
     const pin = timestampMs(b.pinnedAt) - timestampMs(a.pinnedAt);
     if (pin) return pin;
     return b.noteDate.localeCompare(a.noteDate) || timestampMs(b.updatedAt) - timestampMs(a.updatedAt);
@@ -1888,6 +1892,7 @@ function NoteCard({
   flashTarget
 }) {
   const preview = notePreview(note);
+  const linked = noteIsLinked(state, note.id);
   return React.createElement("div", {
     "data-note-id": note.id,
     className: `group bg-[#141414] border border-white/[0.04] rounded-[12px] px-4 py-3.5 ${flashTarget?.type === "note" && flashTarget.id === note.id ? "flash-target" : ""}`
@@ -1898,7 +1903,7 @@ function NoteCard({
     onClick: () => onOpen(note.id),
     className: "min-w-0 flex-1 text-left"
   }, React.createElement("h3", {
-    className: "text-white font-extrabold text-[15.5px] leading-snug truncate"
+    className: `font-extrabold text-[15.5px] leading-snug truncate ${linked ? "text-white not-italic" : "text-[#FFD2D7] italic"}`
   }, React.createElement(HighlightText, {
     text: noteDisplayTitle(note),
     query: query
@@ -1919,18 +1924,29 @@ function NoteCard({
 function NotesPanel({
   state,
   notes,
+  tags,
   isViewMenuOpen,
   setIsViewMenuOpen,
+  isViewByMenuOpen,
+  setIsViewByMenuOpen,
   onCreateNote,
   onOpenNote,
   onDeleteNote,
   onSetView,
+  onSetViewBy,
   onOpenExport,
   flashTarget
 }) {
   const groups = groupNotesByDate(notes);
   const view = state.ui.notesView || "linked";
   const viewLabel = view === "linked" ? "Linked" : view === "free" ? "Free" : "All";
+  const tagsInput = state.ui.notesTagsInput || "";
+  const datesInput = state.ui.notesDatesInput || "";
+  const selectedTags = exportTagsFromInput(tagsInput);
+  const activeTagNeedle = normalizeTag(String(tagsInput || "").split(",").pop() || "");
+  const tagHints = tags.filter(tag => !selectedTags.includes(tag)).filter(tag => !activeTagNeedle || tag.includes(activeTagNeedle)).slice(0, 5);
+  const dateFilters = parseExportDateFilters(datesInput);
+  const hasViewBy = Boolean(selectedTags.length || datesInput.trim());
   return React.createElement("div", {
     className: "animate-in fade-in slide-in-from-bottom-4 duration-300 flex-1 flex flex-col"
   }, React.createElement("div", {
@@ -1955,7 +1971,60 @@ function NotesPanel({
       setIsViewMenuOpen(false);
     },
     className: "px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors"
-  }, label)))), React.createElement("button", {
+  }, label)))), React.createElement("div", {
+    className: "relative"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      setIsViewByMenuOpen(!isViewByMenuOpen);
+      setIsViewMenuOpen(false);
+    },
+    className: `px-5 py-2 bg-transparent active:scale-95 text-white text-[13px] font-bold rounded-full border transition-all ${hasViewBy ? "border-[#FFD2D7] text-[#FFD2D7]" : "border-[#878787] hover:border-white"}`
+  }, "View by"), isViewByMenuOpen && React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "absolute top-full left-0 mt-2 w-[300px] max-w-[calc(100vw-2.5rem)] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] p-3 flex flex-col gap-3 origin-top-left animate-in fade-in zoom-in-95 duration-100"
+  }, React.createElement("label", {
+    className: "block"
+  }, React.createElement("span", {
+    className: "block text-[11px] text-[#A7A7A7] font-extrabold mb-1.5"
+  }, "Hashtags"), React.createElement("input", {
+    value: tagsInput,
+    onChange: e => onSetViewBy({
+      tagsInput: e.target.value
+    }),
+    placeholder: "#idea, #work",
+    className: "w-full bg-[#111111] border border-[#323232] rounded-[10px] px-3 py-2.5 text-white text-[13px] outline-none focus:border-[#FFD2D7] placeholder:text-[#555555]"
+  }), tagHints.length ? React.createElement("div", {
+    className: "mt-2 flex flex-wrap gap-1.5"
+  }, tagHints.map(tag => React.createElement("button", {
+    key: tag,
+    type: "button",
+    onClick: () => onSetViewBy({
+      tagsInput: replaceLastCsvToken(tagsInput, tag)
+    }),
+    className: "text-[11px] font-bold text-[#FFD2D7] bg-[#FFD2D7]/[0.08] px-2 py-1 rounded-full"
+  }, "#", tag))) : null), React.createElement("label", {
+    className: "block"
+  }, React.createElement("span", {
+    className: "block text-[11px] text-[#A7A7A7] font-extrabold mb-1.5"
+  }, "Dates"), React.createElement("input", {
+    value: datesInput,
+    onChange: e => onSetViewBy({
+      datesInput: e.target.value
+    }),
+    placeholder: "22/05/2026, 01/05/2026 - 22/05/2026",
+    className: "w-full bg-[#111111] border border-[#323232] rounded-[10px] px-3 py-2.5 text-white text-[13px] outline-none focus:border-[#FFD2D7] placeholder:text-[#555555]"
+  }), datesInput.trim() ? React.createElement("div", {
+    className: `mt-2 text-[11px] font-bold ${dateFilters.length ? "text-[#A7A7A7]" : "text-red-300"}`
+  }, dateFilters.length ? `${dateFilters.length} date filter${dateFilters.length > 1 ? "s" : ""}` : "Use dd/mm/yyyy or dd/mm/yyyy - dd/mm/yyyy") : null), React.createElement("button", {
+    type: "button",
+    onClick: () => onSetViewBy({
+      tagsInput: "",
+      datesInput: ""
+    }),
+    className: "self-start text-[12px] font-extrabold text-[#FFD2D7] hover:text-white transition-colors px-1"
+  }, "Clear"))), React.createElement("button", {
     type: "button",
     onClick: onOpenExport,
     className: "px-5 py-2 bg-transparent hover:border-white active:scale-95 text-white text-[13px] font-bold rounded-full border border-[#878787] transition-all flex items-center gap-2"
@@ -2655,9 +2724,10 @@ function RichNoteModal({
       frameId = window.requestAnimationFrame(() => {
         const viewport = window.visualViewport;
         const mobile = isMobileViewport();
+        const layoutHeight = Math.max(window.innerHeight, document.documentElement?.clientHeight || 0);
         const viewportHeight = viewport?.height || window.innerHeight;
         const viewportOffsetTop = viewport?.offsetTop || 0;
-        const keyboardInset = Math.max(0, window.innerHeight - viewportHeight - viewportOffsetTop);
+        const keyboardInset = Math.max(0, layoutHeight - viewportHeight - viewportOffsetTop);
         const keyboardOpen = mobile && keyboardInset > 80;
         const next = {
           bottom: keyboardOpen ? Math.round(keyboardInset) : 0,
@@ -2810,19 +2880,24 @@ function RichNoteModal({
       entryId: modal.entryId
     });
   }
+  const mobileToolbarRoom = toolbarFrame.keyboardOpen ? toolbarFrame.bottom + 66 : 92;
   const modalShellStyle = toolbarFrame.mobile ? {
-    paddingBottom: toolbarFrame.keyboardOpen ? `${toolbarFrame.bottom + 70}px` : "calc(92px + env(safe-area-inset-bottom, 0px))"
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 14px)",
+    paddingBottom: toolbarFrame.keyboardOpen ? `${mobileToolbarRoom}px` : "calc(92px + env(safe-area-inset-bottom, 0px))"
   } : undefined;
+  const modalShellClassName = toolbarFrame.mobile ? "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" : "fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 pb-28 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200";
+  const modalCardClassName = toolbarFrame.mobile ? "bg-[#1A1A1A] border border-[#323232] rounded-[20px] w-full max-w-[380px] p-4 shadow-2xl animate-in zoom-in-95 duration-200 relative z-10 max-h-[calc(100dvh-150px)] overflow-auto thin-scroll" : "bg-[#1A1A1A] border border-[#323232] rounded-[24px] w-full max-w-[340px] p-5 shadow-2xl animate-in zoom-in-95 duration-200 relative z-10";
+  const editorClassName = toolbarFrame.mobile ? "rich-editor min-h-[185px] max-h-[40dvh] overflow-auto thin-scroll w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-[#E0E0E0] text-[14px] leading-relaxed outline-none focus:border-[#FFD2D7] transition-colors mb-4" : "rich-editor min-h-[150px] max-h-[260px] overflow-auto thin-scroll w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-[#E0E0E0] text-[14px] leading-relaxed outline-none focus:border-[#FFD2D7] transition-colors mb-5";
   const toolbarClassName = toolbarFrame.mobile ? `fixed left-0 right-0 w-full max-w-none translate-x-0 bg-[#232323] border-t border-[#3E3E3E] border-x-0 border-b-0 rounded-none px-5 ${toolbarFrame.keyboardOpen ? "py-3" : "pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"} flex items-center justify-between shadow-[0_-12px_30px_rgba(0,0,0,0.32)] z-50` : "fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-[340px] bg-[#232323] border border-[#3E3E3E] rounded-[14px] px-5 py-3.5 flex items-center justify-between shadow-2xl z-50";
   const toolbarStyle = toolbarFrame.mobile ? {
     bottom: `${toolbarFrame.bottom}px`
   } : undefined;
   return React.createElement("div", {
-    className: "fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 pb-28 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200",
+    className: modalShellClassName,
     style: modalShellStyle,
     onClick: onClose
   }, React.createElement("div", {
-    className: "bg-[#1A1A1A] border border-[#323232] rounded-[24px] w-full max-w-[340px] p-5 shadow-2xl animate-in zoom-in-95 duration-200 relative z-10",
+    className: modalCardClassName,
     onClick: e => e.stopPropagation()
   }, React.createElement("div", {
     className: "flex justify-between items-center mb-5"
@@ -2856,7 +2931,7 @@ function RichNoteModal({
     suppressContentEditableWarning: true,
     spellCheck: "true",
     "data-placeholder": "Write your note here...",
-    className: "rich-editor min-h-[150px] max-h-[260px] overflow-auto thin-scroll w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-[#E0E0E0] text-[14px] leading-relaxed outline-none focus:border-[#FFD2D7] transition-colors mb-5"
+    className: editorClassName
   }), React.createElement("div", {
     className: "flex gap-3"
   }, React.createElement("button", {
@@ -3072,6 +3147,7 @@ function App() {
   const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
   const [isNotesViewMenuOpen, setIsNotesViewMenuOpen] = useState(false);
+  const [isNotesViewByMenuOpen, setIsNotesViewByMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState("");
   const [flashTarget, setFlashTarget] = useState(null);
@@ -3106,6 +3182,7 @@ function App() {
     setIsDateMenuOpen(false);
     setIsActionsMenuOpen(false);
     setIsNotesViewMenuOpen(false);
+    setIsNotesViewByMenuOpen(false);
   }
   function openNodeMenu(menuId, event, estimatedHeight) {
     event?.stopPropagation?.();
@@ -3132,6 +3209,7 @@ function App() {
     setIsDateMenuOpen(false);
     setIsActionsMenuOpen(false);
     setIsNotesViewMenuOpen(false);
+    setIsNotesViewByMenuOpen(false);
   }
   function applyHashRoute(route = parseRouteHash()) {
     routeApplyRef.current = true;
@@ -4216,6 +4294,16 @@ function App() {
       }
     }));
   }
+  function setNotesViewBy(patch) {
+    setDb(prev => markPendingSync({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        notesTagsInput: patch.tagsInput !== undefined ? patch.tagsInput : prev.ui.notesTagsInput || "",
+        notesDatesInput: patch.datesInput !== undefined ? patch.datesInput : prev.ui.notesDatesInput || ""
+      }
+    }));
+  }
   function toggleSearchFilter(key) {
     setSearchFilters(prev => {
       const next = {
@@ -4693,12 +4781,16 @@ function App() {
   }, "No items match this filter."))), currentView === "notes" && React.createElement(NotesPanel, {
     state: db,
     notes: notesForView,
+    tags: noteTags,
     isViewMenuOpen: isNotesViewMenuOpen,
     setIsViewMenuOpen: setIsNotesViewMenuOpen,
+    isViewByMenuOpen: isNotesViewByMenuOpen,
+    setIsViewByMenuOpen: setIsNotesViewByMenuOpen,
     onCreateNote: createFreeNote,
     onOpenNote: openCentralNote,
     onDeleteNote: requestDeleteCentralNote,
     onSetView: value => setNotesUI("notesView", value),
+    onSetViewBy: setNotesViewBy,
     onOpenExport: openNotesExport,
     flashTarget: flashTarget
   })), modal?.type === "boxNote" && React.createElement(RichNoteModal, {

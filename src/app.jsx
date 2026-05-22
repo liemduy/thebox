@@ -258,6 +258,8 @@ function defaultUI() {
     notesView: "linked",
     notesTag: "",
     notesDate: "all",
+    notesTagsInput: "",
+    notesDatesInput: "",
     collapsedBoxNodes: [],
     expandedBoxNodes: [],
     expandedBoxActionDays: [],
@@ -739,8 +741,12 @@ function exportTagsFromInput(input) {
 }
 function filteredNotes(state) {
   const view = state.ui.notesView || "linked";
+  const tags = exportTagsFromInput(state.ui.notesTagsInput || state.ui.notesTag || "");
+  const dateFilters = parseExportDateFilters(state.ui.notesDatesInput || "");
   return activeNotes(state)
     .filter(note => view === "all" || (view === "linked" ? noteIsLinked(state, note.id) : !noteIsLinked(state, note.id)))
+    .filter(note => !tags.length || tags.every(tag => (note.tags || []).includes(tag)))
+    .filter(note => noteMatchesExportDates(note, dateFilters))
     .sort((a, b) => {
       const pin = timestampMs(b.pinnedAt) - timestampMs(a.pinnedAt);
       if (pin) return pin;
@@ -974,11 +980,12 @@ function SearchPanel({ isOpen, query, setQuery, results, filters, onToggleFilter
 
 function NoteCard({ state, note, query = "", onOpen, onDelete, flashTarget }) {
   const preview = notePreview(note);
+  const linked = noteIsLinked(state, note.id);
   return (
     <div data-note-id={note.id} className={`group bg-[#141414] border border-white/[0.04] rounded-[12px] px-4 py-3.5 ${flashTarget?.type === "note" && flashTarget.id === note.id ? "flash-target" : ""}`}>
       <div className="flex items-start gap-3">
         <button type="button" onClick={() => onOpen(note.id)} className="min-w-0 flex-1 text-left">
-          <h3 className="text-white font-extrabold text-[15.5px] leading-snug truncate">
+          <h3 className={`font-extrabold text-[15.5px] leading-snug truncate ${linked ? "text-white not-italic" : "text-[#FFD2D7] italic"}`}>
             <HighlightText text={noteDisplayTitle(note)} query={query} />
           </h3>
           <p className="text-[#A7A7A7] text-[13px] leading-snug mt-1 truncate">
@@ -993,10 +1000,20 @@ function NoteCard({ state, note, query = "", onOpen, onDelete, flashTarget }) {
   );
 }
 
-function NotesPanel({ state, notes, isViewMenuOpen, setIsViewMenuOpen, onCreateNote, onOpenNote, onDeleteNote, onSetView, onOpenExport, flashTarget }) {
+function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isViewByMenuOpen, setIsViewByMenuOpen, onCreateNote, onOpenNote, onDeleteNote, onSetView, onSetViewBy, onOpenExport, flashTarget }) {
   const groups = groupNotesByDate(notes);
   const view = state.ui.notesView || "linked";
   const viewLabel = view === "linked" ? "Linked" : view === "free" ? "Free" : "All";
+  const tagsInput = state.ui.notesTagsInput || "";
+  const datesInput = state.ui.notesDatesInput || "";
+  const selectedTags = exportTagsFromInput(tagsInput);
+  const activeTagNeedle = normalizeTag(String(tagsInput || "").split(",").pop() || "");
+  const tagHints = tags
+    .filter(tag => !selectedTags.includes(tag))
+    .filter(tag => !activeTagNeedle || tag.includes(activeTagNeedle))
+    .slice(0, 5);
+  const dateFilters = parseExportDateFilters(datesInput);
+  const hasViewBy = Boolean(selectedTags.length || datesInput.trim());
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 flex-1 flex flex-col">
       <div className="filter-row flex flex-wrap items-center gap-2.5 mb-5 relative z-20">
@@ -1009,6 +1026,36 @@ function NotesPanel({ state, notes, isViewMenuOpen, setIsViewMenuOpen, onCreateN
               {[["linked", "Linked"], ["free", "Free"], ["all", "All"]].map(([value, label]) => (
                 <button key={value} type="button" onClick={() => { onSetView(value); setIsViewMenuOpen(false); }} className="px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors">{label}</button>
               ))}
+            </div>
+          )}
+        </div>
+        <div className="relative">
+          <button type="button" onClick={(e) => { e.stopPropagation(); setIsViewByMenuOpen(!isViewByMenuOpen); setIsViewMenuOpen(false); }} className={`px-5 py-2 bg-transparent active:scale-95 text-white text-[13px] font-bold rounded-full border transition-all ${hasViewBy ? "border-[#FFD2D7] text-[#FFD2D7]" : "border-[#878787] hover:border-white"}`}>
+            View by
+          </button>
+          {isViewByMenuOpen && (
+            <div onClick={e => e.stopPropagation()} className="absolute top-full left-0 mt-2 w-[300px] max-w-[calc(100vw-2.5rem)] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] p-3 flex flex-col gap-3 origin-top-left animate-in fade-in zoom-in-95 duration-100">
+              <label className="block">
+                <span className="block text-[11px] text-[#A7A7A7] font-extrabold mb-1.5">Hashtags</span>
+                <input value={tagsInput} onChange={(e) => onSetViewBy({ tagsInput: e.target.value })} placeholder="#idea, #work" className="w-full bg-[#111111] border border-[#323232] rounded-[10px] px-3 py-2.5 text-white text-[13px] outline-none focus:border-[#FFD2D7] placeholder:text-[#555555]" />
+                {tagHints.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {tagHints.map(tag => (
+                      <button key={tag} type="button" onClick={() => onSetViewBy({ tagsInput: replaceLastCsvToken(tagsInput, tag) })} className="text-[11px] font-bold text-[#FFD2D7] bg-[#FFD2D7]/[0.08] px-2 py-1 rounded-full">#{tag}</button>
+                    ))}
+                  </div>
+                ) : null}
+              </label>
+              <label className="block">
+                <span className="block text-[11px] text-[#A7A7A7] font-extrabold mb-1.5">Dates</span>
+                <input value={datesInput} onChange={(e) => onSetViewBy({ datesInput: e.target.value })} placeholder="22/05/2026, 01/05/2026 - 22/05/2026" className="w-full bg-[#111111] border border-[#323232] rounded-[10px] px-3 py-2.5 text-white text-[13px] outline-none focus:border-[#FFD2D7] placeholder:text-[#555555]" />
+                {datesInput.trim() ? (
+                  <div className={`mt-2 text-[11px] font-bold ${dateFilters.length ? "text-[#A7A7A7]" : "text-red-300"}`}>
+                    {dateFilters.length ? `${dateFilters.length} date filter${dateFilters.length > 1 ? "s" : ""}` : "Use dd/mm/yyyy or dd/mm/yyyy - dd/mm/yyyy"}
+                  </div>
+                ) : null}
+              </label>
+              <button type="button" onClick={() => onSetViewBy({ tagsInput: "", datesInput: "" })} className="self-start text-[12px] font-extrabold text-[#FFD2D7] hover:text-white transition-colors px-1">Clear</button>
             </div>
           )}
         </div>
@@ -1455,9 +1502,10 @@ function RichNoteModal({ modal, state, onClose, onSave, onDelete }) {
       frameId = window.requestAnimationFrame(() => {
         const viewport = window.visualViewport;
         const mobile = isMobileViewport();
+        const layoutHeight = Math.max(window.innerHeight, document.documentElement?.clientHeight || 0);
         const viewportHeight = viewport?.height || window.innerHeight;
         const viewportOffsetTop = viewport?.offsetTop || 0;
-        const keyboardInset = Math.max(0, window.innerHeight - viewportHeight - viewportOffsetTop);
+        const keyboardInset = Math.max(0, layoutHeight - viewportHeight - viewportOffsetTop);
         const keyboardOpen = mobile && keyboardInset > 80;
         const next = {
           bottom: keyboardOpen ? Math.round(keyboardInset) : 0,
@@ -1594,17 +1642,30 @@ function RichNoteModal({ modal, state, onClose, onSave, onDelete }) {
     else onDelete({ dayId: modal.dayId, nodeId: modal.nodeId, entryId: modal.entryId });
   }
 
+  const mobileToolbarRoom = toolbarFrame.keyboardOpen ? toolbarFrame.bottom + 66 : 92;
   const modalShellStyle = toolbarFrame.mobile
-    ? { paddingBottom: toolbarFrame.keyboardOpen ? `${toolbarFrame.bottom + 70}px` : "calc(92px + env(safe-area-inset-bottom, 0px))" }
+    ? {
+        paddingTop: "calc(env(safe-area-inset-top, 0px) + 14px)",
+        paddingBottom: toolbarFrame.keyboardOpen ? `${mobileToolbarRoom}px` : "calc(92px + env(safe-area-inset-bottom, 0px))"
+      }
     : undefined;
+  const modalShellClassName = toolbarFrame.mobile
+    ? "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+    : "fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 pb-28 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200";
+  const modalCardClassName = toolbarFrame.mobile
+    ? "bg-[#1A1A1A] border border-[#323232] rounded-[20px] w-full max-w-[380px] p-4 shadow-2xl animate-in zoom-in-95 duration-200 relative z-10 max-h-[calc(100dvh-150px)] overflow-auto thin-scroll"
+    : "bg-[#1A1A1A] border border-[#323232] rounded-[24px] w-full max-w-[340px] p-5 shadow-2xl animate-in zoom-in-95 duration-200 relative z-10";
+  const editorClassName = toolbarFrame.mobile
+    ? "rich-editor min-h-[185px] max-h-[40dvh] overflow-auto thin-scroll w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-[#E0E0E0] text-[14px] leading-relaxed outline-none focus:border-[#FFD2D7] transition-colors mb-4"
+    : "rich-editor min-h-[150px] max-h-[260px] overflow-auto thin-scroll w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-[#E0E0E0] text-[14px] leading-relaxed outline-none focus:border-[#FFD2D7] transition-colors mb-5";
   const toolbarClassName = toolbarFrame.mobile
     ? `fixed left-0 right-0 w-full max-w-none translate-x-0 bg-[#232323] border-t border-[#3E3E3E] border-x-0 border-b-0 rounded-none px-5 ${toolbarFrame.keyboardOpen ? "py-3" : "pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"} flex items-center justify-between shadow-[0_-12px_30px_rgba(0,0,0,0.32)] z-50`
     : "fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-[340px] bg-[#232323] border border-[#3E3E3E] rounded-[14px] px-5 py-3.5 flex items-center justify-between shadow-2xl z-50";
   const toolbarStyle = toolbarFrame.mobile ? { bottom: `${toolbarFrame.bottom}px` } : undefined;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 pb-28 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" style={modalShellStyle} onClick={onClose}>
-      <div className="bg-[#1A1A1A] border border-[#323232] rounded-[24px] w-full max-w-[340px] p-5 shadow-2xl animate-in zoom-in-95 duration-200 relative z-10" onClick={e => e.stopPropagation()}>
+    <div className={modalShellClassName} style={modalShellStyle} onClick={onClose}>
+      <div className={modalCardClassName} onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-5">
           <h3 className="font-bold text-[18px] text-white">{isCentralNote ? modal.noteId ? "Edit note" : "New note" : isBoxNote ? "Box notes" : modal.entryId ? "Edit note" : "Add note"}</h3>
           <div className="flex items-center gap-2">
@@ -1615,7 +1676,7 @@ function RichNoteModal({ modal, state, onClose, onSave, onDelete }) {
           </div>
         </div>
         <input ref={titleRef} type="text" placeholder="Note title" defaultValue={initialTitle} className="w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-white text-[15px] font-bold outline-none focus:border-[#FFD2D7] placeholder:text-[#555555] transition-colors mb-3" />
-        <div ref={editorRef} contentEditable suppressContentEditableWarning spellCheck="true" data-placeholder="Write your note here..." className="rich-editor min-h-[150px] max-h-[260px] overflow-auto thin-scroll w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-[#E0E0E0] text-[14px] leading-relaxed outline-none focus:border-[#FFD2D7] transition-colors mb-5" />
+        <div ref={editorRef} contentEditable suppressContentEditableWarning spellCheck="true" data-placeholder="Write your note here..." className={editorClassName} />
         <div className="flex gap-3">
           <button type="button" onClick={onClose} className="flex-1 bg-[#2D2D2D] hover:bg-[#3E3E3E] text-white font-bold py-3.5 rounded-[12px] transition-colors">Cancel</button>
           <button type="button" onClick={save} className="flex-1 bg-[#FFD2D7] hover:scale-[1.02] active:scale-95 text-black font-bold py-3.5 rounded-[12px] transition-transform">Done</button>
@@ -1718,6 +1779,7 @@ function App() {
   const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
   const [isNotesViewMenuOpen, setIsNotesViewMenuOpen] = useState(false);
+  const [isNotesViewByMenuOpen, setIsNotesViewByMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState("");
   const [flashTarget, setFlashTarget] = useState(null);
@@ -1755,6 +1817,7 @@ function App() {
     setIsDateMenuOpen(false);
     setIsActionsMenuOpen(false);
     setIsNotesViewMenuOpen(false);
+    setIsNotesViewByMenuOpen(false);
   }
 
   function openNodeMenu(menuId, event, estimatedHeight) {
@@ -1781,6 +1844,7 @@ function App() {
     setIsDateMenuOpen(false);
     setIsActionsMenuOpen(false);
     setIsNotesViewMenuOpen(false);
+    setIsNotesViewByMenuOpen(false);
   }
 
   function applyHashRoute(route = parseRouteHash()) {
@@ -2762,6 +2826,17 @@ function App() {
     setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, [key]: value } }));
   }
 
+  function setNotesViewBy(patch) {
+    setDb(prev => markPendingSync({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        notesTagsInput: patch.tagsInput !== undefined ? patch.tagsInput : (prev.ui.notesTagsInput || ""),
+        notesDatesInput: patch.datesInput !== undefined ? patch.datesInput : (prev.ui.notesDatesInput || "")
+      }
+    }));
+  }
+
   function toggleSearchFilter(key) {
     setSearchFilters(prev => {
       const next = { ...prev, [key]: prev[key] === false };
@@ -3029,12 +3104,16 @@ function App() {
             <NotesPanel
               state={db}
               notes={notesForView}
+              tags={noteTags}
               isViewMenuOpen={isNotesViewMenuOpen}
               setIsViewMenuOpen={setIsNotesViewMenuOpen}
+              isViewByMenuOpen={isNotesViewByMenuOpen}
+              setIsViewByMenuOpen={setIsNotesViewByMenuOpen}
               onCreateNote={createFreeNote}
               onOpenNote={openCentralNote}
               onDeleteNote={requestDeleteCentralNote}
               onSetView={(value) => setNotesUI("notesView", value)}
+              onSetViewBy={setNotesViewBy}
               onOpenExport={openNotesExport}
               flashTarget={flashTarget}
             />
