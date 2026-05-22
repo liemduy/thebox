@@ -45,6 +45,26 @@ test("builds action and search hashes with stable params", () => {
   );
 });
 
+test("parses and builds notes route filters", () => {
+  const route = core.parseRouteHash("#/notes?view=free&date=30&tag=idea");
+  assert.equal(route.name, "notes");
+  assert.equal(core.routeView(route), "notes");
+  assert.deepEqual(route.ui, {
+    notesView: "free",
+    notesDate: "30",
+    notesTag: "idea"
+  });
+  assert.equal(
+    core.buildAppHash({
+      currentView: "notes",
+      ui: { notesView: "linked", notesDate: "today", notesTag: "project" },
+      isSearchOpen: false,
+      searchQuery: ""
+    }),
+    "#/notes?view=linked&date=today&tag=project"
+  );
+});
+
 test("normalizes cascade mode maps without keeping garbage", () => {
   assert.deepEqual(
     core.normalizeModeMap({ a: "expanding", b: "collapsing", c: "bad", d: true }),

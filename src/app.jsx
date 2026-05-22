@@ -4,6 +4,8 @@ const SUPABASE_URL = "https://mmtvezpwflqbpkilkooy.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_bvZguwM4vs7ZNPr9XRCcxw_gMm1DZpU";
 const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
+const NOTES_TABLE = "idea_notes";
+const NOTE_LINKS_TABLE = "idea_note_links";
 const LEGACY_KEYS = [
   "idea-box-html-v12-stable-ids",
   "idea-box-html-v10-action-days-db",
@@ -203,6 +205,47 @@ function htmlToText(html) {
   return (div.textContent || "").replace(/\s+/g, " ").trim();
 }
 
+function validNoteDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? String(value) : todayYMD();
+}
+
+function normalizeTag(value) {
+  return String(value || "").replace(/^#/, "").trim().toLowerCase().replace(/[^\p{L}\p{N}_-]/gu, "");
+}
+
+function tagsFromText(value) {
+  const tags = new Set();
+  String(value || "").replace(/(^|[\s([{])#([\p{L}\p{N}_-]{1,48})/gu, (_, prefix, tag) => {
+    const cleaned = normalizeTag(tag);
+    if (cleaned) tags.add(cleaned);
+    return "";
+  });
+  return [...tags];
+}
+
+function normalizeTags(tags, title = "", bodyHtml = "") {
+  const out = new Set();
+  (Array.isArray(tags) ? tags : []).forEach(tag => {
+    const cleaned = normalizeTag(tag);
+    if (cleaned) out.add(cleaned);
+  });
+  tagsFromText(`${title} ${htmlToText(bodyHtml)}`).forEach(tag => out.add(tag));
+  return [...out].sort();
+}
+
+function noteBodyText(note) {
+  return String(note?.bodyText || htmlToText(note?.bodyHtml || "")).replace(/\s+/g, " ").trim();
+}
+
+function noteHasContent(note) {
+  return Boolean(cleanOptionalTitle(note?.title || "") || noteBodyText(note));
+}
+
+function boxNoteId(boxId) { return `boxnote_${boxId}`; }
+function boxNoteLinkId(boxId) { return `link_box_${boxId}`; }
+function actionNoteId(entryId) { return `actionnote_${entryId}`; }
+function actionNoteLinkId(entryId) { return `link_action_${entryId}`; }
+
 function defaultUI() {
   return {
     boxView: "active",
@@ -212,6 +255,9 @@ function defaultUI() {
     showBoxDays: true,
     selectedActionDate: todayYMD(),
     actionFilter: "all",
+    notesView: "linked",
+    notesTag: "",
+    notesDate: "all",
     collapsedBoxNodes: [],
     expandedBoxNodes: [],
     expandedBoxActionDays: [],
@@ -236,7 +282,7 @@ function seed() {
   const blog = uid("sub");
   const follow = uid("sub");
   return {
-    version: 4,
+    version: 5,
     meta: { usedIds: [content, sales, tiktok, blog, follow] },
     boxNodes: [
       { id: content, parentId: null, level: 1, title: "Content", sort: 1, boxNoteTitle: "", boxNoteHtml: "", archivedAt: null, doneAt: null, createdAt: t, updatedAt: t },
@@ -246,6 +292,8 @@ function seed() {
       { id: follow, parentId: sales, level: 2, title: "Follow up", sort: 1, boxNoteTitle: "", boxNoteHtml: "", archivedAt: null, doneAt: null, createdAt: t, updatedAt: t }
     ],
     actionDays: [],
+    notes: [],
+    noteLinks: [],
     ui: defaultUI()
   };
 }
@@ -280,7 +328,113 @@ function normalizeEntries(node) {
   return htmlToText(legacy) ? [normalizeEntry({ type: "note", title: "Note", bodyHtml: legacy })] : [];
 }
 
-function collectStateIds(boxNodes, actionDays) {
+function normalizeNote(note, index = 0) {
+  const t = now();
+  const bodyHtml = sanitizeHtml(note?.bodyHtml || note?.body_html || note?.contentHtml || note?.body || "");
+  const title = cleanOptionalTitle(note?.title || "") || (noteBodyText({ bodyHtml }) ? "Untitled" : "");
+  const bodyText = noteBodyText({ bodyHtml, bodyText: note?.bodyText || note?.body_text || "" });
+  const createdAt = validTimestamp(note?.createdAt || note?.created_at) || t;
+  const updatedAt = validTimestamp(note?.updatedAt || note?.updated_at) || createdAt;
+  return {
+    id: rememberId(note?.id || uid("note")),
+    title,
+    bodyHtml,
+    bodyText,
+    noteDate: validNoteDate(note?.noteDate || note?.note_date || String(createdAt).slice(0, 10)),
+    tags: normalizeTags(note?.tags || [], title, bodyHtml),
+    pinnedAt: validTimestamp(note?.pinnedAt || note?.pinned_at) || null,
+    archivedAt: validTimestamp(note?.archivedAt || note?.archived_at) || null,
+    deletedAt: validTimestamp(note?.deletedAt || note?.deleted_at) || null,
+    sort: Number.isFinite(+note?.sort) ? +note.sort : index + 1,
+    createdAt,
+    updatedAt,
+    clientUpdatedAt: validTimestamp(note?.clientUpdatedAt || note?.client_updated_at) || updatedAt
+  };
+}
+
+function normalizeNoteLink(link, index = 0) {
+  const type = ["box", "action_node", "action_entry", "day"].includes(link?.linkType || link?.link_type)
+    ? (link.linkType || link.link_type)
+    : "box";
+  return {
+    id: rememberId(link?.id || uid("notelink")),
+    noteId: rememberId(link?.noteId || link?.note_id || ""),
+    linkType: type,
+    boxNodeId: link?.boxNodeId || link?.box_node_id || null,
+    actionDate: validYMD(link?.actionDate || link?.action_date) ? (link.actionDate || link.action_date) : null,
+    actionNodeId: link?.actionNodeId || link?.action_node_id || null,
+    actionEntryId: link?.actionEntryId || link?.action_entry_id || null,
+    sort: Number.isFinite(+link?.sort) ? +link.sort : index + 1,
+    createdAt: validTimestamp(link?.createdAt || link?.created_at) || now()
+  };
+}
+
+function upsertNoteLink(state, link) {
+  if (!link?.noteId) return;
+  const normalized = normalizeNoteLink(link, state.noteLinks?.length || 0);
+  const existing = (state.noteLinks || []).find(item => item.id === normalized.id);
+  if (existing) Object.assign(existing, normalized);
+  else state.noteLinks.push(normalized);
+}
+
+function upsertLegacyNote(state, note, link) {
+  if (!note?.id || !noteHasContent(note)) return;
+  const normalized = normalizeNote(note, state.notes?.length || 0);
+  const existing = (state.notes || []).find(item => item.id === normalized.id);
+  if (!existing) state.notes.push(normalized);
+  upsertNoteLink(state, { ...link, noteId: normalized.id });
+}
+
+function ensureCentralNotes(state) {
+  state.notes = Array.isArray(state.notes) ? state.notes : [];
+  state.noteLinks = Array.isArray(state.noteLinks) ? state.noteLinks : [];
+  (state.boxNodes || []).forEach(node => {
+    if (!boxHasNote(node)) return;
+    const noteId = boxNoteId(node.id);
+    upsertLegacyNote(state, {
+      id: noteId,
+      title: cleanOptionalTitle(node.boxNoteTitle || "") || "Untitled",
+      bodyHtml: node.boxNoteHtml || "",
+      noteDate: validTimestamp(node.updatedAt) ? String(node.updatedAt).slice(0, 10) : todayYMD(),
+      createdAt: node.createdAt,
+      updatedAt: node.updatedAt,
+      clientUpdatedAt: node.updatedAt
+    }, {
+      id: boxNoteLinkId(node.id),
+      linkType: "box",
+      boxNodeId: node.id
+    });
+  });
+  (state.actionDays || []).forEach(day => {
+    (day.nodes || []).forEach(node => {
+      noteEntriesFor(node).forEach(entry => {
+        if (!noteHasContent({ title: entry.title, bodyHtml: entry.bodyHtml })) return;
+        const noteId = actionNoteId(entry.id);
+        upsertLegacyNote(state, {
+          id: noteId,
+          title: noteTitle(entry),
+          bodyHtml: entry.bodyHtml || "",
+          noteDate: day.date,
+          createdAt: entry.createdAt,
+          updatedAt: entry.updatedAt,
+          clientUpdatedAt: entry.updatedAt
+        }, {
+          id: actionNoteLinkId(entry.id),
+          linkType: "action_entry",
+          actionDate: day.date,
+          actionNodeId: node.id,
+          actionEntryId: entry.id,
+          boxNodeId: node.sourceBoxNodeId || null
+        });
+      });
+    });
+  });
+  const noteIds = new Set(state.notes.map(note => note.id));
+  state.noteLinks = state.noteLinks.filter(link => noteIds.has(link.noteId));
+  return state;
+}
+
+function collectStateIds(boxNodes, actionDays, notes = [], noteLinks = []) {
   const ids = new Set();
   (boxNodes || []).forEach(node => {
     if (node?.id) ids.add(node.id);
@@ -294,6 +448,8 @@ function collectStateIds(boxNodes, actionDays) {
       });
     });
   });
+  (notes || []).forEach(note => { if (note?.id) ids.add(note.id); });
+  (noteLinks || []).forEach(link => { if (link?.id) ids.add(link.id); });
   ids.forEach(id => runtimeUsedIds.add(id));
   return ids;
 }
@@ -383,20 +539,25 @@ function normalizeState(parsed) {
       updatedAt: n.updatedAt || now()
     })) : []
   })) : [];
-  const ids = collectStateIds(boxNodes, actionDays);
-  return { version: 4, meta: normalizeMeta(parsed.meta || {}, ids), boxNodes, actionDays, ui };
+  const notes = Array.isArray(parsed.notes) ? parsed.notes.map(normalizeNote) : [];
+  const noteLinks = Array.isArray(parsed.noteLinks) ? parsed.noteLinks.map(normalizeNoteLink).filter(link => link.noteId) : [];
+  const state = ensureCentralNotes({ version: 5, boxNodes, actionDays, notes, noteLinks, ui });
+  const ids = collectStateIds(state.boxNodes, state.actionDays, state.notes, state.noteLinks);
+  return { ...state, version: 5, meta: normalizeMeta(parsed.meta || {}, ids) };
 }
 
 function sanitizedState(state) {
   const normalized = normalizeState(clone(state));
   return {
-    version: 4,
+    version: 5,
     meta: normalizeMeta(normalized.meta || {}, new Set(normalized.meta?.usedIds || [])),
     boxNodes: normalized.boxNodes.map(n => ({ ...n, title: cleanTitle(n.title), boxNoteTitle: cleanOptionalTitle(n.boxNoteTitle || ""), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || "") })),
     actionDays: normalized.actionDays.map(day => ({
       ...day,
       nodes: day.nodes.map(n => ({ ...n, title: cleanTitle(n.title), entries: normalizeEntries(n) }))
     })),
+    notes: normalized.notes.map(note => normalizeNote(note)).filter(note => noteHasContent(note) || note.deletedAt),
+    noteLinks: normalized.noteLinks.map(normalizeNoteLink).filter(link => link.noteId),
     ui: { ...defaultUI(), ...(normalized.ui || {}) }
   };
 }
@@ -421,10 +582,186 @@ function saveLocal(state, userId) {
   try { localStorage.setItem(localKey(userId), JSON.stringify(sanitizedState(state))); } catch {}
 }
 
+function noteDbRow(userId, note) {
+  const normalized = normalizeNote(note);
+  return {
+    user_id: userId,
+    id: normalized.id,
+    title: normalized.title,
+    body_html: normalized.bodyHtml,
+    body_text: normalized.bodyText,
+    note_date: normalized.noteDate,
+    tags: normalized.tags || [],
+    pinned_at: normalized.pinnedAt,
+    archived_at: normalized.archivedAt,
+    deleted_at: normalized.deletedAt,
+    created_at: normalized.createdAt,
+    updated_at: normalized.updatedAt,
+    client_updated_at: normalized.clientUpdatedAt
+  };
+}
+
+function noteLinkDbRow(userId, link) {
+  const normalized = normalizeNoteLink(link);
+  return {
+    user_id: userId,
+    id: normalized.id,
+    note_id: normalized.noteId,
+    link_type: normalized.linkType,
+    box_node_id: normalized.boxNodeId,
+    action_date: normalized.actionDate,
+    action_node_id: normalized.actionNodeId,
+    action_entry_id: normalized.actionEntryId,
+    created_at: normalized.createdAt
+  };
+}
+
+function mergeNormalizedNotes(state, noteRows = [], linkRows = []) {
+  const next = normalizeState(state);
+  const byId = new Map((next.notes || []).map(note => [note.id, note]));
+  (noteRows || []).map(normalizeNote).forEach(note => {
+    if (!note.id) return;
+    const existing = byId.get(note.id);
+    const incomingTime = timestampMs(note.clientUpdatedAt || note.updatedAt);
+    const existingTime = timestampMs(existing?.clientUpdatedAt || existing?.updatedAt);
+    if (!existing || incomingTime >= existingTime) byId.set(note.id, note);
+  });
+  next.notes = [...byId.values()];
+  const noteIds = new Set(next.notes.map(note => note.id));
+  const linkById = new Map((next.noteLinks || []).filter(link => noteIds.has(link.noteId)).map(link => [link.id, link]));
+  (linkRows || []).map(normalizeNoteLink).forEach(link => {
+    if (link.id && noteIds.has(link.noteId)) linkById.set(link.id, link);
+  });
+  next.noteLinks = [...linkById.values()];
+  return normalizeState(next);
+}
+
+async function loadNormalizedNoteTables(userId) {
+  if (!sb || !userId || userId === "local") return null;
+  try {
+    const [notesResult, linksResult] = await Promise.all([
+      withTimeout(sb.from(NOTES_TABLE).select("*").eq("user_id", userId), CLOUD_READ_TIMEOUT_MS, "Notes load"),
+      withTimeout(sb.from(NOTE_LINKS_TABLE).select("*").eq("user_id", userId), CLOUD_READ_TIMEOUT_MS, "Note links load")
+    ]);
+    if (notesResult?.error || linksResult?.error) throw (notesResult?.error || linksResult?.error);
+    return { notes: notesResult.data || [], links: linksResult.data || [] };
+  } catch (error) {
+    console.warn("Normalized notes table sync skipped", error);
+    return null;
+  }
+}
+
+async function pushNormalizedNoteTables(snapshot, user) {
+  if (!sb || !user?.id || user.id === "local" || !navigator.onLine) return;
+  try {
+    const clean = sanitizedState(snapshot);
+    const notes = (clean.notes || []).map(note => noteDbRow(user.id, note));
+    const links = (clean.noteLinks || []).filter(link => (clean.notes || []).some(note => note.id === link.noteId)).map(link => noteLinkDbRow(user.id, link));
+    const deleteLinks = await withTimeout(sb.from(NOTE_LINKS_TABLE).delete().eq("user_id", user.id), CLOUD_WRITE_TIMEOUT_MS, "Note links mirror");
+    if (deleteLinks?.error) throw deleteLinks.error;
+    const deleteNotes = await withTimeout(sb.from(NOTES_TABLE).delete().eq("user_id", user.id), CLOUD_WRITE_TIMEOUT_MS, "Notes mirror");
+    if (deleteNotes?.error) throw deleteNotes.error;
+    if (notes.length) {
+      const notesResult = await withTimeout(sb.from(NOTES_TABLE).insert(notes), CLOUD_WRITE_TIMEOUT_MS, "Notes mirror");
+      if (notesResult?.error) throw notesResult.error;
+    }
+    if (links.length) {
+      const linksResult = await withTimeout(sb.from(NOTE_LINKS_TABLE).insert(links), CLOUD_WRITE_TIMEOUT_MS, "Note links mirror");
+      if (linksResult?.error) throw linksResult.error;
+    }
+  } catch (error) {
+    console.warn("Normalized notes table sync skipped", error);
+  }
+}
+
 function noteTitle(entry) { return cleanTitle(entry?.title || "Note"); }
 function entryText(entry) { return entry?.type === "note" ? `${noteTitle(entry)} ${htmlToText(entry.bodyHtml || "")}` : (entry?.text || ""); }
 function boxHasNote(node) { return Boolean(cleanOptionalTitle(node?.boxNoteTitle || "") || htmlToText(node?.boxNoteHtml || "")); }
 function boxNoteLabel(node) { return cleanOptionalTitle(node?.boxNoteTitle || "") || "Note"; }
+function getNote(state, noteId) { return (state.notes || []).find(note => note.id === noteId); }
+function noteLinksFor(state, noteId) { return (state.noteLinks || []).filter(link => link.noteId === noteId); }
+function noteIsLinked(state, noteId) { return noteLinksFor(state, noteId).length > 0; }
+function noteDisplayTitle(note) { return cleanOptionalTitle(note?.title || "") || "Untitled"; }
+function notePreview(note) { return noteBodyText(note).slice(0, 140); }
+function activeNotes(state) { return (state.notes || []).filter(note => !note.deletedAt && !note.archivedAt && noteHasContent(note)); }
+function allNoteTags(state) {
+  return [...new Set(activeNotes(state).flatMap(note => note.tags || []))].sort();
+}
+function linkLabel(state, link) {
+  if (!link) return "Free note";
+  if (link.linkType === "box" && link.boxNodeId) {
+    const box = getNode(state.boxNodes, link.boxNodeId);
+    return box ? pathOf(box, state.boxNodes) : "Box";
+  }
+  if ((link.linkType === "action_entry" || link.linkType === "action_node") && link.actionDate) {
+    const day = state.actionDays.find(item => item.date === link.actionDate);
+    const node = day && link.actionNodeId ? getNode(day.nodes, link.actionNodeId) : null;
+    return `${displayDate(link.actionDate)}${node ? ` - ${pathOf(node, day.nodes)}` : ""}`;
+  }
+  if (link.linkType === "day" && link.actionDate) return displayDate(link.actionDate);
+  return "Linked note";
+}
+function noteInDateFilter(note, filter) {
+  const value = filter || "all";
+  if (value === "all") return true;
+  const diff = daysFromToday(note.noteDate);
+  if (value === "today") return diff === 0;
+  const days = Number(value);
+  return Number.isFinite(days) ? diff >= 0 && diff <= days : true;
+}
+function filteredNotes(state) {
+  const view = state.ui.notesView || "linked";
+  const tag = normalizeTag(state.ui.notesTag || "");
+  return activeNotes(state)
+    .filter(note => view === "all" || (view === "linked" ? noteIsLinked(state, note.id) : !noteIsLinked(state, note.id)))
+    .filter(note => !tag || (note.tags || []).includes(tag))
+    .filter(note => noteInDateFilter(note, state.ui.notesDate || "all"))
+    .sort((a, b) => {
+      const pin = timestampMs(b.pinnedAt) - timestampMs(a.pinnedAt);
+      if (pin) return pin;
+      return b.noteDate.localeCompare(a.noteDate) || timestampMs(b.updatedAt) - timestampMs(a.updatedAt);
+    });
+}
+function groupNotesByDate(notes) {
+  const groups = new Map();
+  notes.forEach(note => {
+    const date = note.noteDate || todayYMD();
+    if (!groups.has(date)) groups.set(date, []);
+    groups.get(date).push(note);
+  });
+  return [...groups.entries()].map(([date, items]) => ({ date, items }));
+}
+function syncNoteToLinkedLegacy(state, noteId, deleted = false) {
+  const note = getNote(state, noteId);
+  const links = noteLinksFor(state, noteId);
+  links.forEach(link => {
+    if (link.linkType === "box" && link.boxNodeId) {
+      const box = getNode(state.boxNodes, link.boxNodeId);
+      if (!box) return;
+      box.boxNoteTitle = deleted ? "" : cleanOptionalTitle(note?.title || "");
+      box.boxNoteHtml = deleted ? "" : sanitizeHtml(note?.bodyHtml || "");
+      box.updatedAt = now();
+    }
+    if (link.linkType === "action_entry" && link.actionDate && link.actionNodeId && link.actionEntryId) {
+      const day = state.actionDays.find(item => item.date === link.actionDate);
+      const node = day ? getNode(day.nodes, link.actionNodeId) : null;
+      if (!day || !node) return;
+      node.entries = normalizeEntries(node);
+      if (deleted) {
+        node.entries = node.entries.filter(entry => entry.id !== link.actionEntryId);
+      } else {
+        const entry = node.entries.find(item => item.id === link.actionEntryId);
+        if (entry && entry.type === "note") {
+          entry.title = cleanOptionalTitle(note?.title || "") || "Note";
+          entry.bodyHtml = sanitizeHtml(note?.bodyHtml || "");
+          entry.updatedAt = now();
+        }
+      }
+      node.updatedAt = now();
+      day.updatedAt = now();
+    }
+  });
+}
 function toggleId(list, id) {
   const set = new Set(list || []);
   set.has(id) ? set.delete(id) : set.add(id);
@@ -520,6 +857,20 @@ function collectSearchResults(state, query) {
       });
     });
   });
+  activeNotes(state).forEach(note => {
+    const text = `${noteDisplayTitle(note)} ${noteBodyText(note)} ${(note.tags || []).map(tag => `#${tag}`).join(" ")}`.toLowerCase();
+    if (text.includes(term)) {
+      const links = noteLinksFor(state, note.id);
+      out.push({
+        id: `note:${note.id}`,
+        kind: "note",
+        meta: links.length ? linkLabel(state, links[0]) : "free",
+        title: noteDisplayTitle(note),
+        text: notePreview(note) || (note.tags || []).map(tag => `#${tag}`).join(" "),
+        noteId: note.id
+      });
+    }
+  });
   return out.slice(0, 40);
 }
 
@@ -567,6 +918,98 @@ function SearchPanel({ isOpen, query, setQuery, results, onOpenResult }) {
               {result.text ? <em className="block text-[12px] text-[#A7A7A7] not-italic truncate"><HighlightText text={result.text} query={query} /></em> : null}
             </button>
           )) : <div className="text-[#A7A7A7] text-[13px] px-3 py-2">No results.</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NoteCard({ state, note, query = "", onOpen, onDelete, flashTarget }) {
+  const links = noteLinksFor(state, note.id);
+  const linked = links.length > 0;
+  const preview = notePreview(note);
+  return (
+    <div data-note-id={note.id} className={`group bg-[#141414] border border-white/[0.04] rounded-[12px] overflow-hidden ${flashTarget?.type === "note" && flashTarget.id === note.id ? "flash-target" : ""}`}>
+      <button type="button" onClick={() => onOpen(note.id)} className="w-full text-left px-4 py-3.5 hover:bg-white/[0.04] transition-colors">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`text-[10px] uppercase tracking-wider font-extrabold ${linked ? "text-[#FFD2D7]" : "text-[#A7A7A7]"}`}>{linked ? "Linked" : "Free"}</span>
+              <span className="text-[11px] text-[#666] font-bold truncate">{links[0] ? linkLabel(state, links[0]) : displayDate(note.noteDate)}</span>
+            </div>
+            <h3 className="text-white font-extrabold text-[16px] leading-snug truncate">
+              <HighlightText text={noteDisplayTitle(note)} query={query} />
+            </h3>
+            {preview ? <p className="text-[#A7A7A7] text-[13px] leading-snug mt-1 line-clamp-2"><HighlightText text={preview} query={query} /></p> : null}
+          </div>
+        </div>
+        {(note.tags || []).length ? (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {note.tags.slice(0, 5).map(tag => <span key={tag} className="text-[11px] font-bold text-[#FFD2D7] bg-[#FFD2D7]/[0.08] px-2 py-1 rounded-full">#{tag}</span>)}
+          </div>
+        ) : null}
+      </button>
+      <div className="border-t border-white/[0.04] px-4 py-2 flex items-center justify-between">
+        <span className="text-[12px] font-bold text-[#666]">{displayDate(note.noteDate)}</span>
+        <button type="button" onClick={() => onDelete(note.id)} className="text-[#666] hover:text-red-300 transition-colors p-1.5" aria-label="Delete note"><Trash2 size={16} /></button>
+      </div>
+    </div>
+  );
+}
+
+function NotesPanel({ state, notes, tags, searchQuery, setSearchQuery, onCreateNote, onOpenNote, onDeleteNote, onSetView, onSetTag, onSetDate, onExportAI, flashTarget }) {
+  const groups = groupNotesByDate(notes);
+  const view = state.ui.notesView || "linked";
+  const date = state.ui.notesDate || "all";
+  return (
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 flex-1 flex flex-col">
+      <div className="filter-row flex flex-wrap items-center gap-2.5 mb-5 relative z-20">
+        {["linked", "free", "all"].map(value => (
+          <button key={value} type="button" onClick={() => onSetView(value)} className={`px-5 py-2 text-[13px] font-bold rounded-full transition-transform active:scale-95 ${view === value ? "bg-[#FFD2D7] text-black" : "bg-transparent border border-[#555555] text-white hover:border-white"}`}>
+            {value === "linked" ? "Linked" : value === "free" ? "Free" : "All"}
+          </button>
+        ))}
+        <button type="button" onClick={onCreateNote} className="ml-auto px-5 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform" aria-label="Create note">
+          +note
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-2.5 mb-6">
+        <div className="flex items-center bg-[#111111] rounded-full px-3 py-1.5 border border-[#333333] focus-within:border-[#FFD2D7] transition-colors">
+          <Search size={16} className="text-[#A7A7A7] mr-2" />
+          <input type="text" placeholder="Search notes..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-transparent border-none outline-none text-white text-[14px] w-full placeholder:text-[#666666]" />
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          <select value={state.ui.notesTag || ""} onChange={(e) => onSetTag(e.target.value)} className="bg-[#111111] border border-[#333333] rounded-[12px] px-3 py-2 text-[13px] font-bold text-white outline-none focus:border-[#FFD2D7]">
+            <option value="">All tags</option>
+            {tags.map(tag => <option key={tag} value={tag}>#{tag}</option>)}
+          </select>
+          <select value={date} onChange={(e) => onSetDate(e.target.value)} className="bg-[#111111] border border-[#333333] rounded-[12px] px-3 py-2 text-[13px] font-bold text-white outline-none focus:border-[#FFD2D7]">
+            <option value="all">All dates</option>
+            <option value="today">Today</option>
+            <option value="7">7 days</option>
+            <option value="30">30 days</option>
+          </select>
+        </div>
+        <button type="button" onClick={onExportAI} className="self-start text-[12px] font-extrabold text-[#FFD2D7] hover:text-white transition-colors px-1">Export for AI</button>
+      </div>
+
+      {groups.length ? (
+        <div className="space-y-5">
+          {groups.map(group => (
+            <section key={group.date}>
+              <div className="text-[12px] font-extrabold text-[#A7A7A7] mb-2 px-1">{displayDate(group.date)}</div>
+              <div className="space-y-3">
+                {group.items.map(note => <NoteCard key={note.id} state={state} note={note} query={searchQuery} onOpen={onOpenNote} onDelete={onDeleteNote} flashTarget={flashTarget} />)}
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center pb-20 text-center">
+          <div className="w-20 h-20 bg-[#1E1E1E] rounded-full flex items-center justify-center mb-6"><FileText size={36} className="text-[#A7A7A7]" /></div>
+          <h3 className="text-white font-bold text-[18px] mb-2">No notes yet</h3>
+          <button type="button" onClick={onCreateNote} className="mt-4 bg-[#FFD2D7] text-black font-bold px-7 py-3 rounded-full flex items-center gap-2"><Plus size={18} /> Create note</button>
         </div>
       )}
     </div>
@@ -905,13 +1348,15 @@ function RichNoteModal({ modal, state, onClose, onSave, onDelete }) {
   const titleRef = useRef(null);
   const [toolbarFrame, setToolbarFrame] = useState({ bottom: 0, keyboardOpen: false, mobile: false });
   const isBoxNote = modal.type === "boxNote";
+  const isCentralNote = modal.type === "centralNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
-  const day = !isBoxNote ? state.actionDays.find(d => d.id === modal.dayId) : null;
+  const centralNote = isCentralNote ? getNote(state, modal.noteId) : null;
+  const day = !isBoxNote && !isCentralNote ? state.actionDays.find(d => d.id === modal.dayId) : null;
   const actionNode = day ? getNode(day.nodes, modal.nodeId) : null;
   const entry = actionNode && modal.entryId ? entriesFor(actionNode).find(e => e.id === modal.entryId) : null;
-  const initialHtml = isBoxNote ? (box?.boxNoteHtml || "") : (entry?.bodyHtml || "");
-  const initialTitle = isBoxNote ? (box?.boxNoteTitle || "") : (entry?.title || "");
-  const canDelete = Boolean(onDelete && (isBoxNote ? boxHasNote(box) : entry));
+  const initialHtml = isCentralNote ? (centralNote?.bodyHtml || "") : isBoxNote ? (box?.boxNoteHtml || "") : (entry?.bodyHtml || "");
+  const initialTitle = isCentralNote ? (centralNote?.title || "") : isBoxNote ? (box?.boxNoteTitle || "") : (entry?.title || "");
+  const canDelete = Boolean(onDelete && (isCentralNote ? centralNote : isBoxNote ? boxHasNote(box) : entry));
 
   useEffect(() => {
     if (editorRef.current) editorRef.current.innerHTML = sanitizeHtml(initialHtml);
@@ -1057,14 +1502,16 @@ function RichNoteModal({ modal, state, onClose, onSave, onDelete }) {
 
   function save() {
     const html = sanitizeHtml(editorRef.current?.innerHTML || "");
-    if (isBoxNote) onSave({ boxId: modal.boxId, title: titleRef.current?.value || "", bodyHtml: html });
+    if (isCentralNote) onSave({ noteId: modal.noteId || null, title: titleRef.current?.value || "", bodyHtml: html, noteDate: modal.noteDate || centralNote?.noteDate || todayYMD(), link: modal.link || null });
+    else if (isBoxNote) onSave({ boxId: modal.boxId, title: titleRef.current?.value || "", bodyHtml: html });
     else onSave({ dayId: modal.dayId, nodeId: modal.nodeId, entryId: modal.entryId || null, title: titleRef.current?.value || "Note", bodyHtml: html });
   }
 
   function deleteNote() {
     if (!canDelete) return;
     if (!window.confirm("Delete this note?")) return;
-    if (isBoxNote) onDelete({ boxId: modal.boxId });
+    if (isCentralNote) onDelete({ noteId: modal.noteId });
+    else if (isBoxNote) onDelete({ boxId: modal.boxId });
     else onDelete({ dayId: modal.dayId, nodeId: modal.nodeId, entryId: modal.entryId });
   }
 
@@ -1080,7 +1527,7 @@ function RichNoteModal({ modal, state, onClose, onSave, onDelete }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 pb-28 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" style={modalShellStyle} onClick={onClose}>
       <div className="bg-[#1A1A1A] border border-[#323232] rounded-[24px] w-full max-w-[340px] p-5 shadow-2xl animate-in zoom-in-95 duration-200 relative z-10" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-5">
-          <h3 className="font-bold text-[18px] text-white">{isBoxNote ? "Box notes" : modal.entryId ? "Edit note" : "Add note"}</h3>
+          <h3 className="font-bold text-[18px] text-white">{isCentralNote ? modal.noteId ? "Edit note" : "New note" : isBoxNote ? "Box notes" : modal.entryId ? "Edit note" : "Add note"}</h3>
           <div className="flex items-center gap-2">
             {canDelete && (
               <button type="button" onClick={deleteNote} className="text-[#666] hover:text-red-300 transition-colors p-1.5 bg-[#2D2D2D] hover:bg-[#3E3E3E] rounded-full" aria-label="Delete note"><Trash2 size={18} /></button>
@@ -1184,6 +1631,7 @@ function App() {
   const [currentView, setCurrentView] = useState(() => routeView(initialRouteRef.current));
   const [isSearchOpen, setIsSearchOpen] = useState(() => initialRouteRef.current?.name === "search");
   const [searchQuery, setSearchQuery] = useState(() => initialRouteRef.current?.query || "");
+  const [notesSearchQuery, setNotesSearchQuery] = useState("");
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState(null);
   const [menuPlacements, setMenuPlacements] = useState({});
@@ -1211,6 +1659,16 @@ function App() {
   const selectedDay = db.actionDays.find(day => day.date === selectedDate);
   const boxView = db.ui.boxView || "active";
   const searchResults = useMemo(() => collectSearchResults(db, searchQuery), [db, searchQuery]);
+  const noteTags = useMemo(() => allNoteTags(db), [db]);
+  const notesForView = useMemo(() => {
+    const term = String(notesSearchQuery || "").trim().toLowerCase();
+    const base = filteredNotes(db);
+    if (!term) return base;
+    return base.filter(note => {
+      const links = noteLinksFor(db, note.id).map(link => linkLabel(db, link)).join(" ");
+      return `${noteDisplayTitle(note)} ${noteBodyText(note)} ${(note.tags || []).map(tag => `#${tag}`).join(" ")} ${links}`.toLowerCase().includes(term);
+    });
+  }, [db, notesSearchQuery]);
 
   function showToast(message) {
     setToast(message);
@@ -1267,6 +1725,7 @@ function App() {
     const localState = loadLocalForUser(userId) || loadLegacyLocal();
     let next = localState || seed();
     let usedCloudFallback = false;
+    let allowCloudNotes = true;
     if (sb && userId) {
       try {
         setSyncStatus("saving");
@@ -1280,11 +1739,16 @@ function App() {
         if (!stateError && stateRow?.data) {
           const cloudUpdatedAt = validTimestamp(stateRow.updated_at) || validTimestamp(stateRow.data?.meta?.cloudUpdatedAt);
           const cloudState = markCloudSynced(normalizeState(stateRow.data), cloudUpdatedAt || now());
-          next = shouldPreferLocal(localState, cloudState, cloudUpdatedAt)
-            ? markPendingSync(localState, localState?.meta?.localUpdatedAt || now())
-            : cloudState;
+          const preferLocal = shouldPreferLocal(localState, cloudState, cloudUpdatedAt);
+          allowCloudNotes = !preferLocal;
+          next = preferLocal ? markPendingSync(localState, localState?.meta?.localUpdatedAt || now()) : cloudState;
         } else if (localState && userId !== "local") {
           next = markPendingSync(localState, localState.meta?.localUpdatedAt || now());
+          allowCloudNotes = false;
+        }
+        if (allowCloudNotes) {
+          const normalizedNotes = await loadNormalizedNoteTables(userId);
+          if (normalizedNotes) next = mergeNormalizedNotes(next, normalizedNotes.notes, normalizedNotes.links);
         }
         setSyncStatus("saved");
         setSyncLabel("Saved");
@@ -1385,7 +1849,10 @@ function App() {
     db.ui.boxFilterTo,
     db.ui.showBoxDays,
     db.ui.selectedActionDate,
-    db.ui.actionFilter
+    db.ui.actionFilter,
+    db.ui.notesView,
+    db.ui.notesTag,
+    db.ui.notesDate
   ]);
 
   useEffect(() => {
@@ -1395,7 +1862,9 @@ function App() {
       ? `[data-action-entry-id="${safeId}"]`
       : flashTarget.type === "action"
         ? `[data-action-node-id="${safeId}"]`
-        : `[data-box-node-id="${safeId}"]`;
+        : flashTarget.type === "note"
+          ? `[data-note-id="${safeId}"]`
+          : `[data-box-node-id="${safeId}"]`;
     const scrollTimer = setTimeout(() => {
       const el = document.querySelector(selector);
       if (!el) return;
@@ -1482,6 +1951,7 @@ function App() {
         "Workspace save"
       );
       if (stateResult?.error) throw stateResult.error;
+      await pushNormalizedNoteTables(cloudSnapshot, user);
       const currentLocal = loadLocalForUser(user.id);
       const pushedTime = timestampMs(cloudSnapshot.meta?.localUpdatedAt);
       const hasNewerLocalEdit = Boolean(
@@ -1822,6 +2292,10 @@ function App() {
     commit("Delete box", state => {
       const ids = new Set([id, ...descendantsOf(id, state.boxNodes).map(n => n.id)]);
       state.boxNodes = state.boxNodes.filter(n => !ids.has(n.id));
+      const deletedNoteIds = new Set((state.noteLinks || []).filter(link => link.boxNodeId && ids.has(link.boxNodeId)).map(link => link.noteId));
+      const t = now();
+      state.notes.forEach(note => { if (deletedNoteIds.has(note.id)) note.deletedAt = t; });
+      state.noteLinks = (state.noteLinks || []).filter(link => !deletedNoteIds.has(link.noteId));
       state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(x => !ids.has(x));
       state.ui.expandedBoxNodes = (state.ui.expandedBoxNodes || []).filter(x => !ids.has(x));
       state.ui.boxCascadeModes = Object.fromEntries(Object.entries(state.ui.boxCascadeModes || {}).filter(([key]) => !ids.has(key)));
@@ -1833,13 +2307,66 @@ function App() {
     }, { sync: false });
   }
 
+  function upsertCentralNote(state, { noteId, title, bodyHtml, noteDate, link }) {
+    const t = now();
+    const id = noteId || uid("note");
+    const html = sanitizeHtml(bodyHtml || "");
+    const cleanNote = normalizeNote({
+      id,
+      title: cleanOptionalTitle(title || "") || (htmlToText(html) ? "Untitled" : ""),
+      bodyHtml: html,
+      noteDate: validNoteDate(noteDate || todayYMD()),
+      createdAt: getNote(state, id)?.createdAt || t,
+      updatedAt: t,
+      clientUpdatedAt: t
+    });
+    const existing = getNote(state, id);
+    if (existing) Object.assign(existing, cleanNote, { id, createdAt: existing.createdAt || cleanNote.createdAt });
+    else state.notes.push(cleanNote);
+    if (link) upsertNoteLink(state, { ...link, noteId: id });
+    return id;
+  }
+
+  function saveCentralNote({ noteId, title, bodyHtml, noteDate, link }) {
+    let savedId = noteId;
+    commit("Save note", state => {
+      savedId = upsertCentralNote(state, { noteId, title, bodyHtml, noteDate, link });
+      syncNoteToLinkedLegacy(state, savedId);
+      state.ui.notesView = link ? "linked" : (state.ui.notesView || "free");
+    }, { sync: false });
+    setModal(null);
+    if (savedId) flashAfterNavigation({ type: "note", id: savedId });
+  }
+
+  function deleteCentralNote({ noteId }) {
+    if (!noteId) { setModal(null); return; }
+    commit("Delete note", state => {
+      const note = getNote(state, noteId);
+      if (!note) return false;
+      syncNoteToLinkedLegacy(state, noteId, true);
+      note.deletedAt = now();
+      note.updatedAt = note.deletedAt;
+      note.clientUpdatedAt = note.deletedAt;
+      state.noteLinks = (state.noteLinks || []).filter(link => link.noteId !== noteId);
+    }, { sync: false });
+    setModal(null);
+  }
+
   function saveBoxNote({ boxId, title, bodyHtml }) {
     commit("Save box note", state => {
       const node = getNode(state.boxNodes, boxId);
       if (!node) return false;
+      const t = now();
       node.boxNoteTitle = cleanOptionalTitle(title || "");
       node.boxNoteHtml = sanitizeHtml(bodyHtml || "");
-      node.updatedAt = now();
+      node.updatedAt = t;
+      upsertCentralNote(state, {
+        noteId: boxNoteId(boxId),
+        title: node.boxNoteTitle,
+        bodyHtml: node.boxNoteHtml,
+        noteDate: String(t).slice(0, 10),
+        link: { id: boxNoteLinkId(boxId), linkType: "box", boxNodeId: boxId }
+      });
     });
     setModal(null);
   }
@@ -1848,6 +2375,13 @@ function App() {
     commit("Delete box note", state => {
       const node = getNode(state.boxNodes, boxId);
       if (!node || !boxHasNote(node)) return false;
+      const note = getNote(state, boxNoteId(boxId));
+      if (note) {
+        note.deletedAt = now();
+        note.updatedAt = note.deletedAt;
+        note.clientUpdatedAt = note.deletedAt;
+      }
+      state.noteLinks = (state.noteLinks || []).filter(link => link.noteId !== boxNoteId(boxId));
       node.boxNoteTitle = "";
       node.boxNoteHtml = "";
       node.updatedAt = now();
@@ -1956,15 +2490,34 @@ function App() {
       const t = now();
       node.entries = normalizeEntries(node);
       const entry = entryId ? node.entries.find(e => e.id === entryId) : null;
+      let savedEntryId = entry?.id || null;
       if (entry) {
         entry.title = cleanTitle(title || "Note");
         entry.bodyHtml = sanitizeHtml(bodyHtml || "");
         entry.updatedAt = t;
       } else {
-        node.entries.push(normalizeEntry({ type: "note", title: title || "Note", bodyHtml, createdAt: t, updatedAt: t }, node.entries.length));
+        const nextEntry = normalizeEntry({ type: "note", title: title || "Note", bodyHtml, createdAt: t, updatedAt: t }, node.entries.length);
+        savedEntryId = nextEntry.id;
+        node.entries.push(nextEntry);
       }
       node.updatedAt = t;
       day.updatedAt = t;
+      if (savedEntryId) {
+        upsertCentralNote(state, {
+          noteId: actionNoteId(savedEntryId),
+          title: title || "Note",
+          bodyHtml,
+          noteDate: day.date,
+          link: {
+            id: actionNoteLinkId(savedEntryId),
+            linkType: "action_entry",
+            actionDate: day.date,
+            actionNodeId: node.id,
+            actionEntryId: savedEntryId,
+            boxNodeId: node.sourceBoxNodeId || null
+          }
+        });
+      }
       state.ui.actionFilter = "all";
       state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => id !== nodeId);
     }, { sync: false });
@@ -1979,6 +2532,13 @@ function App() {
       const entry = node ? entriesFor(node).find(e => e.id === entryId) : null;
       if (!day || !node || !entry || entry.type !== "note") return false;
       node.entries = normalizeEntries(node).filter(e => e.id !== entryId);
+      const note = getNote(state, actionNoteId(entryId));
+      if (note) {
+        note.deletedAt = now();
+        note.updatedAt = note.deletedAt;
+        note.clientUpdatedAt = note.deletedAt;
+      }
+      state.noteLinks = (state.noteLinks || []).filter(link => link.noteId !== actionNoteId(entryId));
       node.updatedAt = now();
       day.updatedAt = now();
     }, { sync: false });
@@ -2072,6 +2632,8 @@ function App() {
         state.meta = next.meta;
         state.boxNodes = next.boxNodes;
         state.actionDays = next.actionDays;
+        state.notes = next.notes;
+        state.noteLinks = next.noteLinks;
         state.ui = next.ui;
       }, { sync: false });
       showToast("Imported JSON");
@@ -2083,8 +2645,63 @@ function App() {
     }
   }
 
+  function exportAiNotes() {
+    const selected = notesForView;
+    if (!selected.length) {
+      showToast("No notes to export");
+      return;
+    }
+    const markdown = selected.map(note => {
+      const links = noteLinksFor(db, note.id).map(link => linkLabel(db, link));
+      const tags = (note.tags || []).map(tag => `#${tag}`).join(" ");
+      return [
+        `# ${noteDisplayTitle(note)}`,
+        "",
+        `Date: ${note.noteDate}`,
+        `Type: ${links.length ? "Linked" : "Free"}`,
+        links.length ? `Linked: ${links.join("; ")}` : "",
+        tags ? `Tags: ${tags}` : "",
+        "",
+        noteBodyText(note) || "(empty)",
+        ""
+      ].filter(line => line !== "").join("\n");
+    }).join("\n---\n\n");
+    const blob = new Blob([markdown], { type: "text/markdown" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `liems-notes-for-ai-${todayYMD()}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 500);
+    showToast("Exported notes for AI");
+  }
+
+  function setNotesUI(key, value) {
+    setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, [key]: value } }));
+  }
+
+  function openCentralNote(noteId) {
+    setModal({ type: "centralNote", noteId });
+  }
+
+  function createFreeNote() {
+    setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, notesView: "free" } }));
+    setCurrentView("notes");
+    setModal({ type: "centralNote", noteId: null, noteDate: todayYMD() });
+  }
+
+  function requestDeleteCentralNote(noteId) {
+    if (!window.confirm("Delete this note?")) return;
+    deleteCentralNote({ noteId });
+  }
+
   function openSearchResult(result) {
-    if (result.boxId) {
+    if (result.noteId) {
+      setCurrentView("notes");
+      setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, notesView: noteIsLinked(prev, result.noteId) ? "linked" : "free" } }));
+      flashAfterNavigation({ type: "note", id: result.noteId });
+    } else if (result.boxId) {
       setDb(prev => {
         const state = normalizeState(clone(prev));
         const ancestors = ancestorsOf(result.boxId, state.boxNodes);
@@ -2188,10 +2805,12 @@ function App() {
 
         <main className="app-main p-5 flex-1 flex flex-col pb-24">
           <div className="flex justify-between items-end mb-7 mt-1">
-            <h2 className="view-title text-[2.5rem] leading-[1.1] font-extrabold tracking-tighter">
+            <h2 className="view-title text-[2.15rem] leading-[1.1] font-extrabold tracking-tighter flex flex-wrap items-baseline">
               <button type="button" className={`cursor-pointer transition-colors ${currentView === "boxes" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("boxes"); }}>Boxes</button>
               <span className="text-[#3E3E3E] mx-1.5 font-light">/</span>
               <button type="button" className={`cursor-pointer transition-colors ${currentView === "actions" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("actions"); }}>Actions</button>
+              <span className="text-[#3E3E3E] mx-1.5 font-light">/</span>
+              <button type="button" className={`cursor-pointer transition-colors ${currentView === "notes" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("notes"); }}>Notes</button>
             </h2>
             <div className="flex gap-3 text-[#A7A7A7] mb-2">
               <button type="button" disabled={!undoRef.current.length} onClick={(e) => { e.stopPropagation(); undo(); }} className="cursor-pointer hover:text-white transition-colors" aria-label="Undo"><Undo2 size={18} /></button>
@@ -2312,10 +2931,29 @@ function App() {
               )}
             </div>
           )}
+
+          {currentView === "notes" && (
+            <NotesPanel
+              state={db}
+              notes={notesForView}
+              tags={noteTags}
+              searchQuery={notesSearchQuery}
+              setSearchQuery={setNotesSearchQuery}
+              onCreateNote={createFreeNote}
+              onOpenNote={openCentralNote}
+              onDeleteNote={requestDeleteCentralNote}
+              onSetView={(value) => setNotesUI("notesView", value)}
+              onSetTag={(value) => setNotesUI("notesTag", value)}
+              onSetDate={(value) => setNotesUI("notesDate", value)}
+              onExportAI={exportAiNotes}
+              flashTarget={flashTarget}
+            />
+          )}
         </main>
 
         {modal?.type === "boxNote" && <RichNoteModal modal={modal} state={db} onClose={() => setModal(null)} onSave={saveBoxNote} onDelete={deleteBoxNote} />}
         {modal?.type === "actionNote" && <RichNoteModal modal={modal} state={db} onClose={() => setModal(null)} onSave={saveActionNote} onDelete={deleteActionNote} />}
+        {modal?.type === "centralNote" && <RichNoteModal modal={modal} state={db} onClose={() => setModal(null)} onSave={saveCentralNote} onDelete={deleteCentralNote} />}
         {modal?.type === "actionLines" && <ActionLinesModal modal={modal} onClose={() => setModal(null)} onSave={addActionEntries} />}
         {toast && <div className="fixed left-1/2 bottom-6 -translate-x-1/2 z-[60] bg-[#1A1A1A] border border-[#444] text-white text-[13px] font-bold px-4 py-3 rounded-full shadow-2xl">{toast}</div>}
       </div>

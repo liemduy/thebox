@@ -2,6 +2,8 @@
   const BOX_VIEW_VALUES = new Set(["active", "archived", "done"]);
   const BOX_FILTER_VALUES = new Set(["today", "7", "15", "30", "all", "custom"]);
   const ACTION_FILTER_VALUES = new Set(["all", "undone", "done", "notes"]);
+  const NOTES_VIEW_VALUES = new Set(["linked", "free", "all"]);
+  const NOTES_DATE_VALUES = new Set(["all", "today", "7", "30"]);
 
   function todayYMD(date = new Date()) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -70,6 +72,16 @@
     return ui;
   }
 
+  function parseNotesRouteParams(params) {
+    const ui = {};
+    const view = params.get("view");
+    const date = params.get("date");
+    if (NOTES_VIEW_VALUES.has(view)) ui.notesView = view;
+    if (NOTES_DATE_VALUES.has(date)) ui.notesDate = date;
+    ui.notesTag = params.get("tag") || "";
+    return ui;
+  }
+
   function parseRouteHash(hash = global.location?.hash || "") {
     const raw = String(hash || "").replace(/^#/, "");
     const [pathRaw, queryRaw = ""] = raw.split("?");
@@ -78,13 +90,14 @@
     const parts = path.split("/").filter(Boolean);
     const name = parts[0] || "boxes";
     if (name === "actions") return { name: "actions", ui: parseActionRouteParams(params) };
+    if (name === "notes") return { name: "notes", ui: parseNotesRouteParams(params) };
     if (name === "search") {
-      const tab = params.get("tab") === "actions" ? "actions" : "boxes";
+      const tab = params.get("tab") === "actions" ? "actions" : params.get("tab") === "notes" ? "notes" : "boxes";
       return {
         name: "search",
         tab,
         query: params.get("q") || "",
-        ui: tab === "actions" ? parseActionRouteParams(params) : parseBoxRouteParams(params)
+        ui: tab === "actions" ? parseActionRouteParams(params) : tab === "notes" ? parseNotesRouteParams(params) : parseBoxRouteParams(params)
       };
     }
     return { name: "boxes", ui: parseBoxRouteParams(params) };
@@ -92,7 +105,8 @@
 
   function routeView(route) {
     if (route?.name === "actions") return "actions";
-    if (route?.name === "search") return route.tab === "actions" ? "actions" : "boxes";
+    if (route?.name === "notes") return "notes";
+    if (route?.name === "search") return route.tab === "actions" ? "actions" : route.tab === "notes" ? "notes" : "boxes";
     return "boxes";
   }
 
@@ -111,18 +125,29 @@
     params.set("filter", ACTION_FILTER_VALUES.has(ui.actionFilter) ? ui.actionFilter : "all");
   }
 
+  function appendNotesRouteParams(params, ui) {
+    params.set("view", NOTES_VIEW_VALUES.has(ui.notesView) ? ui.notesView : "linked");
+    params.set("date", NOTES_DATE_VALUES.has(ui.notesDate) ? ui.notesDate : "all");
+    if (String(ui.notesTag || "").trim()) params.set("tag", String(ui.notesTag || "").trim());
+  }
+
   function buildAppHash({ currentView, ui, isSearchOpen, searchQuery }) {
     const params = new URLSearchParams();
     if (isSearchOpen) {
-      params.set("tab", currentView === "actions" ? "actions" : "boxes");
+      params.set("tab", currentView === "actions" ? "actions" : currentView === "notes" ? "notes" : "boxes");
       if (String(searchQuery || "").trim()) params.set("q", String(searchQuery || "").trim());
       if (currentView === "actions") appendActionRouteParams(params, ui);
+      else if (currentView === "notes") appendNotesRouteParams(params, ui);
       else appendBoxRouteParams(params, ui);
       return `#/search?${params.toString()}`;
     }
     if (currentView === "actions") {
       appendActionRouteParams(params, ui);
       return `#/actions?${params.toString()}`;
+    }
+    if (currentView === "notes") {
+      appendNotesRouteParams(params, ui);
+      return `#/notes?${params.toString()}`;
     }
     appendBoxRouteParams(params, ui);
     return `#/boxes?${params.toString()}`;
@@ -354,6 +379,8 @@
     BOX_VIEW_VALUES,
     BOX_FILTER_VALUES,
     ACTION_FILTER_VALUES,
+    NOTES_VIEW_VALUES,
+    NOTES_DATE_VALUES,
     todayYMD,
     addDaysYMD,
     displayDate,
@@ -363,10 +390,12 @@
     boolParam,
     parseBoxRouteParams,
     parseActionRouteParams,
+    parseNotesRouteParams,
     parseRouteHash,
     routeView,
     appendBoxRouteParams,
     appendActionRouteParams,
+    appendNotesRouteParams,
     buildAppHash,
     childrenOf,
     getNode,
