@@ -5,7 +5,7 @@
   "scripts": {
     "build": "npm run build:js && npm run build:css",
     "build:js": "node scripts/build-js.mjs",
-    "build:css": "tailwindcss -i src/styles.css -o assets/styles.css --content index.html --content src/**/*.jsx --minify",
+    "build:css": "tailwindcss -i src/styles.css -o assets/styles.css --minify",
     "test": "node test/core.test.cjs",
     "verify": "npm run test && npm run build && node --check assets/app.js && node --check scripts/build-js.mjs"
   },

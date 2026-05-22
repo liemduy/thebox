@@ -4367,7 +4367,11 @@ function App() {
       const deletedNoteIds = new Set((state.noteLinks || []).filter(link => link.boxNodeId && ids.has(link.boxNodeId)).map(link => link.noteId));
       const t = now();
       state.notes.forEach(note => {
-        if (deletedNoteIds.has(note.id)) note.deletedAt = t;
+        if (deletedNoteIds.has(note.id)) {
+          note.deletedAt = t;
+          note.updatedAt = t;
+          note.clientUpdatedAt = t;
+        }
       });
       state.noteLinks = (state.noteLinks || []).filter(link => !deletedNoteIds.has(link.noteId));
       state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(x => !ids.has(x));

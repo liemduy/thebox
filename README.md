@@ -8,7 +8,7 @@ Static single-page planner app with Supabase Auth, cloud sync, export/import JSO
 - `assets/app.js`, `assets/styles.css` - built local runtime assets.
 - `vendor/` - pinned local React, ReactDOM, and Supabase browser bundles.
 - `src/app.jsx`, `src/styles.css` - editable source files.
-- `scripts/build-js.mjs`, `package.json` - rebuild tooling.
+- `scripts/build-js.mjs`, `tailwind.config.cjs`, `package.json` - rebuild tooling.
 - `manifest.json` - Add to Home / PWA metadata.
 - `sw.js` - offline app shell cache.
 - `icon.svg`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` - PWA/app icons.
