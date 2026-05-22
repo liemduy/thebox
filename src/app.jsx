@@ -91,6 +91,7 @@ const iconPaths = {
   Redo2: (<><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></>),
   PlusSquare: (<><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8M12 8v8"/></>),
   FileText: (<><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></>),
+  Notebook: (<><path d="M4 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 2v20M8 6H4M8 10H4M8 14H4M8 18H4M12 7h4M12 11h4"/></>),
   Archive: (<><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></>),
   CheckCircle: (<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></>),
   Trash2: (<><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></>),
@@ -131,6 +132,7 @@ const Undo2 = makeIcon("Undo2");
 const Redo2 = makeIcon("Redo2");
 const PlusSquare = makeIcon("PlusSquare");
 const FileText = makeIcon("FileText");
+const Notebook = makeIcon("Notebook");
 const Archive = makeIcon("Archive");
 const CheckCircle = makeIcon("CheckCircle");
 const Trash2 = makeIcon("Trash2");
@@ -1048,11 +1050,7 @@ function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isV
   const tagsInput = state.ui.notesTagsInput || "";
   const datesInput = state.ui.notesDatesInput || "";
   const selectedTags = exportTagsFromInput(tagsInput);
-  const activeTagNeedle = normalizeTag(String(tagsInput || "").split(",").pop() || "");
-  const tagHints = tags
-    .filter(tag => !selectedTags.includes(tag))
-    .filter(tag => !activeTagNeedle || tag.includes(activeTagNeedle))
-    .slice(0, 5);
+  const tagHints = tagHintsForInput(tags, tagsInput);
   const dateFilters = parseExportDateFilters(datesInput);
   const hasViewBy = Boolean(selectedTags.length || datesInput.trim());
   return (
@@ -1136,15 +1134,23 @@ function replaceLastCsvToken(input, value) {
   return parts.map((part, index) => index === 0 ? part.trimStart() : part.trim()).join(", ").replace(/^, /, "");
 }
 
+function tagHintsForInput(tags, input) {
+  const selected = exportTagsFromInput(input);
+  const needle = normalizeTag(String(input || "").split(",").pop() || "");
+  const candidates = tags.filter(tag => !selected.includes(tag));
+  const ranked = needle
+    ? [
+        ...candidates.filter(tag => tag.startsWith(needle)),
+        ...candidates.filter(tag => !tag.startsWith(needle) && tag.includes(needle))
+      ]
+    : candidates;
+  return [...new Set(ranked)].slice(0, needle ? 6 : 4);
+}
+
 function ExportNotesModal({ tags, onClose, onExport }) {
   const [tagInput, setTagInput] = useState("");
   const [dateInput, setDateInput] = useState("");
-  const selectedTags = exportTagsFromInput(tagInput);
-  const activeTagNeedle = normalizeTag(String(tagInput || "").split(",").pop() || "");
-  const tagHints = tags
-    .filter(tag => !selectedTags.includes(tag))
-    .filter(tag => !activeTagNeedle || tag.includes(activeTagNeedle))
-    .slice(0, 5);
+  const tagHints = tagHintsForInput(tags, tagInput);
   const dateFilters = parseExportDateFilters(dateInput);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
@@ -1365,6 +1371,17 @@ function BoxTreeItem({ state, node, level, view, menuOpenId, setMenuOpenId, menu
         <StatusBadge node={node} />
 
         <div className={`flex items-center gap-1 shrink-0 ${isRoot ? "text-[#A7A7A7]" : "text-[#666666]"}`}>
+          {hasNote && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handlers.openBoxNote(node.id); }}
+              className="h-8 w-7 grid place-items-center rounded-full text-[#FFD2D7] hover:text-white hover:bg-[#444444] transition-colors"
+              aria-label="View notes"
+              title="View notes"
+            >
+              <Notebook size={isRoot ? 18 : 16} strokeWidth={2.1} />
+            </button>
+          )}
           <button type="button" onClick={(e) => { e.stopPropagation(); handlers.toggleBoxOpen(node.id); }} className="h-8 w-8 grid place-items-center rounded-full transition-colors hover:text-white hover:bg-[#444444]" aria-label={cascadeLabel} title={cascadeLabel}>
             <CascadeIcon size={isRoot ? 21 : 18} />
           </button>

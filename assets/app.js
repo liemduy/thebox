@@ -691,6 +691,11 @@ const iconPaths = {
   }), React.createElement("path", {
     d: "M14 2v6h6M16 13H8M16 17H8M10 9H8"
   })),
+  Notebook: React.createElement(React.Fragment, null, React.createElement("path", {
+    d: "M4 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"
+  }), React.createElement("path", {
+    d: "M8 2v20M8 6H4M8 10H4M8 14H4M8 18H4M12 7h4M12 11h4"
+  })),
   Archive: React.createElement(React.Fragment, null, React.createElement("rect", {
     width: "20",
     height: "5",
@@ -862,6 +867,7 @@ const Undo2 = makeIcon("Undo2");
 const Redo2 = makeIcon("Redo2");
 const PlusSquare = makeIcon("PlusSquare");
 const FileText = makeIcon("FileText");
+const Notebook = makeIcon("Notebook");
 const Archive = makeIcon("Archive");
 const CheckCircle = makeIcon("CheckCircle");
 const Trash2 = makeIcon("Trash2");
@@ -1986,8 +1992,7 @@ function NotesPanel({
   const tagsInput = state.ui.notesTagsInput || "";
   const datesInput = state.ui.notesDatesInput || "";
   const selectedTags = exportTagsFromInput(tagsInput);
-  const activeTagNeedle = normalizeTag(String(tagsInput || "").split(",").pop() || "");
-  const tagHints = tags.filter(tag => !selectedTags.includes(tag)).filter(tag => !activeTagNeedle || tag.includes(activeTagNeedle)).slice(0, 5);
+  const tagHints = tagHintsForInput(tags, tagsInput);
   const dateFilters = parseExportDateFilters(datesInput);
   const hasViewBy = Boolean(selectedTags.length || datesInput.trim());
   return React.createElement("div", {
@@ -2115,6 +2120,13 @@ function replaceLastCsvToken(input, value) {
   parts[parts.length - 1] = ` #${value}`;
   return parts.map((part, index) => index === 0 ? part.trimStart() : part.trim()).join(", ").replace(/^, /, "");
 }
+function tagHintsForInput(tags, input) {
+  const selected = exportTagsFromInput(input);
+  const needle = normalizeTag(String(input || "").split(",").pop() || "");
+  const candidates = tags.filter(tag => !selected.includes(tag));
+  const ranked = needle ? [...candidates.filter(tag => tag.startsWith(needle)), ...candidates.filter(tag => !tag.startsWith(needle) && tag.includes(needle))] : candidates;
+  return [...new Set(ranked)].slice(0, needle ? 6 : 4);
+}
 function ExportNotesModal({
   tags,
   onClose,
@@ -2122,9 +2134,7 @@ function ExportNotesModal({
 }) {
   const [tagInput, setTagInput] = useState("");
   const [dateInput, setDateInput] = useState("");
-  const selectedTags = exportTagsFromInput(tagInput);
-  const activeTagNeedle = normalizeTag(String(tagInput || "").split(",").pop() || "");
-  const tagHints = tags.filter(tag => !selectedTags.includes(tag)).filter(tag => !activeTagNeedle || tag.includes(activeTagNeedle)).slice(0, 5);
+  const tagHints = tagHintsForInput(tags, tagInput);
   const dateFilters = parseExportDateFilters(dateInput);
   return React.createElement("div", {
     className: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200",
@@ -2432,7 +2442,19 @@ function BoxTreeItem({
     node: node
   }), React.createElement("div", {
     className: `flex items-center gap-1 shrink-0 ${isRoot ? "text-[#A7A7A7]" : "text-[#666666]"}`
-  }, React.createElement("button", {
+  }, hasNote && React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      handlers.openBoxNote(node.id);
+    },
+    className: "h-8 w-7 grid place-items-center rounded-full text-[#FFD2D7] hover:text-white hover:bg-[#444444] transition-colors",
+    "aria-label": "View notes",
+    title: "View notes"
+  }, React.createElement(Notebook, {
+    size: isRoot ? 18 : 16,
+    strokeWidth: 2.1
+  })), React.createElement("button", {
     type: "button",
     onClick: e => {
       e.stopPropagation();
