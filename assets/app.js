@@ -76,9 +76,15 @@
     const ui = {};
     const view = params.get("view");
     const date = params.get("date");
+    const tags = params.get("tags");
+    const legacyTag = params.get("tag");
+    const dates = params.get("dates");
     if (NOTES_VIEW_VALUES.has(view)) ui.notesView = view;
     if (NOTES_DATE_VALUES.has(date)) ui.notesDate = date;
-    ui.notesTag = params.get("tag") || "";
+    if (tags !== null) ui.notesTagsInput = tags;
+    else if (legacyTag) ui.notesTagsInput = legacyTag;
+    if (legacyTag) ui.notesTag = legacyTag;
+    if (dates !== null) ui.notesDatesInput = dates;
     return ui;
   }
 
@@ -127,8 +133,12 @@
 
   function appendNotesRouteParams(params, ui) {
     params.set("view", NOTES_VIEW_VALUES.has(ui.notesView) ? ui.notesView : "linked");
-    params.set("date", NOTES_DATE_VALUES.has(ui.notesDate) ? ui.notesDate : "all");
-    if (String(ui.notesTag || "").trim()) params.set("tag", String(ui.notesTag || "").trim());
+    const tagsInput = String(ui.notesTagsInput || ui.notesTag || "").trim();
+    const datesInput = String(ui.notesDatesInput || "").trim();
+    const presetDate = NOTES_DATE_VALUES.has(ui.notesDate) ? ui.notesDate : "all";
+    if (tagsInput) params.set("tags", tagsInput);
+    if (datesInput) params.set("dates", datesInput);
+    else if (presetDate !== "all") params.set("date", presetDate);
   }
 
   function buildAppHash({ currentView, ui, isSearchOpen, searchQuery }) {
@@ -560,6 +570,8 @@ const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE
 }) : null;
 const CLOUD_READ_TIMEOUT_MS = 9000;
 const CLOUD_WRITE_TIMEOUT_MS = 12000;
+const SNAPSHOT_WARN_BYTES = 3_500_000;
+let lastSnapshotSizeWarningAt = 0;
 const {
   todayYMD,
   addDaysYMD,
@@ -1436,8 +1448,25 @@ function loadLegacyLocal() {
 }
 function saveLocal(state, userId) {
   try {
-    localStorage.setItem(localKey(userId), JSON.stringify(sanitizedState(state)));
+    const payload = JSON.stringify(sanitizedState(state));
+    maybeWarnLargeSnapshot(payload);
+    localStorage.setItem(localKey(userId), payload);
   } catch {}
+}
+function snapshotPayloadBytes(payload) {
+  try {
+    return new Blob([payload]).size;
+  } catch {
+    return String(payload || "").length;
+  }
+}
+function maybeWarnLargeSnapshot(payload) {
+  const bytes = snapshotPayloadBytes(payload);
+  if (bytes < SNAPSHOT_WARN_BYTES) return;
+  const t = Date.now();
+  if (t - lastSnapshotSizeWarningAt < 60000) return;
+  lastSnapshotSizeWarningAt = t;
+  console.warn(`Planner snapshot is ${(bytes / 1048576).toFixed(2)}MB. Long-term storage should move daily action entries out of the full snapshot.`);
 }
 function noteDbRow(userId, note) {
   const normalized = normalizeNote(note);
@@ -1510,16 +1539,30 @@ async function pushNormalizedNoteTables(snapshot, user) {
     const clean = sanitizedState(snapshot);
     const notes = (clean.notes || []).map(note => noteDbRow(user.id, note));
     const links = (clean.noteLinks || []).filter(link => (clean.notes || []).some(note => note.id === link.noteId)).map(link => noteLinkDbRow(user.id, link));
-    const deleteLinks = await withTimeout(sb.from(NOTE_LINKS_TABLE).delete().eq("user_id", user.id), CLOUD_WRITE_TIMEOUT_MS, "Note links mirror");
-    if (deleteLinks?.error) throw deleteLinks.error;
-    const deleteNotes = await withTimeout(sb.from(NOTES_TABLE).delete().eq("user_id", user.id), CLOUD_WRITE_TIMEOUT_MS, "Notes mirror");
-    if (deleteNotes?.error) throw deleteNotes.error;
+    const [existingNotesResult, existingLinksResult] = await Promise.all([withTimeout(sb.from(NOTES_TABLE).select("id").eq("user_id", user.id), CLOUD_READ_TIMEOUT_MS, "Notes mirror list"), withTimeout(sb.from(NOTE_LINKS_TABLE).select("id").eq("user_id", user.id), CLOUD_READ_TIMEOUT_MS, "Note links mirror list")]);
+    if (existingNotesResult?.error || existingLinksResult?.error) throw existingNotesResult?.error || existingLinksResult?.error;
+    const noteIds = new Set(notes.map(row => row.id));
+    const linkIds = new Set(links.map(row => row.id));
+    const staleLinkIds = (existingLinksResult.data || []).map(row => row.id).filter(id => !linkIds.has(id));
+    const staleNoteIds = (existingNotesResult.data || []).map(row => row.id).filter(id => !noteIds.has(id));
+    if (staleLinkIds.length) {
+      const deleteLinks = await withTimeout(sb.from(NOTE_LINKS_TABLE).delete().eq("user_id", user.id).in("id", staleLinkIds), CLOUD_WRITE_TIMEOUT_MS, "Note links mirror prune");
+      if (deleteLinks?.error) throw deleteLinks.error;
+    }
     if (notes.length) {
-      const notesResult = await withTimeout(sb.from(NOTES_TABLE).insert(notes), CLOUD_WRITE_TIMEOUT_MS, "Notes mirror");
+      const notesResult = await withTimeout(sb.from(NOTES_TABLE).upsert(notes, {
+        onConflict: "user_id,id"
+      }), CLOUD_WRITE_TIMEOUT_MS, "Notes mirror");
       if (notesResult?.error) throw notesResult.error;
     }
+    if (staleNoteIds.length) {
+      const deleteNotes = await withTimeout(sb.from(NOTES_TABLE).delete().eq("user_id", user.id).in("id", staleNoteIds), CLOUD_WRITE_TIMEOUT_MS, "Notes mirror prune");
+      if (deleteNotes?.error) throw deleteNotes.error;
+    }
     if (links.length) {
-      const linksResult = await withTimeout(sb.from(NOTE_LINKS_TABLE).insert(links), CLOUD_WRITE_TIMEOUT_MS, "Note links mirror");
+      const linksResult = await withTimeout(sb.from(NOTE_LINKS_TABLE).upsert(links, {
+        onConflict: "user_id,id"
+      }), CLOUD_WRITE_TIMEOUT_MS, "Note links mirror");
       if (linksResult?.error) throw linksResult.error;
     }
   } catch (error) {
@@ -1626,7 +1669,7 @@ function filteredNotes(state) {
   const view = state.ui.notesView || "linked";
   const tags = exportTagsFromInput(state.ui.notesTagsInput || state.ui.notesTag || "");
   const dateFilters = parseExportDateFilters(state.ui.notesDatesInput || "");
-  return activeNotes(state).filter(note => view === "all" || (view === "linked" ? noteIsLinked(state, note.id) : !noteIsLinked(state, note.id))).filter(note => !tags.length || tags.every(tag => noteTagList(note).includes(tag))).filter(note => noteMatchesExportDates(note, dateFilters)).sort((a, b) => {
+  return activeNotes(state).filter(note => view === "all" || (view === "linked" ? noteIsLinked(state, note.id) : !noteIsLinked(state, note.id))).filter(note => !tags.length || tags.every(tag => noteTagList(note).includes(tag))).filter(note => dateFilters.length ? noteMatchesExportDates(note, dateFilters) : noteInDateFilter(note, state.ui.notesDate || "all")).sort((a, b) => {
     const pin = timestampMs(b.pinnedAt) - timestampMs(a.pinnedAt);
     if (pin) return pin;
     return b.noteDate.localeCompare(a.noteDate) || timestampMs(b.updatedAt) - timestampMs(a.updatedAt);
@@ -2686,7 +2729,7 @@ function EntryRow({
       className: "ml-2 text-[#FFD2D7]"
     }, visibleEntryTags.map(tag => `#${tag}`).join(" ")) : null)), React.createElement("button", {
       type: "button",
-      onClick: () => handlers.deleteEntry(day.id, node.id, entry.id),
+      onClick: () => handlers.deleteActionNote(day.id, node.id, entry.id),
       className: "text-[#666] hover:text-red-300 p-1"
     }, React.createElement(Trash2, {
       size: 14
@@ -2707,7 +2750,9 @@ function EntryRow({
     contentEditable: true,
     suppressContentEditableWarning: true,
     spellCheck: "true",
-    onInput: e => highlightEditableHashtags(e.currentTarget),
+    onInput: e => {
+      if (!e.nativeEvent?.isComposing) highlightEditableHashtags(e.currentTarget);
+    },
     onCompositionEnd: e => highlightEditableHashtags(e.currentTarget),
     onKeyDown: e => {
       if (e.key === "Enter") {
@@ -3524,7 +3569,7 @@ function App() {
     if (window.location.hash !== nextHash) {
       window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${nextHash}`);
     }
-  }, [currentView, isSearchOpen, searchQuery, db.ui.boxView, db.ui.boxFilter, db.ui.boxFilterFrom, db.ui.boxFilterTo, db.ui.showBoxDays, db.ui.selectedActionDate, db.ui.actionFilter, db.ui.notesView, db.ui.notesTag, db.ui.notesDate]);
+  }, [currentView, isSearchOpen, searchQuery, db.ui.boxView, db.ui.boxFilter, db.ui.boxFilterFrom, db.ui.boxFilterTo, db.ui.showBoxDays, db.ui.selectedActionDate, db.ui.actionFilter, db.ui.notesView, db.ui.notesTag, db.ui.notesDate, db.ui.notesTagsInput, db.ui.notesDatesInput]);
   useEffect(() => {
     if (!flashTarget) return;
     const safeId = window.CSS?.escape ? window.CSS.escape(flashTarget.id) : String(flashTarget.id).replace(/"/g, '\\"');
@@ -4290,6 +4335,16 @@ function App() {
     });
     setModal(null);
   }
+  function deleteActionNoteMirror(state, entryId) {
+    const note = getNote(state, actionNoteId(entryId));
+    if (note) {
+      const t = now();
+      note.deletedAt = t;
+      note.updatedAt = t;
+      note.clientUpdatedAt = t;
+    }
+    state.noteLinks = (state.noteLinks || []).filter(link => link.noteId !== actionNoteId(entryId));
+  }
   function deleteActionNote({
     dayId,
     nodeId,
@@ -4305,13 +4360,7 @@ function App() {
       const entry = node ? entriesFor(node).find(e => e.id === entryId) : null;
       if (!day || !node || !entry || entry.type !== "note") return false;
       node.entries = normalizeEntries(node).filter(e => e.id !== entryId);
-      const note = getNote(state, actionNoteId(entryId));
-      if (note) {
-        note.deletedAt = now();
-        note.updatedAt = note.deletedAt;
-        note.clientUpdatedAt = note.deletedAt;
-      }
-      state.noteLinks = (state.noteLinks || []).filter(link => link.noteId !== actionNoteId(entryId));
+      deleteActionNoteMirror(state, entryId);
       node.updatedAt = now();
       day.updatedAt = now();
     }, {
@@ -4356,6 +4405,8 @@ function App() {
       const day = state.actionDays.find(d => d.id === dayId);
       const node = day ? getNode(day.nodes, nodeId) : null;
       if (!day || !node) return false;
+      const entry = entriesFor(node).find(e => e.id === entryId);
+      if (entry?.type === "note") deleteActionNoteMirror(state, entryId);
       node.entries = normalizeEntries(node).filter(e => e.id !== entryId);
       node.updatedAt = now();
       day.updatedAt = now();
@@ -4387,6 +4438,7 @@ function App() {
       const day = state.actionDays.find(d => d.id === dayId);
       const node = day ? getNode(day.nodes, nodeId) : null;
       if (!day || !node || !entriesFor(node).length) return false;
+      entriesFor(node, "note").forEach(entry => deleteActionNoteMirror(state, entry.id));
       node.entries = [];
       node.updatedAt = now();
       day.updatedAt = now();
@@ -4632,6 +4684,14 @@ function App() {
       nodeId,
       entryId
     }),
+    deleteActionNote: (dayId, nodeId, entryId) => {
+      if (!window.confirm("Delete this note?")) return;
+      deleteActionNote({
+        dayId,
+        nodeId,
+        entryId
+      });
+    },
     toggleEntry,
     renameEntry,
     deleteEntry,

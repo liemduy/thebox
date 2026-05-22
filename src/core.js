@@ -76,9 +76,15 @@
     const ui = {};
     const view = params.get("view");
     const date = params.get("date");
+    const tags = params.get("tags");
+    const legacyTag = params.get("tag");
+    const dates = params.get("dates");
     if (NOTES_VIEW_VALUES.has(view)) ui.notesView = view;
     if (NOTES_DATE_VALUES.has(date)) ui.notesDate = date;
-    ui.notesTag = params.get("tag") || "";
+    if (tags !== null) ui.notesTagsInput = tags;
+    else if (legacyTag) ui.notesTagsInput = legacyTag;
+    if (legacyTag) ui.notesTag = legacyTag;
+    if (dates !== null) ui.notesDatesInput = dates;
     return ui;
   }
 
@@ -127,8 +133,12 @@
 
   function appendNotesRouteParams(params, ui) {
     params.set("view", NOTES_VIEW_VALUES.has(ui.notesView) ? ui.notesView : "linked");
-    params.set("date", NOTES_DATE_VALUES.has(ui.notesDate) ? ui.notesDate : "all");
-    if (String(ui.notesTag || "").trim()) params.set("tag", String(ui.notesTag || "").trim());
+    const tagsInput = String(ui.notesTagsInput || ui.notesTag || "").trim();
+    const datesInput = String(ui.notesDatesInput || "").trim();
+    const presetDate = NOTES_DATE_VALUES.has(ui.notesDate) ? ui.notesDate : "all";
+    if (tagsInput) params.set("tags", tagsInput);
+    if (datesInput) params.set("dates", datesInput);
+    else if (presetDate !== "all") params.set("date", presetDate);
   }
 
   function buildAppHash({ currentView, ui, isSearchOpen, searchQuery }) {

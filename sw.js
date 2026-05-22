@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v54-live-hashtags-1';
+const CACHE_NAME = 'idea-box-v55-hardening-routes-sync';
 const APP_SHELL = [
   './',
   './index.html',

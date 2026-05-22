@@ -46,12 +46,31 @@ test("builds action and search hashes with stable params", () => {
 });
 
 test("parses and builds notes route filters", () => {
-  const route = core.parseRouteHash("#/notes?view=free&date=30&tag=idea");
+  const route = core.parseRouteHash("#/notes?view=free&tags=idea,work&dates=22%2F05%2F2026%2C+01%2F05%2F2026+-+22%2F05%2F2026");
   assert.equal(route.name, "notes");
   assert.equal(core.routeView(route), "notes");
   assert.deepEqual(route.ui, {
     notesView: "free",
+    notesTagsInput: "idea,work",
+    notesDatesInput: "22/05/2026, 01/05/2026 - 22/05/2026"
+  });
+  assert.equal(
+    core.buildAppHash({
+      currentView: "notes",
+      ui: { notesView: "linked", notesTagsInput: "project,work", notesDatesInput: "22/05/2026, 01/05/2026 - 22/05/2026" },
+      isSearchOpen: false,
+      searchQuery: ""
+    }),
+    "#/notes?view=linked&tags=project%2Cwork&dates=22%2F05%2F2026%2C+01%2F05%2F2026+-+22%2F05%2F2026"
+  );
+});
+
+test("keeps legacy note route params compatible", () => {
+  const route = core.parseRouteHash("#/notes?view=free&date=30&tag=idea");
+  assert.deepEqual(route.ui, {
+    notesView: "free",
     notesDate: "30",
+    notesTagsInput: "idea",
     notesTag: "idea"
   });
   assert.equal(
@@ -61,7 +80,7 @@ test("parses and builds notes route filters", () => {
       isSearchOpen: false,
       searchQuery: ""
     }),
-    "#/notes?view=linked&date=today&tag=project"
+    "#/notes?view=linked&tags=project&date=today"
   );
 });
 
