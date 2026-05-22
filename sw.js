@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v49-notes-universe-1';
+const CACHE_NAME = 'idea-box-v50-notes-ui-polish-1';
 const APP_SHELL = [
   './',
   './index.html',

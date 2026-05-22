@@ -709,13 +709,38 @@ function noteInDateFilter(note, filter) {
   const days = Number(value);
   return Number.isFinite(days) ? diff >= 0 && diff <= days : true;
 }
+function parseUserDate(value) {
+  const raw = String(value || "").trim();
+  if (validYMD(raw)) return raw;
+  const match = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return "";
+  const [, d, m, y] = match;
+  const date = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  return validYMD(date) ? date : "";
+}
+function parseExportDateFilters(input) {
+  return String(input || "").split(",").map(part => part.trim()).filter(Boolean).map(part => {
+    const range = part.split(/\s+-\s+/);
+    if (range.length === 2) {
+      const from = parseUserDate(range[0]);
+      const to = parseUserDate(range[1]);
+      return from && to ? { type: "range", from: from <= to ? from : to, to: from <= to ? to : from } : null;
+    }
+    const date = parseUserDate(part);
+    return date ? { type: "date", date } : null;
+  }).filter(Boolean);
+}
+function noteMatchesExportDates(note, filters) {
+  if (!filters.length) return true;
+  return filters.some(filter => filter.type === "date" ? note.noteDate === filter.date : note.noteDate >= filter.from && note.noteDate <= filter.to);
+}
+function exportTagsFromInput(input) {
+  return [...new Set(String(input || "").split(",").map(normalizeTag).filter(Boolean))];
+}
 function filteredNotes(state) {
   const view = state.ui.notesView || "linked";
-  const tag = normalizeTag(state.ui.notesTag || "");
   return activeNotes(state)
     .filter(note => view === "all" || (view === "linked" ? noteIsLinked(state, note.id) : !noteIsLinked(state, note.id)))
-    .filter(note => !tag || (note.tags || []).includes(tag))
-    .filter(note => noteInDateFilter(note, state.ui.notesDate || "all"))
     .sort((a, b) => {
       const pin = timestampMs(b.pinnedAt) - timestampMs(a.pinnedAt);
       if (pin) return pin;
@@ -837,40 +862,46 @@ function syncSelectedActionDayWithBox(state) {
   return day ? syncActionDayWithBox(state, day) : false;
 }
 
-function collectSearchResults(state, query) {
+function collectSearchResults(state, query, filters = { box: true, action: true, note: true }) {
   const term = String(query || "").trim().toLowerCase();
   if (!term) return [];
   const out = [];
-  state.boxNodes.forEach(node => {
-    const note = `${node.boxNoteTitle || ""} ${htmlToText(node.boxNoteHtml || "")}`.trim();
-    if (node.title.toLowerCase().includes(term) || note.toLowerCase().includes(term)) {
-      out.push({ id: `box:${node.id}`, kind: "box", title: pathOf(node, state.boxNodes), text: note, boxId: node.id });
-    }
-  });
-  state.actionDays.forEach(day => {
-    day.nodes.forEach(node => {
-      entriesFor(node).forEach(entry => {
-        const text = entryText(entry);
-        if (node.title.toLowerCase().includes(term) || text.toLowerCase().includes(term)) {
-          out.push({ id: `entry:${day.id}:${node.id}:${entry.id}`, kind: entry.type === "note" ? "note" : "action", meta: displayDate(day.date), title: pathOf(node, day.nodes), text, dayId: day.id, date: day.date, actionNodeId: node.id, entryId: entry.id });
-        }
+  if (filters.box !== false) {
+    state.boxNodes.forEach(node => {
+      const note = `${node.boxNoteTitle || ""} ${htmlToText(node.boxNoteHtml || "")}`.trim();
+      if (node.title.toLowerCase().includes(term) || note.toLowerCase().includes(term)) {
+        out.push({ id: `box:${node.id}`, kind: "box", title: pathOf(node, state.boxNodes), text: note, boxId: node.id });
+      }
+    });
+  }
+  if (filters.action !== false) {
+    state.actionDays.forEach(day => {
+      day.nodes.forEach(node => {
+        entriesFor(node, "action").forEach(entry => {
+          const text = entryText(entry);
+          if (node.title.toLowerCase().includes(term) || text.toLowerCase().includes(term)) {
+            out.push({ id: `entry:${day.id}:${node.id}:${entry.id}`, kind: "act", meta: displayDate(day.date), title: pathOf(node, day.nodes), text, dayId: day.id, date: day.date, actionNodeId: node.id, entryId: entry.id });
+          }
+        });
       });
     });
-  });
-  activeNotes(state).forEach(note => {
-    const text = `${noteDisplayTitle(note)} ${noteBodyText(note)} ${(note.tags || []).map(tag => `#${tag}`).join(" ")}`.toLowerCase();
-    if (text.includes(term)) {
-      const links = noteLinksFor(state, note.id);
-      out.push({
-        id: `note:${note.id}`,
-        kind: "note",
-        meta: links.length ? linkLabel(state, links[0]) : "free",
-        title: noteDisplayTitle(note),
-        text: notePreview(note) || (note.tags || []).map(tag => `#${tag}`).join(" "),
-        noteId: note.id
-      });
-    }
-  });
+  }
+  if (filters.note !== false) {
+    activeNotes(state).forEach(note => {
+      const text = `${noteDisplayTitle(note)} ${noteBodyText(note)} ${(note.tags || []).map(tag => `#${tag}`).join(" ")}`.toLowerCase();
+      if (text.includes(term)) {
+        const links = noteLinksFor(state, note.id);
+        out.push({
+          id: `note:${note.id}`,
+          kind: "note",
+          meta: links.length ? linkLabel(state, links[0]) : "free",
+          title: noteDisplayTitle(note),
+          text: notePreview(note) || (note.tags || []).map(tag => `#${tag}`).join(" "),
+          noteId: note.id
+        });
+      }
+    });
+  }
   return out.slice(0, 40);
 }
 
@@ -902,18 +933,35 @@ function HighlightText({ text, query, className = "" }) {
   );
 }
 
-function SearchPanel({ isOpen, query, setQuery, results, onOpenResult }) {
+function searchKindLabel(kind) {
+  if (kind === "act") return "Act";
+  return kind === "box" ? "Box" : "Note";
+}
+
+function SearchPanel({ isOpen, query, setQuery, results, filters, onToggleFilter, onOpenResult }) {
   return (
-    <div onClick={(e) => e.stopPropagation()} className={`bg-[#111111] border-b border-[#333333] overflow-hidden transition-all duration-300 ease-in-out z-30 relative ${isOpen ? "max-h-72 opacity-100 py-3 px-5" : "max-h-0 opacity-0 py-0 px-5 border-transparent"}`}>
+    <div onClick={(e) => e.stopPropagation()} className={`bg-[#111111] border-b border-[#333333] overflow-hidden transition-all duration-300 ease-in-out z-30 relative ${isOpen ? "max-h-80 opacity-100 py-3 px-5" : "max-h-0 opacity-0 py-0 px-5 border-transparent"}`}>
       <div className="flex items-center bg-[#0a0a0a] rounded-full px-3 py-1.5 border border-[#333333] focus-within:border-[#FFD2D7] transition-colors">
         <Search size={16} className="text-[#A7A7A7] mr-2" />
         <input type="text" placeholder="Search boxes, actions, notes..." value={query} onChange={(e) => setQuery(e.target.value)} className="bg-transparent border-none outline-none text-white text-[14px] w-full placeholder:text-[#666666]" />
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        {[["box", "Box"], ["action", "Act"], ["note", "Note"]].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onToggleFilter(key)}
+            className={`px-3 py-1.5 rounded-full text-[11px] font-extrabold transition-colors ${filters?.[key] !== false ? "bg-[#FFD2D7] text-black" : "border border-[#444444] text-[#A7A7A7] hover:text-white"}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
       {query.trim() && (
         <div className="mt-3 max-h-44 overflow-auto thin-scroll flex flex-col gap-1">
           {results.length ? results.map(result => (
             <button key={result.id} type="button" onClick={() => onOpenResult(result)} className="text-left px-3 py-2 rounded-xl hover:bg-[#1A1A1A] transition-colors">
-              <span className="text-[11px] uppercase tracking-wider text-[#FFD2D7] font-extrabold">{result.kind}{result.meta ? <span className="text-[#777] normal-case tracking-normal font-bold"> - {result.meta}</span> : null}</span>
+              <span className="text-[11px] uppercase tracking-wider text-[#FFD2D7] font-extrabold">{searchKindLabel(result.kind)}{result.meta ? <span className="text-[#777] normal-case tracking-normal font-bold"> - {result.meta}</span> : null}</span>
               <strong className="block text-[14px] text-white truncate"><HighlightText text={result.title} query={query} /></strong>
               {result.text ? <em className="block text-[12px] text-[#A7A7A7] not-italic truncate"><HighlightText text={result.text} query={query} /></em> : null}
             </button>
@@ -925,73 +973,51 @@ function SearchPanel({ isOpen, query, setQuery, results, onOpenResult }) {
 }
 
 function NoteCard({ state, note, query = "", onOpen, onDelete, flashTarget }) {
-  const links = noteLinksFor(state, note.id);
-  const linked = links.length > 0;
   const preview = notePreview(note);
   return (
-    <div data-note-id={note.id} className={`group bg-[#141414] border border-white/[0.04] rounded-[12px] overflow-hidden ${flashTarget?.type === "note" && flashTarget.id === note.id ? "flash-target" : ""}`}>
-      <button type="button" onClick={() => onOpen(note.id)} className="w-full text-left px-4 py-3.5 hover:bg-white/[0.04] transition-colors">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <span className={`text-[10px] uppercase tracking-wider font-extrabold ${linked ? "text-[#FFD2D7]" : "text-[#A7A7A7]"}`}>{linked ? "Linked" : "Free"}</span>
-              <span className="text-[11px] text-[#666] font-bold truncate">{links[0] ? linkLabel(state, links[0]) : displayDate(note.noteDate)}</span>
-            </div>
-            <h3 className="text-white font-extrabold text-[16px] leading-snug truncate">
-              <HighlightText text={noteDisplayTitle(note)} query={query} />
-            </h3>
-            {preview ? <p className="text-[#A7A7A7] text-[13px] leading-snug mt-1 line-clamp-2"><HighlightText text={preview} query={query} /></p> : null}
-          </div>
-        </div>
-        {(note.tags || []).length ? (
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {note.tags.slice(0, 5).map(tag => <span key={tag} className="text-[11px] font-bold text-[#FFD2D7] bg-[#FFD2D7]/[0.08] px-2 py-1 rounded-full">#{tag}</span>)}
-          </div>
-        ) : null}
-      </button>
-      <div className="border-t border-white/[0.04] px-4 py-2 flex items-center justify-between">
-        <span className="text-[12px] font-bold text-[#666]">{displayDate(note.noteDate)}</span>
-        <button type="button" onClick={() => onDelete(note.id)} className="text-[#666] hover:text-red-300 transition-colors p-1.5" aria-label="Delete note"><Trash2 size={16} /></button>
+    <div data-note-id={note.id} className={`group bg-[#141414] border border-white/[0.04] rounded-[12px] px-4 py-3.5 ${flashTarget?.type === "note" && flashTarget.id === note.id ? "flash-target" : ""}`}>
+      <div className="flex items-start gap-3">
+        <button type="button" onClick={() => onOpen(note.id)} className="min-w-0 flex-1 text-left">
+          <h3 className="text-white font-extrabold text-[15.5px] leading-snug truncate">
+            <HighlightText text={noteDisplayTitle(note)} query={query} />
+          </h3>
+          <p className="text-[#A7A7A7] text-[13px] leading-snug mt-1 truncate">
+            <HighlightText text={preview || "No preview"} query={query} />
+          </p>
+        </button>
+        <button type="button" onClick={() => onDelete(note.id)} className="text-[#666] hover:text-red-300 transition-colors p-1.5 -mr-1 shrink-0" aria-label="Delete note">
+          <Trash2 size={16} />
+        </button>
       </div>
     </div>
   );
 }
 
-function NotesPanel({ state, notes, tags, searchQuery, setSearchQuery, onCreateNote, onOpenNote, onDeleteNote, onSetView, onSetTag, onSetDate, onExportAI, flashTarget }) {
+function NotesPanel({ state, notes, isViewMenuOpen, setIsViewMenuOpen, onCreateNote, onOpenNote, onDeleteNote, onSetView, onOpenExport, flashTarget }) {
   const groups = groupNotesByDate(notes);
   const view = state.ui.notesView || "linked";
-  const date = state.ui.notesDate || "all";
+  const viewLabel = view === "linked" ? "Linked" : view === "free" ? "Free" : "All";
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 flex-1 flex flex-col">
       <div className="filter-row flex flex-wrap items-center gap-2.5 mb-5 relative z-20">
-        {["linked", "free", "all"].map(value => (
-          <button key={value} type="button" onClick={() => onSetView(value)} className={`px-5 py-2 text-[13px] font-bold rounded-full transition-transform active:scale-95 ${view === value ? "bg-[#FFD2D7] text-black" : "bg-transparent border border-[#555555] text-white hover:border-white"}`}>
-            {value === "linked" ? "Linked" : value === "free" ? "Free" : "All"}
+        <div className="relative">
+          <button type="button" onClick={(e) => { e.stopPropagation(); setIsViewMenuOpen(!isViewMenuOpen); }} className="flex items-center gap-1.5 px-6 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform">
+            {viewLabel}
           </button>
-        ))}
+          {isViewMenuOpen && (
+            <div onClick={e => e.stopPropagation()} className="absolute top-full left-0 mt-2 w-[130px] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] py-1.5 flex flex-col origin-top-left animate-in fade-in zoom-in-95 duration-100">
+              {[["linked", "Linked"], ["free", "Free"], ["all", "All"]].map(([value, label]) => (
+                <button key={value} type="button" onClick={() => { onSetView(value); setIsViewMenuOpen(false); }} className="px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors">{label}</button>
+              ))}
+            </div>
+          )}
+        </div>
+        <button type="button" onClick={onOpenExport} className="px-5 py-2 bg-transparent hover:border-white active:scale-95 text-white text-[13px] font-bold rounded-full border border-[#878787] transition-all flex items-center gap-2">
+          <Download size={14} /> Export
+        </button>
         <button type="button" onClick={onCreateNote} className="ml-auto px-5 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform" aria-label="Create note">
           +note
         </button>
-      </div>
-
-      <div className="flex flex-col gap-2.5 mb-6">
-        <div className="flex items-center bg-[#111111] rounded-full px-3 py-1.5 border border-[#333333] focus-within:border-[#FFD2D7] transition-colors">
-          <Search size={16} className="text-[#A7A7A7] mr-2" />
-          <input type="text" placeholder="Search notes..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-transparent border-none outline-none text-white text-[14px] w-full placeholder:text-[#666666]" />
-        </div>
-        <div className="grid grid-cols-2 gap-2.5">
-          <select value={state.ui.notesTag || ""} onChange={(e) => onSetTag(e.target.value)} className="bg-[#111111] border border-[#333333] rounded-[12px] px-3 py-2 text-[13px] font-bold text-white outline-none focus:border-[#FFD2D7]">
-            <option value="">All tags</option>
-            {tags.map(tag => <option key={tag} value={tag}>#{tag}</option>)}
-          </select>
-          <select value={date} onChange={(e) => onSetDate(e.target.value)} className="bg-[#111111] border border-[#333333] rounded-[12px] px-3 py-2 text-[13px] font-bold text-white outline-none focus:border-[#FFD2D7]">
-            <option value="all">All dates</option>
-            <option value="today">Today</option>
-            <option value="7">7 days</option>
-            <option value="30">30 days</option>
-          </select>
-        </div>
-        <button type="button" onClick={onExportAI} className="self-start text-[12px] font-extrabold text-[#FFD2D7] hover:text-white transition-colors px-1">Export for AI</button>
       </div>
 
       {groups.length ? (
@@ -1000,7 +1026,7 @@ function NotesPanel({ state, notes, tags, searchQuery, setSearchQuery, onCreateN
             <section key={group.date}>
               <div className="text-[12px] font-extrabold text-[#A7A7A7] mb-2 px-1">{displayDate(group.date)}</div>
               <div className="space-y-3">
-                {group.items.map(note => <NoteCard key={note.id} state={state} note={note} query={searchQuery} onOpen={onOpenNote} onDelete={onDeleteNote} flashTarget={flashTarget} />)}
+                {group.items.map(note => <NoteCard key={note.id} state={state} note={note} onOpen={onOpenNote} onDelete={onDeleteNote} flashTarget={flashTarget} />)}
               </div>
             </section>
           ))}
@@ -1012,6 +1038,59 @@ function NotesPanel({ state, notes, tags, searchQuery, setSearchQuery, onCreateN
           <button type="button" onClick={onCreateNote} className="mt-4 bg-[#FFD2D7] text-black font-bold px-7 py-3 rounded-full flex items-center gap-2"><Plus size={18} /> Create note</button>
         </div>
       )}
+    </div>
+  );
+}
+
+function replaceLastCsvToken(input, value) {
+  const parts = String(input || "").split(",");
+  parts[parts.length - 1] = ` #${value}`;
+  return parts.map((part, index) => index === 0 ? part.trimStart() : part.trim()).join(", ").replace(/^, /, "");
+}
+
+function ExportNotesModal({ tags, onClose, onExport }) {
+  const [tagInput, setTagInput] = useState("");
+  const [dateInput, setDateInput] = useState("");
+  const selectedTags = exportTagsFromInput(tagInput);
+  const activeTagNeedle = normalizeTag(String(tagInput || "").split(",").pop() || "");
+  const tagHints = tags
+    .filter(tag => !selectedTags.includes(tag))
+    .filter(tag => !activeTagNeedle || tag.includes(activeTagNeedle))
+    .slice(0, 5);
+  const dateFilters = parseExportDateFilters(dateInput);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+      <div className="bg-[#1A1A1A] border border-[#323232] rounded-[24px] w-full max-w-[360px] p-5 shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-5">
+          <h3 className="font-bold text-[18px] text-white">Export notes</h3>
+          <button type="button" onClick={onClose} className="text-[#A7A7A7] hover:text-white transition-colors p-1.5 bg-[#2D2D2D] hover:bg-[#3E3E3E] rounded-full" aria-label="Close"><X size={18} /></button>
+        </div>
+        <div className="flex flex-col gap-4">
+          <label className="block">
+            <span className="block text-[12px] text-[#A7A7A7] font-extrabold mb-2">Hashtags</span>
+            <input value={tagInput} onChange={(e) => setTagInput(e.target.value)} placeholder="#idea, #work" className="w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-white text-[14px] outline-none focus:border-[#FFD2D7] placeholder:text-[#555555] transition-colors" />
+            {tagHints.length ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {tagHints.map(tag => (
+                  <button key={tag} type="button" onClick={() => setTagInput(prev => replaceLastCsvToken(prev, tag))} className="text-[11px] font-bold text-[#FFD2D7] bg-[#FFD2D7]/[0.08] px-2 py-1 rounded-full">#{tag}</button>
+                ))}
+              </div>
+            ) : null}
+          </label>
+          <label className="block">
+            <span className="block text-[12px] text-[#A7A7A7] font-extrabold mb-2">Dates</span>
+            <input value={dateInput} onChange={(e) => setDateInput(e.target.value)} placeholder="22/05/2026, 01/05/2026 - 22/05/2026" className="w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-white text-[14px] outline-none focus:border-[#FFD2D7] placeholder:text-[#555555] transition-colors" />
+            {dateInput.trim() ? (
+              <div className={`mt-2 text-[11px] font-bold ${dateFilters.length ? "text-[#A7A7A7]" : "text-red-300"}`}>
+                {dateFilters.length ? `${dateFilters.length} date filter${dateFilters.length > 1 ? "s" : ""}` : "Use dd/mm/yyyy or dd/mm/yyyy - dd/mm/yyyy"}
+              </div>
+            ) : null}
+          </label>
+          <button type="button" onClick={() => onExport({ tagsInput: tagInput, datesInput: dateInput })} className="mt-1 bg-[#FFD2D7] hover:scale-[1.02] active:scale-95 text-black font-bold py-3.5 rounded-[12px] transition-transform flex items-center justify-center gap-2">
+            <Download size={17} /> Export
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1592,8 +1671,8 @@ function AuthScreen({ authView, authBusy, authMessage, onAuth, onSwitchView }) {
         </div>
         <main className="p-5 flex-1 flex flex-col justify-center">
           <div className="bg-[#141414] border border-white/[0.05] rounded-[24px] p-5">
-            <h2 className="text-[2.4rem] leading-[1.05] font-extrabold tracking-tighter mb-3">{isReset ? "New password" : "Login"}</h2>
-            <p className="text-[#A7A7A7] text-[14px] mb-6">{isReset ? "Create a new password for this workspace." : "Use your Supabase account to sync boxes and actions."}</p>
+            <h2 className={`text-[2.4rem] leading-[1.05] font-extrabold tracking-tighter ${isReset ? "mb-3" : "mb-6"}`}>{isReset ? "New password" : "Login"}</h2>
+            {isReset ? <p className="text-[#A7A7A7] text-[14px] mb-6">Create a new password for this workspace.</p> : null}
             {isReset ? (
               <form onSubmit={(e) => { e.preventDefault(); onAuth("update-password", { password: newPasswordRef.current?.value || "" }); }} className="flex flex-col gap-3">
                 <input ref={newPasswordRef} type="password" placeholder="New password" className="w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-white outline-none focus:border-[#FFD2D7]" />
@@ -1631,13 +1710,14 @@ function App() {
   const [currentView, setCurrentView] = useState(() => routeView(initialRouteRef.current));
   const [isSearchOpen, setIsSearchOpen] = useState(() => initialRouteRef.current?.name === "search");
   const [searchQuery, setSearchQuery] = useState(() => initialRouteRef.current?.query || "");
-  const [notesSearchQuery, setNotesSearchQuery] = useState("");
+  const [searchFilters, setSearchFilters] = useState({ box: true, action: true, note: true });
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState(null);
   const [menuPlacements, setMenuPlacements] = useState({});
   const [isActiveMenuOpen, setIsActiveMenuOpen] = useState(false);
   const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+  const [isNotesViewMenuOpen, setIsNotesViewMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState("");
   const [flashTarget, setFlashTarget] = useState(null);
@@ -1658,17 +1738,9 @@ function App() {
   const selectedDate = db.ui.selectedActionDate || todayYMD();
   const selectedDay = db.actionDays.find(day => day.date === selectedDate);
   const boxView = db.ui.boxView || "active";
-  const searchResults = useMemo(() => collectSearchResults(db, searchQuery), [db, searchQuery]);
+  const searchResults = useMemo(() => collectSearchResults(db, searchQuery, searchFilters), [db, searchQuery, searchFilters]);
   const noteTags = useMemo(() => allNoteTags(db), [db]);
-  const notesForView = useMemo(() => {
-    const term = String(notesSearchQuery || "").trim().toLowerCase();
-    const base = filteredNotes(db);
-    if (!term) return base;
-    return base.filter(note => {
-      const links = noteLinksFor(db, note.id).map(link => linkLabel(db, link)).join(" ");
-      return `${noteDisplayTitle(note)} ${noteBodyText(note)} ${(note.tags || []).map(tag => `#${tag}`).join(" ")} ${links}`.toLowerCase().includes(term);
-    });
-  }, [db, notesSearchQuery]);
+  const notesForView = useMemo(() => filteredNotes(db), [db]);
 
   function showToast(message) {
     setToast(message);
@@ -1682,6 +1754,7 @@ function App() {
     setIsActiveMenuOpen(false);
     setIsDateMenuOpen(false);
     setIsActionsMenuOpen(false);
+    setIsNotesViewMenuOpen(false);
   }
 
   function openNodeMenu(menuId, event, estimatedHeight) {
@@ -1707,6 +1780,7 @@ function App() {
     setIsActiveMenuOpen(false);
     setIsDateMenuOpen(false);
     setIsActionsMenuOpen(false);
+    setIsNotesViewMenuOpen(false);
   }
 
   function applyHashRoute(route = parseRouteHash()) {
@@ -2645,8 +2719,14 @@ function App() {
     }
   }
 
-  function exportAiNotes() {
-    const selected = notesForView;
+  function exportAiNotes(options = {}) {
+    const tags = exportTagsFromInput(options.tagsInput || "");
+    const dateFilters = parseExportDateFilters(options.datesInput || "");
+    const selected = notesForView.filter(note => {
+      const noteTags = note.tags || [];
+      const tagMatch = !tags.length || tags.every(tag => noteTags.includes(tag));
+      return tagMatch && noteMatchesExportDates(note, dateFilters);
+    });
     if (!selected.length) {
       showToast("No notes to export");
       return;
@@ -2675,10 +2755,19 @@ function App() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 500);
     showToast("Exported notes for AI");
+    setModal(null);
   }
 
   function setNotesUI(key, value) {
     setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, [key]: value } }));
+  }
+
+  function toggleSearchFilter(key) {
+    setSearchFilters(prev => {
+      const next = { ...prev, [key]: prev[key] === false };
+      if (!next.box && !next.action && !next.note) return prev;
+      return next;
+    });
   }
 
   function openCentralNote(noteId) {
@@ -2694,6 +2783,10 @@ function App() {
   function requestDeleteCentralNote(noteId) {
     if (!window.confirm("Delete this note?")) return;
     deleteCentralNote({ noteId });
+  }
+
+  function openNotesExport() {
+    setModal({ type: "notesExport" });
   }
 
   function openSearchResult(result) {
@@ -2801,18 +2894,18 @@ function App() {
           fileInputRef={fileInputRef}
         />
 
-        <SearchPanel isOpen={isSearchOpen} query={searchQuery} setQuery={setSearchQuery} results={searchResults} onOpenResult={openSearchResult} />
+        <SearchPanel isOpen={isSearchOpen} query={searchQuery} setQuery={setSearchQuery} results={searchResults} filters={searchFilters} onToggleFilter={toggleSearchFilter} onOpenResult={openSearchResult} />
 
         <main className="app-main p-5 flex-1 flex flex-col pb-24">
-          <div className="flex justify-between items-end mb-7 mt-1">
-            <h2 className="view-title text-[2.15rem] leading-[1.1] font-extrabold tracking-tighter flex flex-wrap items-baseline">
-              <button type="button" className={`cursor-pointer transition-colors ${currentView === "boxes" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("boxes"); }}>Boxes</button>
+          <div className="flex justify-between items-center gap-3 mb-7 mt-1">
+            <h2 className="view-title text-[1.55rem] leading-[1.1] font-extrabold tracking-tighter flex flex-nowrap items-baseline min-w-0">
+              <button type="button" className={`cursor-pointer transition-colors whitespace-nowrap ${currentView === "boxes" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("boxes"); }}>Box</button>
               <span className="text-[#3E3E3E] mx-1.5 font-light">/</span>
-              <button type="button" className={`cursor-pointer transition-colors ${currentView === "actions" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("actions"); }}>Actions</button>
+              <button type="button" className={`cursor-pointer transition-colors whitespace-nowrap ${currentView === "actions" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("actions"); }}>Act</button>
               <span className="text-[#3E3E3E] mx-1.5 font-light">/</span>
-              <button type="button" className={`cursor-pointer transition-colors ${currentView === "notes" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("notes"); }}>Notes</button>
+              <button type="button" className={`cursor-pointer transition-colors whitespace-nowrap ${currentView === "notes" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("notes"); }}>Note</button>
             </h2>
-            <div className="flex gap-3 text-[#A7A7A7] mb-2">
+            <div className="flex gap-3 text-[#A7A7A7] shrink-0">
               <button type="button" disabled={!undoRef.current.length} onClick={(e) => { e.stopPropagation(); undo(); }} className="cursor-pointer hover:text-white transition-colors" aria-label="Undo"><Undo2 size={18} /></button>
               <button type="button" disabled={!redoRef.current.length} onClick={(e) => { e.stopPropagation(); redo(); }} className="cursor-pointer hover:text-white transition-colors" aria-label="Redo"><Redo2 size={18} /></button>
             </div>
@@ -2936,16 +3029,13 @@ function App() {
             <NotesPanel
               state={db}
               notes={notesForView}
-              tags={noteTags}
-              searchQuery={notesSearchQuery}
-              setSearchQuery={setNotesSearchQuery}
+              isViewMenuOpen={isNotesViewMenuOpen}
+              setIsViewMenuOpen={setIsNotesViewMenuOpen}
               onCreateNote={createFreeNote}
               onOpenNote={openCentralNote}
               onDeleteNote={requestDeleteCentralNote}
               onSetView={(value) => setNotesUI("notesView", value)}
-              onSetTag={(value) => setNotesUI("notesTag", value)}
-              onSetDate={(value) => setNotesUI("notesDate", value)}
-              onExportAI={exportAiNotes}
+              onOpenExport={openNotesExport}
               flashTarget={flashTarget}
             />
           )}
@@ -2954,6 +3044,7 @@ function App() {
         {modal?.type === "boxNote" && <RichNoteModal modal={modal} state={db} onClose={() => setModal(null)} onSave={saveBoxNote} onDelete={deleteBoxNote} />}
         {modal?.type === "actionNote" && <RichNoteModal modal={modal} state={db} onClose={() => setModal(null)} onSave={saveActionNote} onDelete={deleteActionNote} />}
         {modal?.type === "centralNote" && <RichNoteModal modal={modal} state={db} onClose={() => setModal(null)} onSave={saveCentralNote} onDelete={deleteCentralNote} />}
+        {modal?.type === "notesExport" && <ExportNotesModal tags={noteTags} onClose={() => setModal(null)} onExport={exportAiNotes} />}
         {modal?.type === "actionLines" && <ActionLinesModal modal={modal} onClose={() => setModal(null)} onSave={addActionEntries} />}
         {toast && <div className="fixed left-1/2 bottom-6 -translate-x-1/2 z-[60] bg-[#1A1A1A] border border-[#444] text-white text-[13px] font-bold px-4 py-3 rounded-full shadow-2xl">{toast}</div>}
       </div>

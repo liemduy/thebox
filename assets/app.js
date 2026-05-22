@@ -1544,10 +1544,44 @@ function noteInDateFilter(note, filter) {
   const days = Number(value);
   return Number.isFinite(days) ? diff >= 0 && diff <= days : true;
 }
+function parseUserDate(value) {
+  const raw = String(value || "").trim();
+  if (validYMD(raw)) return raw;
+  const match = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return "";
+  const [, d, m, y] = match;
+  const date = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  return validYMD(date) ? date : "";
+}
+function parseExportDateFilters(input) {
+  return String(input || "").split(",").map(part => part.trim()).filter(Boolean).map(part => {
+    const range = part.split(/\s+-\s+/);
+    if (range.length === 2) {
+      const from = parseUserDate(range[0]);
+      const to = parseUserDate(range[1]);
+      return from && to ? {
+        type: "range",
+        from: from <= to ? from : to,
+        to: from <= to ? to : from
+      } : null;
+    }
+    const date = parseUserDate(part);
+    return date ? {
+      type: "date",
+      date
+    } : null;
+  }).filter(Boolean);
+}
+function noteMatchesExportDates(note, filters) {
+  if (!filters.length) return true;
+  return filters.some(filter => filter.type === "date" ? note.noteDate === filter.date : note.noteDate >= filter.from && note.noteDate <= filter.to);
+}
+function exportTagsFromInput(input) {
+  return [...new Set(String(input || "").split(",").map(normalizeTag).filter(Boolean))];
+}
 function filteredNotes(state) {
   const view = state.ui.notesView || "linked";
-  const tag = normalizeTag(state.ui.notesTag || "");
-  return activeNotes(state).filter(note => view === "all" || (view === "linked" ? noteIsLinked(state, note.id) : !noteIsLinked(state, note.id))).filter(note => !tag || (note.tags || []).includes(tag)).filter(note => noteInDateFilter(note, state.ui.notesDate || "all")).sort((a, b) => {
+  return activeNotes(state).filter(note => view === "all" || (view === "linked" ? noteIsLinked(state, note.id) : !noteIsLinked(state, note.id))).sort((a, b) => {
     const pin = timestampMs(b.pinnedAt) - timestampMs(a.pinnedAt);
     if (pin) return pin;
     return b.noteDate.localeCompare(a.noteDate) || timestampMs(b.updatedAt) - timestampMs(a.updatedAt);
@@ -1685,56 +1719,66 @@ function syncSelectedActionDayWithBox(state) {
   const day = state.actionDays.find(item => item.date === (state.ui.selectedActionDate || todayYMD()));
   return day ? syncActionDayWithBox(state, day) : false;
 }
-function collectSearchResults(state, query) {
+function collectSearchResults(state, query, filters = {
+  box: true,
+  action: true,
+  note: true
+}) {
   const term = String(query || "").trim().toLowerCase();
   if (!term) return [];
   const out = [];
-  state.boxNodes.forEach(node => {
-    const note = `${node.boxNoteTitle || ""} ${htmlToText(node.boxNoteHtml || "")}`.trim();
-    if (node.title.toLowerCase().includes(term) || note.toLowerCase().includes(term)) {
-      out.push({
-        id: `box:${node.id}`,
-        kind: "box",
-        title: pathOf(node, state.boxNodes),
-        text: note,
-        boxId: node.id
-      });
-    }
-  });
-  state.actionDays.forEach(day => {
-    day.nodes.forEach(node => {
-      entriesFor(node).forEach(entry => {
-        const text = entryText(entry);
-        if (node.title.toLowerCase().includes(term) || text.toLowerCase().includes(term)) {
-          out.push({
-            id: `entry:${day.id}:${node.id}:${entry.id}`,
-            kind: entry.type === "note" ? "note" : "action",
-            meta: displayDate(day.date),
-            title: pathOf(node, day.nodes),
-            text,
-            dayId: day.id,
-            date: day.date,
-            actionNodeId: node.id,
-            entryId: entry.id
-          });
-        }
+  if (filters.box !== false) {
+    state.boxNodes.forEach(node => {
+      const note = `${node.boxNoteTitle || ""} ${htmlToText(node.boxNoteHtml || "")}`.trim();
+      if (node.title.toLowerCase().includes(term) || note.toLowerCase().includes(term)) {
+        out.push({
+          id: `box:${node.id}`,
+          kind: "box",
+          title: pathOf(node, state.boxNodes),
+          text: note,
+          boxId: node.id
+        });
+      }
+    });
+  }
+  if (filters.action !== false) {
+    state.actionDays.forEach(day => {
+      day.nodes.forEach(node => {
+        entriesFor(node, "action").forEach(entry => {
+          const text = entryText(entry);
+          if (node.title.toLowerCase().includes(term) || text.toLowerCase().includes(term)) {
+            out.push({
+              id: `entry:${day.id}:${node.id}:${entry.id}`,
+              kind: "act",
+              meta: displayDate(day.date),
+              title: pathOf(node, day.nodes),
+              text,
+              dayId: day.id,
+              date: day.date,
+              actionNodeId: node.id,
+              entryId: entry.id
+            });
+          }
+        });
       });
     });
-  });
-  activeNotes(state).forEach(note => {
-    const text = `${noteDisplayTitle(note)} ${noteBodyText(note)} ${(note.tags || []).map(tag => `#${tag}`).join(" ")}`.toLowerCase();
-    if (text.includes(term)) {
-      const links = noteLinksFor(state, note.id);
-      out.push({
-        id: `note:${note.id}`,
-        kind: "note",
-        meta: links.length ? linkLabel(state, links[0]) : "free",
-        title: noteDisplayTitle(note),
-        text: notePreview(note) || (note.tags || []).map(tag => `#${tag}`).join(" "),
-        noteId: note.id
-      });
-    }
-  });
+  }
+  if (filters.note !== false) {
+    activeNotes(state).forEach(note => {
+      const text = `${noteDisplayTitle(note)} ${noteBodyText(note)} ${(note.tags || []).map(tag => `#${tag}`).join(" ")}`.toLowerCase();
+      if (text.includes(term)) {
+        const links = noteLinksFor(state, note.id);
+        out.push({
+          id: `note:${note.id}`,
+          kind: "note",
+          meta: links.length ? linkLabel(state, links[0]) : "free",
+          title: noteDisplayTitle(note),
+          text: notePreview(note) || (note.tags || []).map(tag => `#${tag}`).join(" "),
+          noteId: note.id
+        });
+      }
+    });
+  }
   return out.slice(0, 40);
 }
 function MenuItem({
@@ -1776,16 +1820,22 @@ function HighlightText({
     key: index
   }, part)));
 }
+function searchKindLabel(kind) {
+  if (kind === "act") return "Act";
+  return kind === "box" ? "Box" : "Note";
+}
 function SearchPanel({
   isOpen,
   query,
   setQuery,
   results,
+  filters,
+  onToggleFilter,
   onOpenResult
 }) {
   return React.createElement("div", {
     onClick: e => e.stopPropagation(),
-    className: `bg-[#111111] border-b border-[#333333] overflow-hidden transition-all duration-300 ease-in-out z-30 relative ${isOpen ? "max-h-72 opacity-100 py-3 px-5" : "max-h-0 opacity-0 py-0 px-5 border-transparent"}`
+    className: `bg-[#111111] border-b border-[#333333] overflow-hidden transition-all duration-300 ease-in-out z-30 relative ${isOpen ? "max-h-80 opacity-100 py-3 px-5" : "max-h-0 opacity-0 py-0 px-5 border-transparent"}`
   }, React.createElement("div", {
     className: "flex items-center bg-[#0a0a0a] rounded-full px-3 py-1.5 border border-[#333333] focus-within:border-[#FFD2D7] transition-colors"
   }, React.createElement(Search, {
@@ -1797,7 +1847,14 @@ function SearchPanel({
     value: query,
     onChange: e => setQuery(e.target.value),
     className: "bg-transparent border-none outline-none text-white text-[14px] w-full placeholder:text-[#666666]"
-  })), query.trim() && React.createElement("div", {
+  })), React.createElement("div", {
+    className: "mt-2 flex items-center gap-2"
+  }, [["box", "Box"], ["action", "Act"], ["note", "Note"]].map(([key, label]) => React.createElement("button", {
+    key: key,
+    type: "button",
+    onClick: () => onToggleFilter(key),
+    className: `px-3 py-1.5 rounded-full text-[11px] font-extrabold transition-colors ${filters?.[key] !== false ? "bg-[#FFD2D7] text-black" : "border border-[#444444] text-[#A7A7A7] hover:text-white"}`
+  }, label))), query.trim() && React.createElement("div", {
     className: "mt-3 max-h-44 overflow-auto thin-scroll flex flex-col gap-1"
   }, results.length ? results.map(result => React.createElement("button", {
     key: result.id,
@@ -1806,7 +1863,7 @@ function SearchPanel({
     className: "text-left px-3 py-2 rounded-xl hover:bg-[#1A1A1A] transition-colors"
   }, React.createElement("span", {
     className: "text-[11px] uppercase tracking-wider text-[#FFD2D7] font-extrabold"
-  }, result.kind, result.meta ? React.createElement("span", {
+  }, searchKindLabel(result.kind), result.meta ? React.createElement("span", {
     className: "text-[#777] normal-case tracking-normal font-bold"
   }, " - ", result.meta) : null), React.createElement("strong", {
     className: "block text-[14px] text-white truncate"
@@ -1830,49 +1887,30 @@ function NoteCard({
   onDelete,
   flashTarget
 }) {
-  const links = noteLinksFor(state, note.id);
-  const linked = links.length > 0;
   const preview = notePreview(note);
   return React.createElement("div", {
     "data-note-id": note.id,
-    className: `group bg-[#141414] border border-white/[0.04] rounded-[12px] overflow-hidden ${flashTarget?.type === "note" && flashTarget.id === note.id ? "flash-target" : ""}`
+    className: `group bg-[#141414] border border-white/[0.04] rounded-[12px] px-4 py-3.5 ${flashTarget?.type === "note" && flashTarget.id === note.id ? "flash-target" : ""}`
+  }, React.createElement("div", {
+    className: "flex items-start gap-3"
   }, React.createElement("button", {
     type: "button",
     onClick: () => onOpen(note.id),
-    className: "w-full text-left px-4 py-3.5 hover:bg-white/[0.04] transition-colors"
-  }, React.createElement("div", {
-    className: "flex items-start justify-between gap-3"
-  }, React.createElement("div", {
-    className: "min-w-0 flex-1"
-  }, React.createElement("div", {
-    className: "flex items-center gap-2 mb-1"
-  }, React.createElement("span", {
-    className: `text-[10px] uppercase tracking-wider font-extrabold ${linked ? "text-[#FFD2D7]" : "text-[#A7A7A7]"}`
-  }, linked ? "Linked" : "Free"), React.createElement("span", {
-    className: "text-[11px] text-[#666] font-bold truncate"
-  }, links[0] ? linkLabel(state, links[0]) : displayDate(note.noteDate))), React.createElement("h3", {
-    className: "text-white font-extrabold text-[16px] leading-snug truncate"
+    className: "min-w-0 flex-1 text-left"
+  }, React.createElement("h3", {
+    className: "text-white font-extrabold text-[15.5px] leading-snug truncate"
   }, React.createElement(HighlightText, {
     text: noteDisplayTitle(note),
     query: query
-  })), preview ? React.createElement("p", {
-    className: "text-[#A7A7A7] text-[13px] leading-snug mt-1 line-clamp-2"
+  })), React.createElement("p", {
+    className: "text-[#A7A7A7] text-[13px] leading-snug mt-1 truncate"
   }, React.createElement(HighlightText, {
-    text: preview,
+    text: preview || "No preview",
     query: query
-  })) : null)), (note.tags || []).length ? React.createElement("div", {
-    className: "flex flex-wrap gap-1.5 mt-3"
-  }, note.tags.slice(0, 5).map(tag => React.createElement("span", {
-    key: tag,
-    className: "text-[11px] font-bold text-[#FFD2D7] bg-[#FFD2D7]/[0.08] px-2 py-1 rounded-full"
-  }, "#", tag))) : null), React.createElement("div", {
-    className: "border-t border-white/[0.04] px-4 py-2 flex items-center justify-between"
-  }, React.createElement("span", {
-    className: "text-[12px] font-bold text-[#666]"
-  }, displayDate(note.noteDate)), React.createElement("button", {
+  }))), React.createElement("button", {
     type: "button",
     onClick: () => onDelete(note.id),
-    className: "text-[#666] hover:text-red-300 transition-colors p-1.5",
+    className: "text-[#666] hover:text-red-300 transition-colors p-1.5 -mr-1 shrink-0",
     "aria-label": "Delete note"
   }, React.createElement(Trash2, {
     size: 16
@@ -1881,76 +1919,54 @@ function NoteCard({
 function NotesPanel({
   state,
   notes,
-  tags,
-  searchQuery,
-  setSearchQuery,
+  isViewMenuOpen,
+  setIsViewMenuOpen,
   onCreateNote,
   onOpenNote,
   onDeleteNote,
   onSetView,
-  onSetTag,
-  onSetDate,
-  onExportAI,
+  onOpenExport,
   flashTarget
 }) {
   const groups = groupNotesByDate(notes);
   const view = state.ui.notesView || "linked";
-  const date = state.ui.notesDate || "all";
+  const viewLabel = view === "linked" ? "Linked" : view === "free" ? "Free" : "All";
   return React.createElement("div", {
     className: "animate-in fade-in slide-in-from-bottom-4 duration-300 flex-1 flex flex-col"
   }, React.createElement("div", {
     className: "filter-row flex flex-wrap items-center gap-2.5 mb-5 relative z-20"
-  }, ["linked", "free", "all"].map(value => React.createElement("button", {
+  }, React.createElement("div", {
+    className: "relative"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      setIsViewMenuOpen(!isViewMenuOpen);
+    },
+    className: "flex items-center gap-1.5 px-6 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform"
+  }, viewLabel), isViewMenuOpen && React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "absolute top-full left-0 mt-2 w-[130px] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] py-1.5 flex flex-col origin-top-left animate-in fade-in zoom-in-95 duration-100"
+  }, [["linked", "Linked"], ["free", "Free"], ["all", "All"]].map(([value, label]) => React.createElement("button", {
     key: value,
     type: "button",
-    onClick: () => onSetView(value),
-    className: `px-5 py-2 text-[13px] font-bold rounded-full transition-transform active:scale-95 ${view === value ? "bg-[#FFD2D7] text-black" : "bg-transparent border border-[#555555] text-white hover:border-white"}`
-  }, value === "linked" ? "Linked" : value === "free" ? "Free" : "All")), React.createElement("button", {
+    onClick: () => {
+      onSetView(value);
+      setIsViewMenuOpen(false);
+    },
+    className: "px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors"
+  }, label)))), React.createElement("button", {
+    type: "button",
+    onClick: onOpenExport,
+    className: "px-5 py-2 bg-transparent hover:border-white active:scale-95 text-white text-[13px] font-bold rounded-full border border-[#878787] transition-all flex items-center gap-2"
+  }, React.createElement(Download, {
+    size: 14
+  }), " Export"), React.createElement("button", {
     type: "button",
     onClick: onCreateNote,
     className: "ml-auto px-5 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform",
     "aria-label": "Create note"
-  }, "+note")), React.createElement("div", {
-    className: "flex flex-col gap-2.5 mb-6"
-  }, React.createElement("div", {
-    className: "flex items-center bg-[#111111] rounded-full px-3 py-1.5 border border-[#333333] focus-within:border-[#FFD2D7] transition-colors"
-  }, React.createElement(Search, {
-    size: 16,
-    className: "text-[#A7A7A7] mr-2"
-  }), React.createElement("input", {
-    type: "text",
-    placeholder: "Search notes...",
-    value: searchQuery,
-    onChange: e => setSearchQuery(e.target.value),
-    className: "bg-transparent border-none outline-none text-white text-[14px] w-full placeholder:text-[#666666]"
-  })), React.createElement("div", {
-    className: "grid grid-cols-2 gap-2.5"
-  }, React.createElement("select", {
-    value: state.ui.notesTag || "",
-    onChange: e => onSetTag(e.target.value),
-    className: "bg-[#111111] border border-[#333333] rounded-[12px] px-3 py-2 text-[13px] font-bold text-white outline-none focus:border-[#FFD2D7]"
-  }, React.createElement("option", {
-    value: ""
-  }, "All tags"), tags.map(tag => React.createElement("option", {
-    key: tag,
-    value: tag
-  }, "#", tag))), React.createElement("select", {
-    value: date,
-    onChange: e => onSetDate(e.target.value),
-    className: "bg-[#111111] border border-[#333333] rounded-[12px] px-3 py-2 text-[13px] font-bold text-white outline-none focus:border-[#FFD2D7]"
-  }, React.createElement("option", {
-    value: "all"
-  }, "All dates"), React.createElement("option", {
-    value: "today"
-  }, "Today"), React.createElement("option", {
-    value: "7"
-  }, "7 days"), React.createElement("option", {
-    value: "30"
-  }, "30 days"))), React.createElement("button", {
-    type: "button",
-    onClick: onExportAI,
-    className: "self-start text-[12px] font-extrabold text-[#FFD2D7] hover:text-white transition-colors px-1"
-  }, "Export for AI")), groups.length ? React.createElement("div", {
+  }, "+note")), groups.length ? React.createElement("div", {
     className: "space-y-5"
   }, groups.map(group => React.createElement("section", {
     key: group.date
@@ -1962,7 +1978,6 @@ function NotesPanel({
     key: note.id,
     state: state,
     note: note,
-    query: searchQuery,
     onOpen: onOpenNote,
     onDelete: onDeleteNote,
     flashTarget: flashTarget
@@ -1982,6 +1997,79 @@ function NotesPanel({
   }, React.createElement(Plus, {
     size: 18
   }), " Create note")));
+}
+function replaceLastCsvToken(input, value) {
+  const parts = String(input || "").split(",");
+  parts[parts.length - 1] = ` #${value}`;
+  return parts.map((part, index) => index === 0 ? part.trimStart() : part.trim()).join(", ").replace(/^, /, "");
+}
+function ExportNotesModal({
+  tags,
+  onClose,
+  onExport
+}) {
+  const [tagInput, setTagInput] = useState("");
+  const [dateInput, setDateInput] = useState("");
+  const selectedTags = exportTagsFromInput(tagInput);
+  const activeTagNeedle = normalizeTag(String(tagInput || "").split(",").pop() || "");
+  const tagHints = tags.filter(tag => !selectedTags.includes(tag)).filter(tag => !activeTagNeedle || tag.includes(activeTagNeedle)).slice(0, 5);
+  const dateFilters = parseExportDateFilters(dateInput);
+  return React.createElement("div", {
+    className: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200",
+    onClick: onClose
+  }, React.createElement("div", {
+    className: "bg-[#1A1A1A] border border-[#323232] rounded-[24px] w-full max-w-[360px] p-5 shadow-2xl animate-in zoom-in-95 duration-200",
+    onClick: e => e.stopPropagation()
+  }, React.createElement("div", {
+    className: "flex justify-between items-center mb-5"
+  }, React.createElement("h3", {
+    className: "font-bold text-[18px] text-white"
+  }, "Export notes"), React.createElement("button", {
+    type: "button",
+    onClick: onClose,
+    className: "text-[#A7A7A7] hover:text-white transition-colors p-1.5 bg-[#2D2D2D] hover:bg-[#3E3E3E] rounded-full",
+    "aria-label": "Close"
+  }, React.createElement(X, {
+    size: 18
+  }))), React.createElement("div", {
+    className: "flex flex-col gap-4"
+  }, React.createElement("label", {
+    className: "block"
+  }, React.createElement("span", {
+    className: "block text-[12px] text-[#A7A7A7] font-extrabold mb-2"
+  }, "Hashtags"), React.createElement("input", {
+    value: tagInput,
+    onChange: e => setTagInput(e.target.value),
+    placeholder: "#idea, #work",
+    className: "w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-white text-[14px] outline-none focus:border-[#FFD2D7] placeholder:text-[#555555] transition-colors"
+  }), tagHints.length ? React.createElement("div", {
+    className: "mt-2 flex flex-wrap gap-1.5"
+  }, tagHints.map(tag => React.createElement("button", {
+    key: tag,
+    type: "button",
+    onClick: () => setTagInput(prev => replaceLastCsvToken(prev, tag)),
+    className: "text-[11px] font-bold text-[#FFD2D7] bg-[#FFD2D7]/[0.08] px-2 py-1 rounded-full"
+  }, "#", tag))) : null), React.createElement("label", {
+    className: "block"
+  }, React.createElement("span", {
+    className: "block text-[12px] text-[#A7A7A7] font-extrabold mb-2"
+  }, "Dates"), React.createElement("input", {
+    value: dateInput,
+    onChange: e => setDateInput(e.target.value),
+    placeholder: "22/05/2026, 01/05/2026 - 22/05/2026",
+    className: "w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-white text-[14px] outline-none focus:border-[#FFD2D7] placeholder:text-[#555555] transition-colors"
+  }), dateInput.trim() ? React.createElement("div", {
+    className: `mt-2 text-[11px] font-bold ${dateFilters.length ? "text-[#A7A7A7]" : "text-red-300"}`
+  }, dateFilters.length ? `${dateFilters.length} date filter${dateFilters.length > 1 ? "s" : ""}` : "Use dd/mm/yyyy or dd/mm/yyyy - dd/mm/yyyy") : null), React.createElement("button", {
+    type: "button",
+    onClick: () => onExport({
+      tagsInput: tagInput,
+      datesInput: dateInput
+    }),
+    className: "mt-1 bg-[#FFD2D7] hover:scale-[1.02] active:scale-95 text-black font-bold py-3.5 rounded-[12px] transition-transform flex items-center justify-center gap-2"
+  }, React.createElement(Download, {
+    size: 17
+  }), " Export"))));
 }
 function StatusBadge({
   node
@@ -2894,10 +2982,10 @@ function AuthScreen({
   }, React.createElement("div", {
     className: "bg-[#141414] border border-white/[0.05] rounded-[24px] p-5"
   }, React.createElement("h2", {
-    className: "text-[2.4rem] leading-[1.05] font-extrabold tracking-tighter mb-3"
-  }, isReset ? "New password" : "Login"), React.createElement("p", {
+    className: `text-[2.4rem] leading-[1.05] font-extrabold tracking-tighter ${isReset ? "mb-3" : "mb-6"}`
+  }, isReset ? "New password" : "Login"), isReset ? React.createElement("p", {
     className: "text-[#A7A7A7] text-[14px] mb-6"
-  }, isReset ? "Create a new password for this workspace." : "Use your Supabase account to sync boxes and actions."), isReset ? React.createElement("form", {
+  }, "Create a new password for this workspace.") : null, isReset ? React.createElement("form", {
     onSubmit: e => {
       e.preventDefault();
       onAuth("update-password", {
@@ -2972,13 +3060,18 @@ function App() {
   const [currentView, setCurrentView] = useState(() => routeView(initialRouteRef.current));
   const [isSearchOpen, setIsSearchOpen] = useState(() => initialRouteRef.current?.name === "search");
   const [searchQuery, setSearchQuery] = useState(() => initialRouteRef.current?.query || "");
-  const [notesSearchQuery, setNotesSearchQuery] = useState("");
+  const [searchFilters, setSearchFilters] = useState({
+    box: true,
+    action: true,
+    note: true
+  });
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState(null);
   const [menuPlacements, setMenuPlacements] = useState({});
   const [isActiveMenuOpen, setIsActiveMenuOpen] = useState(false);
   const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+  const [isNotesViewMenuOpen, setIsNotesViewMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState("");
   const [flashTarget, setFlashTarget] = useState(null);
@@ -2998,17 +3091,9 @@ function App() {
   const selectedDate = db.ui.selectedActionDate || todayYMD();
   const selectedDay = db.actionDays.find(day => day.date === selectedDate);
   const boxView = db.ui.boxView || "active";
-  const searchResults = useMemo(() => collectSearchResults(db, searchQuery), [db, searchQuery]);
+  const searchResults = useMemo(() => collectSearchResults(db, searchQuery, searchFilters), [db, searchQuery, searchFilters]);
   const noteTags = useMemo(() => allNoteTags(db), [db]);
-  const notesForView = useMemo(() => {
-    const term = String(notesSearchQuery || "").trim().toLowerCase();
-    const base = filteredNotes(db);
-    if (!term) return base;
-    return base.filter(note => {
-      const links = noteLinksFor(db, note.id).map(link => linkLabel(db, link)).join(" ");
-      return `${noteDisplayTitle(note)} ${noteBodyText(note)} ${(note.tags || []).map(tag => `#${tag}`).join(" ")} ${links}`.toLowerCase().includes(term);
-    });
-  }, [db, notesSearchQuery]);
+  const notesForView = useMemo(() => filteredNotes(db), [db]);
   function showToast(message) {
     setToast(message);
     setTimeout(() => setToast(""), 2600);
@@ -3020,6 +3105,7 @@ function App() {
     setIsActiveMenuOpen(false);
     setIsDateMenuOpen(false);
     setIsActionsMenuOpen(false);
+    setIsNotesViewMenuOpen(false);
   }
   function openNodeMenu(menuId, event, estimatedHeight) {
     event?.stopPropagation?.();
@@ -3045,6 +3131,7 @@ function App() {
     setIsActiveMenuOpen(false);
     setIsDateMenuOpen(false);
     setIsActionsMenuOpen(false);
+    setIsNotesViewMenuOpen(false);
   }
   function applyHashRoute(route = parseRouteHash()) {
     routeApplyRef.current = true;
@@ -4090,8 +4177,14 @@ function App() {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
-  function exportAiNotes() {
-    const selected = notesForView;
+  function exportAiNotes(options = {}) {
+    const tags = exportTagsFromInput(options.tagsInput || "");
+    const dateFilters = parseExportDateFilters(options.datesInput || "");
+    const selected = notesForView.filter(note => {
+      const noteTags = note.tags || [];
+      const tagMatch = !tags.length || tags.every(tag => noteTags.includes(tag));
+      return tagMatch && noteMatchesExportDates(note, dateFilters);
+    });
     if (!selected.length) {
       showToast("No notes to export");
       return;
@@ -4112,6 +4205,7 @@ function App() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 500);
     showToast("Exported notes for AI");
+    setModal(null);
   }
   function setNotesUI(key, value) {
     setDb(prev => markPendingSync({
@@ -4121,6 +4215,16 @@ function App() {
         [key]: value
       }
     }));
+  }
+  function toggleSearchFilter(key) {
+    setSearchFilters(prev => {
+      const next = {
+        ...prev,
+        [key]: prev[key] === false
+      };
+      if (!next.box && !next.action && !next.note) return prev;
+      return next;
+    });
   }
   function openCentralNote(noteId) {
     setModal({
@@ -4147,6 +4251,11 @@ function App() {
     if (!window.confirm("Delete this note?")) return;
     deleteCentralNote({
       noteId
+    });
+  }
+  function openNotesExport() {
+    setModal({
+      type: "notesExport"
     });
   }
   function openSearchResult(result) {
@@ -4291,40 +4400,42 @@ function App() {
     query: searchQuery,
     setQuery: setSearchQuery,
     results: searchResults,
+    filters: searchFilters,
+    onToggleFilter: toggleSearchFilter,
     onOpenResult: openSearchResult
   }), React.createElement("main", {
     className: "app-main p-5 flex-1 flex flex-col pb-24"
   }, React.createElement("div", {
-    className: "flex justify-between items-end mb-7 mt-1"
+    className: "flex justify-between items-center gap-3 mb-7 mt-1"
   }, React.createElement("h2", {
-    className: "view-title text-[2.15rem] leading-[1.1] font-extrabold tracking-tighter flex flex-wrap items-baseline"
+    className: "view-title text-[1.55rem] leading-[1.1] font-extrabold tracking-tighter flex flex-nowrap items-baseline min-w-0"
   }, React.createElement("button", {
     type: "button",
-    className: `cursor-pointer transition-colors ${currentView === "boxes" ? "text-white" : "text-[#555555]"}`,
+    className: `cursor-pointer transition-colors whitespace-nowrap ${currentView === "boxes" ? "text-white" : "text-[#555555]"}`,
     onClick: e => {
       e.stopPropagation();
       setCurrentView("boxes");
     }
-  }, "Boxes"), React.createElement("span", {
+  }, "Box"), React.createElement("span", {
     className: "text-[#3E3E3E] mx-1.5 font-light"
   }, "/"), React.createElement("button", {
     type: "button",
-    className: `cursor-pointer transition-colors ${currentView === "actions" ? "text-white" : "text-[#555555]"}`,
+    className: `cursor-pointer transition-colors whitespace-nowrap ${currentView === "actions" ? "text-white" : "text-[#555555]"}`,
     onClick: e => {
       e.stopPropagation();
       setCurrentView("actions");
     }
-  }, "Actions"), React.createElement("span", {
+  }, "Act"), React.createElement("span", {
     className: "text-[#3E3E3E] mx-1.5 font-light"
   }, "/"), React.createElement("button", {
     type: "button",
-    className: `cursor-pointer transition-colors ${currentView === "notes" ? "text-white" : "text-[#555555]"}`,
+    className: `cursor-pointer transition-colors whitespace-nowrap ${currentView === "notes" ? "text-white" : "text-[#555555]"}`,
     onClick: e => {
       e.stopPropagation();
       setCurrentView("notes");
     }
-  }, "Notes")), React.createElement("div", {
-    className: "flex gap-3 text-[#A7A7A7] mb-2"
+  }, "Note")), React.createElement("div", {
+    className: "flex gap-3 text-[#A7A7A7] shrink-0"
   }, React.createElement("button", {
     type: "button",
     disabled: !undoRef.current.length,
@@ -4582,16 +4693,13 @@ function App() {
   }, "No items match this filter."))), currentView === "notes" && React.createElement(NotesPanel, {
     state: db,
     notes: notesForView,
-    tags: noteTags,
-    searchQuery: notesSearchQuery,
-    setSearchQuery: setNotesSearchQuery,
+    isViewMenuOpen: isNotesViewMenuOpen,
+    setIsViewMenuOpen: setIsNotesViewMenuOpen,
     onCreateNote: createFreeNote,
     onOpenNote: openCentralNote,
     onDeleteNote: requestDeleteCentralNote,
     onSetView: value => setNotesUI("notesView", value),
-    onSetTag: value => setNotesUI("notesTag", value),
-    onSetDate: value => setNotesUI("notesDate", value),
-    onExportAI: exportAiNotes,
+    onOpenExport: openNotesExport,
     flashTarget: flashTarget
   })), modal?.type === "boxNote" && React.createElement(RichNoteModal, {
     modal: modal,
@@ -4611,6 +4719,10 @@ function App() {
     onClose: () => setModal(null),
     onSave: saveCentralNote,
     onDelete: deleteCentralNote
+  }), modal?.type === "notesExport" && React.createElement(ExportNotesModal, {
+    tags: noteTags,
+    onClose: () => setModal(null),
+    onExport: exportAiNotes
   }), modal?.type === "actionLines" && React.createElement(ActionLinesModal, {
     modal: modal,
     onClose: () => setModal(null),
