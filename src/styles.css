@@ -55,7 +55,7 @@
       body { overflow-x: hidden; }
       input, textarea, select, [contenteditable="true"] { font-size: max(16px, 1em) !important; }
       .app-shell { max-width: none !important; min-height: 100dvh !important; }
-      .app-header { padding: 16px !important; }
+      .app-header { padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 16px !important; }
       .app-main { padding: 16px 16px 92px !important; }
       .view-title { font-size: 2.12rem !important; line-height: 1.04 !important; }
       .filter-row { gap: .55rem !important; margin-bottom: 1.35rem !important; }
