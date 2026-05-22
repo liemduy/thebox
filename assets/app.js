@@ -59,6 +59,16 @@ const iconPaths = {
   ChevronDown: React.createElement("path", {
     d: "m6 9 6 6 6-6"
   }),
+  ChevronsRight: React.createElement(React.Fragment, null, React.createElement("path", {
+    d: "m6 17 5-5-5-5"
+  }), React.createElement("path", {
+    d: "m13 17 5-5-5-5"
+  })),
+  ChevronsDown: React.createElement(React.Fragment, null, React.createElement("path", {
+    d: "m7 6 5 5 5-5"
+  }), React.createElement("path", {
+    d: "m7 13 5 5 5-5"
+  })),
   ChevronLeft: React.createElement("path", {
     d: "m15 18-6-6 6-6"
   }),
@@ -260,6 +270,8 @@ const MoreHorizontal = makeIcon("MoreHorizontal");
 const GripVertical = makeIcon("GripVertical");
 const ChevronRight = makeIcon("ChevronRight");
 const ChevronDown = makeIcon("ChevronDown");
+const ChevronsRight = makeIcon("ChevronsRight");
+const ChevronsDown = makeIcon("ChevronsDown");
 const ChevronLeft = makeIcon("ChevronLeft");
 const Plus = makeIcon("Plus");
 const Check = makeIcon("Check");
@@ -385,12 +397,18 @@ function defaultUI() {
     collapsedBoxNodes: [],
     expandedBoxNodes: [],
     expandedBoxActionDays: [],
-    collapsedActionNodes: []
+    collapsedActionNodes: [],
+    boxCascadeModes: {},
+    actionCascadeModes: {}
   };
 }
 const BOX_VIEW_VALUES = new Set(["active", "archived", "done"]);
 const BOX_FILTER_VALUES = new Set(["today", "7", "15", "30", "all", "custom"]);
 const ACTION_FILTER_VALUES = new Set(["all", "undone", "done", "notes"]);
+function normalizeModeMap(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([, mode]) => mode === "expanding" || mode === "collapsing"));
+}
 function validYMD(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
 }
@@ -660,6 +678,8 @@ function normalizeState(parsed) {
     ...defaultUI(),
     ...(parsed.ui || {})
   };
+  ui.boxCascadeModes = normalizeModeMap(ui.boxCascadeModes);
+  ui.actionCascadeModes = normalizeModeMap(ui.actionCascadeModes);
   const sourceNodes = Array.isArray(parsed.boxNodes) ? parsed.boxNodes : Array.isArray(parsed.nodes) ? parsed.nodes : fallback.boxNodes;
   const boxNodes = sourceNodes.map((n, i) => ({
     id: rememberId(n.id || uid(n.parentId ? "sub" : "box")),
@@ -840,6 +860,79 @@ function shouldShowChildInView(node, view) {
 function isBoxOpen(state, node) {
   if (Number(node.level || 1) === 1) return !(state.ui.collapsedBoxNodes || []).includes(node.id);
   return (state.ui.expandedBoxNodes || []).includes(node.id);
+}
+function setBoxOpen(state, node, open) {
+  if (Number(node.level || 1) === 1) {
+    const collapsed = new Set(state.ui.collapsedBoxNodes || []);
+    open ? collapsed.delete(node.id) : collapsed.add(node.id);
+    state.ui.collapsedBoxNodes = [...collapsed];
+  } else {
+    const expanded = new Set(state.ui.expandedBoxNodes || []);
+    open ? expanded.add(node.id) : expanded.delete(node.id);
+    state.ui.expandedBoxNodes = [...expanded];
+  }
+}
+function isActionOpen(state, node) {
+  return !(state.ui.collapsedActionNodes || []).includes(node.id);
+}
+function setActionOpen(state, node, open) {
+  const collapsed = new Set(state.ui.collapsedActionNodes || []);
+  open ? collapsed.delete(node.id) : collapsed.add(node.id);
+  state.ui.collapsedActionNodes = [...collapsed];
+}
+function cascadeMaxDepth(node, getChildren, hasOwnContent = () => false) {
+  const children = getChildren(node);
+  if (children.length) return 1 + Math.max(0, ...children.map(child => cascadeMaxDepth(child, getChildren, hasOwnContent)));
+  return hasOwnContent(node) ? 1 : 0;
+}
+function cascadeOpenDepth(node, getChildren, isOpen, hasOwnContent = () => false) {
+  if (!isOpen(node)) return 0;
+  const children = getChildren(node);
+  if (!children.length) return 1;
+  const expandable = children.filter(child => cascadeMaxDepth(child, getChildren, hasOwnContent) > 0);
+  if (!expandable.length) return 1;
+  return 1 + Math.min(...expandable.map(child => cascadeOpenDepth(child, getChildren, isOpen, hasOwnContent)));
+}
+function closeCascade(node, getChildren, setOpen) {
+  setOpen(node, false);
+  getChildren(node).forEach(child => closeCascade(child, getChildren, setOpen));
+}
+function applyCascadeDepth(node, targetDepth, getChildren, setOpen) {
+  if (targetDepth <= 0) {
+    closeCascade(node, getChildren, setOpen);
+    return;
+  }
+  setOpen(node, true);
+  getChildren(node).forEach(child => {
+    if (targetDepth > 1) applyCascadeDepth(child, targetDepth - 1, getChildren, setOpen);else closeCascade(child, getChildren, setOpen);
+  });
+}
+function cascadePlan(currentDepth, maxDepth, mode) {
+  if (maxDepth <= 0) {
+    return {
+      direction: currentDepth > 0 ? "collapse" : "expand",
+      deep: false,
+      nextDepth: currentDepth > 0 ? 0 : 1,
+      nextMode: "expanding"
+    };
+  }
+  const shouldCollapse = mode === "collapsing" || currentDepth >= maxDepth && mode !== "expanding";
+  if (shouldCollapse) {
+    const nextDepth = Math.max(0, currentDepth - 1);
+    return {
+      direction: "collapse",
+      deep: currentDepth > 1,
+      nextDepth,
+      nextMode: nextDepth > 0 ? "collapsing" : "expanding"
+    };
+  }
+  const nextDepth = Math.min(maxDepth, currentDepth + 1);
+  return {
+    direction: "expand",
+    deep: currentDepth > 0,
+    nextDepth,
+    nextMode: nextDepth >= maxDepth ? "collapsing" : "expanding"
+  };
 }
 function toggleId(list, id) {
   const set = new Set(list || []);
@@ -1308,6 +1401,13 @@ function BoxTreeItem({
   const timeline = showBoxDays ? actionTimelineForBox(state, node) : [];
   const hasNote = boxHasNote(node);
   const hasBody = children.length > 0 || timeline.length > 0;
+  const boxCascadeChildren = item => childrenOf(item.id, state.boxNodes).filter(child => shouldShowChildInView(child, view));
+  const boxCascadeOwnContent = item => state.ui.showBoxDays !== false && actionTimelineForBox(state, item).length > 0;
+  const cascadeMax = cascadeMaxDepth(node, boxCascadeChildren, boxCascadeOwnContent);
+  const cascadeDepth = Math.min(cascadeMax, cascadeOpenDepth(node, boxCascadeChildren, item => isBoxOpen(state, item), boxCascadeOwnContent));
+  const cascade = cascadePlan(cascadeDepth, cascadeMax, state.ui.boxCascadeModes?.[node.id]);
+  const CascadeIcon = cascade.direction === "expand" ? cascade.deep ? ChevronsDown : ChevronRight : cascade.deep ? ChevronsRight : ChevronDown;
+  const cascadeLabel = cascade.direction === "expand" ? cascade.deep ? "Expand next level" : "Expand" : cascade.deep ? "Collapse next level" : "Collapse";
   const menuId = `box:${node.id}`;
   const menuOpen = menuOpenId === menuId;
   const menuMeta = menuPlacements?.[menuId] || {
@@ -1459,10 +1559,9 @@ function BoxTreeItem({
       handlers.toggleBoxOpen(node.id);
     },
     className: "h-8 w-8 grid place-items-center rounded-full transition-colors hover:text-white hover:bg-[#444444]",
-    "aria-label": "Collapse or expand"
-  }, open ? React.createElement(ChevronDown, {
-    size: isRoot ? 21 : 18
-  }) : React.createElement(ChevronRight, {
+    "aria-label": cascadeLabel,
+    title: cascadeLabel
+  }, React.createElement(CascadeIcon, {
     size: isRoot ? 21 : 18
   })), React.createElement("div", {
     className: "relative"
@@ -1650,6 +1749,13 @@ function ActionTreeItem({
     maxHeight: 116
   };
   const isRoot = level === 0;
+  const actionCascadeChildren = item => childrenOf(item.id, day.nodes).filter(child => hasVisibleAction(child, day.nodes, filter));
+  const actionCascadeOwnContent = item => visibleEntriesFor(item, filter).length > 0;
+  const cascadeMax = cascadeMaxDepth(node, actionCascadeChildren, actionCascadeOwnContent);
+  const cascadeDepth = Math.min(cascadeMax, cascadeOpenDepth(node, actionCascadeChildren, item => isActionOpen(state, item), actionCascadeOwnContent));
+  const cascade = cascadePlan(cascadeDepth, cascadeMax, state.ui.actionCascadeModes?.[node.id]);
+  const CascadeIcon = cascade.direction === "expand" ? cascade.deep ? ChevronsDown : ChevronRight : cascade.deep ? ChevronsRight : ChevronDown;
+  const cascadeLabel = cascade.direction === "expand" ? cascade.deep ? "Expand next level" : "Expand" : cascade.deep ? "Collapse next level" : "Collapse";
   return React.createElement("div", {
     "data-action-node-id": node.id,
     className: `flex flex-col w-full ${flashTarget?.type === "action" && flashTarget.id === node.id ? "flash-target" : ""} ${menuOpen ? "relative z-50" : ""}`
@@ -1674,10 +1780,9 @@ function ActionTreeItem({
       handlers.toggleActionOpen(node.id);
     },
     className: "h-8 w-8 grid place-items-center rounded-full transition-colors hover:text-white hover:bg-[#444444]",
-    "aria-label": "Collapse or expand"
-  }, open ? React.createElement(ChevronDown, {
-    size: isRoot ? 21 : 18
-  }) : React.createElement(ChevronRight, {
+    "aria-label": cascadeLabel,
+    title: cascadeLabel
+  }, React.createElement(CascadeIcon, {
     size: isRoot ? 21 : 18
   })), React.createElement("div", {
     className: "relative"
@@ -2697,7 +2802,17 @@ function App() {
       const next = normalizeState(clone(prev));
       const node = getNode(next.boxNodes, id);
       if (!node) return prev;
-      if (node.level === 1) next.ui.collapsedBoxNodes = toggleId(next.ui.collapsedBoxNodes, id);else next.ui.expandedBoxNodes = toggleId(next.ui.expandedBoxNodes, id);
+      const view = next.ui.boxView || "active";
+      const getChildren = item => childrenOf(item.id, next.boxNodes).filter(child => shouldShowChildInView(child, view));
+      const hasOwnContent = item => next.ui.showBoxDays !== false && actionTimelineForBox(next, item).length > 0;
+      const maxDepth = cascadeMaxDepth(node, getChildren, hasOwnContent);
+      const currentDepth = Math.min(maxDepth, cascadeOpenDepth(node, getChildren, item => isBoxOpen(next, item), hasOwnContent));
+      const plan = cascadePlan(currentDepth, maxDepth, next.ui.boxCascadeModes?.[id]);
+      applyCascadeDepth(node, plan.nextDepth, getChildren, (item, open) => setBoxOpen(next, item, open));
+      next.ui.boxCascadeModes = {
+        ...normalizeModeMap(next.ui.boxCascadeModes),
+        [id]: plan.nextMode
+      };
       return markPendingSync(next);
     });
   }
@@ -2762,8 +2877,11 @@ function App() {
       state.boxNodes = state.boxNodes.filter(n => !ids.has(n.id));
       state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(x => !ids.has(x));
       state.ui.expandedBoxNodes = (state.ui.expandedBoxNodes || []).filter(x => !ids.has(x));
+      state.ui.boxCascadeModes = Object.fromEntries(Object.entries(state.ui.boxCascadeModes || {}).filter(([key]) => !ids.has(key)));
       state.actionDays.forEach(day => {
+        const removedActionIds = new Set(day.nodes.filter(n => ids.has(n.sourceBoxNodeId)).map(n => n.id));
         day.nodes = day.nodes.filter(n => !ids.has(n.sourceBoxNodeId));
+        state.ui.actionCascadeModes = Object.fromEntries(Object.entries(state.ui.actionCascadeModes || {}).filter(([key]) => !removedActionIds.has(key)));
       });
     }, {
       sync: false
@@ -2843,7 +2961,20 @@ function App() {
   function toggleActionOpen(id) {
     setDb(prev => {
       const next = normalizeState(clone(prev));
-      next.ui.collapsedActionNodes = toggleId(next.ui.collapsedActionNodes, id);
+      const day = next.actionDays.find(item => item.date === (next.ui.selectedActionDate || todayYMD()));
+      const node = day ? getNode(day.nodes, id) : null;
+      if (!day || !node) return prev;
+      const filter = next.ui.actionFilter || "all";
+      const getChildren = item => childrenOf(item.id, day.nodes).filter(child => hasVisibleAction(child, day.nodes, filter));
+      const hasOwnContent = item => visibleEntriesFor(item, filter).length > 0;
+      const maxDepth = cascadeMaxDepth(node, getChildren, hasOwnContent);
+      const currentDepth = Math.min(maxDepth, cascadeOpenDepth(node, getChildren, item => isActionOpen(next, item), hasOwnContent));
+      const plan = cascadePlan(currentDepth, maxDepth, next.ui.actionCascadeModes?.[id]);
+      applyCascadeDepth(node, plan.nextDepth, getChildren, (item, open) => setActionOpen(next, item, open));
+      next.ui.actionCascadeModes = {
+        ...normalizeModeMap(next.ui.actionCascadeModes),
+        [id]: plan.nextMode
+      };
       return markPendingSync(next);
     });
   }

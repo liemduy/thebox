@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v42-complete-review-fixes-cache-1';
+const CACHE_NAME = 'idea-box-v43-ios-zoom-cascade-cache-1';
 const APP_SHELL = [
   './',
   './index.html',
