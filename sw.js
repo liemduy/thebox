@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v44-safe-area-header-cache-1';
+const CACHE_NAME = 'idea-box-v45-core-refactor-cache-1';
 const APP_SHELL = [
   './',
   './index.html',
