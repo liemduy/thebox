@@ -51,7 +51,7 @@ function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isV
           )}
         </div>
         <div className="relative">
-          <button type="button" onClick={(e) => { e.stopPropagation(); setIsViewByMenuOpen(!isViewByMenuOpen); setIsViewMenuOpen(false); }} className={`px-5 py-2 bg-transparent active:scale-95 text-white text-[13px] font-bold rounded-full border transition-all ${hasViewBy ? "border-[#FFD2D7] text-[#FFD2D7]" : "border-[#878787] hover:border-white"}`}>
+          <button type="button" onClick={(e) => { e.stopPropagation(); setIsViewByMenuOpen(!isViewByMenuOpen); setIsViewMenuOpen(false); }} className={`px-5 py-2 active:scale-95 text-[13px] font-bold rounded-full border transition-all ${hasViewBy ? "bg-[#FFD2D7] border-[#FFD2D7] text-black shadow-[0_0_18px_rgba(255,210,215,0.18)]" : "bg-transparent text-white border-[#878787] hover:border-white"}`}>
             View by
           </button>
           {isViewByMenuOpen && (

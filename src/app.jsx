@@ -1190,9 +1190,22 @@ function App() {
   }
 
   function createFreeNote() {
-    setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, notesView: "free" } }));
+    const noteDate = preferredFreeNoteDate();
+    const hadViewBy = Boolean((db.ui.notesTagsInput || "").trim() || (db.ui.notesDatesInput || "").trim());
+    setDb(prev => markPendingSync({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        notesView: "free",
+        notesTagsInput: "",
+        notesDatesInput: ""
+      }
+    }));
+    setIsNotesViewByMenuOpen(false);
+    setIsNotesViewMenuOpen(false);
     setCurrentView("notes");
-    setModal({ type: "centralNote", noteId: null, noteDate: preferredFreeNoteDate() });
+    setModal({ type: "centralNote", noteId: null, noteDate });
+    if (hadViewBy) showToast("View by cleared for new note");
   }
 
   function requestDeleteCentralNote(noteId) {

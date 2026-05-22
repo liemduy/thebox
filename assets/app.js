@@ -2325,7 +2325,7 @@ function NotesPanel({
       setIsViewByMenuOpen(!isViewByMenuOpen);
       setIsViewMenuOpen(false);
     },
-    className: `px-5 py-2 bg-transparent active:scale-95 text-white text-[13px] font-bold rounded-full border transition-all ${hasViewBy ? "border-[#FFD2D7] text-[#FFD2D7]" : "border-[#878787] hover:border-white"}`
+    className: `px-5 py-2 active:scale-95 text-[13px] font-bold rounded-full border transition-all ${hasViewBy ? "bg-[#FFD2D7] border-[#FFD2D7] text-black shadow-[0_0_18px_rgba(255,210,215,0.18)]" : "bg-transparent text-white border-[#878787] hover:border-white"}`
   }, "View by"), isViewByMenuOpen && React.createElement("div", {
     onClick: e => e.stopPropagation(),
     className: "absolute top-full left-0 mt-2 w-[300px] max-w-[calc(100vw-2.5rem)] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] p-3 flex flex-col gap-3 origin-top-left animate-in fade-in zoom-in-95 duration-100"
@@ -4959,19 +4959,26 @@ function App() {
     return filters.length === 1 && filters[0].type === "date" ? filters[0].date : todayYMD();
   }
   function createFreeNote() {
+    const noteDate = preferredFreeNoteDate();
+    const hadViewBy = Boolean((db.ui.notesTagsInput || "").trim() || (db.ui.notesDatesInput || "").trim());
     setDb(prev => markPendingSync({
       ...prev,
       ui: {
         ...prev.ui,
-        notesView: "free"
+        notesView: "free",
+        notesTagsInput: "",
+        notesDatesInput: ""
       }
     }));
+    setIsNotesViewByMenuOpen(false);
+    setIsNotesViewMenuOpen(false);
     setCurrentView("notes");
     setModal({
       type: "centralNote",
       noteId: null,
-      noteDate: preferredFreeNoteDate()
+      noteDate
     });
+    if (hadViewBy) showToast("View by cleared for new note");
   }
   function requestDeleteCentralNote(noteId) {
     confirmDeleteNote(() => deleteCentralNote({
