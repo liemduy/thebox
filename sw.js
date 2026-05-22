@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v47-header-component-cache-1';
+const CACHE_NAME = 'idea-box-v48-note-toolbar-position-1';
 const APP_SHELL = [
   './',
   './index.html',

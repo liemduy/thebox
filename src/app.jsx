@@ -903,6 +903,7 @@ function ActionTreeItem({ state, day, node, level, menuOpenId, setMenuOpenId, me
 function RichNoteModal({ modal, state, onClose, onSave, onDelete }) {
   const editorRef = useRef(null);
   const titleRef = useRef(null);
+  const [toolbarFrame, setToolbarFrame] = useState({ bottom: 0, keyboardOpen: false, mobile: false });
   const isBoxNote = modal.type === "boxNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
   const day = !isBoxNote ? state.actionDays.find(d => d.id === modal.dayId) : null;
@@ -916,6 +917,54 @@ function RichNoteModal({ modal, state, onClose, onSave, onDelete }) {
     if (editorRef.current) editorRef.current.innerHTML = sanitizeHtml(initialHtml);
     if (titleRef.current) titleRef.current.value = initialTitle;
     setTimeout(() => (titleRef.current || editorRef.current)?.focus(), 40);
+  }, [modal]);
+
+  useEffect(() => {
+    let frameId = 0;
+    const isMobileViewport = () => {
+      const narrow = window.matchMedia?.("(max-width: 640px)")?.matches;
+      const coarse = window.matchMedia?.("(pointer: coarse)")?.matches && window.innerWidth <= 768;
+      return Boolean(narrow || coarse);
+    };
+    const updateToolbarFrame = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        const viewport = window.visualViewport;
+        const mobile = isMobileViewport();
+        const viewportHeight = viewport?.height || window.innerHeight;
+        const viewportOffsetTop = viewport?.offsetTop || 0;
+        const keyboardInset = Math.max(0, window.innerHeight - viewportHeight - viewportOffsetTop);
+        const keyboardOpen = mobile && keyboardInset > 80;
+        const next = {
+          bottom: keyboardOpen ? Math.round(keyboardInset) : 0,
+          keyboardOpen,
+          mobile
+        };
+        setToolbarFrame(prev => (
+          prev.bottom === next.bottom &&
+          prev.keyboardOpen === next.keyboardOpen &&
+          prev.mobile === next.mobile
+        ) ? prev : next);
+      });
+    };
+    const viewport = window.visualViewport;
+    updateToolbarFrame();
+    const timers = [
+      window.setTimeout(updateToolbarFrame, 120),
+      window.setTimeout(updateToolbarFrame, 420)
+    ];
+    viewport?.addEventListener("resize", updateToolbarFrame);
+    viewport?.addEventListener("scroll", updateToolbarFrame);
+    window.addEventListener("resize", updateToolbarFrame);
+    window.addEventListener("orientationchange", updateToolbarFrame);
+    return () => {
+      timers.forEach(timer => window.clearTimeout(timer));
+      window.cancelAnimationFrame(frameId);
+      viewport?.removeEventListener("resize", updateToolbarFrame);
+      viewport?.removeEventListener("scroll", updateToolbarFrame);
+      window.removeEventListener("resize", updateToolbarFrame);
+      window.removeEventListener("orientationchange", updateToolbarFrame);
+    };
   }, [modal]);
 
   function editorRange() {
@@ -1019,8 +1068,16 @@ function RichNoteModal({ modal, state, onClose, onSave, onDelete }) {
     else onDelete({ dayId: modal.dayId, nodeId: modal.nodeId, entryId: modal.entryId });
   }
 
+  const modalShellStyle = toolbarFrame.mobile
+    ? { paddingBottom: toolbarFrame.keyboardOpen ? `${toolbarFrame.bottom + 70}px` : "calc(92px + env(safe-area-inset-bottom, 0px))" }
+    : undefined;
+  const toolbarClassName = toolbarFrame.mobile
+    ? `fixed left-0 right-0 w-full max-w-none translate-x-0 bg-[#232323] border-t border-[#3E3E3E] border-x-0 border-b-0 rounded-none px-5 ${toolbarFrame.keyboardOpen ? "py-3" : "pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"} flex items-center justify-between shadow-[0_-12px_30px_rgba(0,0,0,0.32)] z-50`
+    : "fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-[340px] bg-[#232323] border border-[#3E3E3E] rounded-[14px] px-5 py-3.5 flex items-center justify-between shadow-2xl z-50";
+  const toolbarStyle = toolbarFrame.mobile ? { bottom: `${toolbarFrame.bottom}px` } : undefined;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pb-28 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 pb-28 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" style={modalShellStyle} onClick={onClose}>
       <div className="bg-[#1A1A1A] border border-[#323232] rounded-[24px] w-full max-w-[340px] p-5 shadow-2xl animate-in zoom-in-95 duration-200 relative z-10" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-5">
           <h3 className="font-bold text-[18px] text-white">{isBoxNote ? "Box notes" : modal.entryId ? "Edit note" : "Add note"}</h3>
@@ -1038,7 +1095,7 @@ function RichNoteModal({ modal, state, onClose, onSave, onDelete }) {
           <button type="button" onClick={save} className="flex-1 bg-[#FFD2D7] hover:scale-[1.02] active:scale-95 text-black font-bold py-3.5 rounded-[12px] transition-transform">Done</button>
         </div>
       </div>
-      <div onClick={e => e.stopPropagation()} onMouseDown={e => e.preventDefault()} className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-[340px] bg-[#232323] border border-[#3E3E3E] rounded-[14px] px-5 py-3.5 flex items-center justify-between shadow-2xl z-50">
+      <div onClick={e => e.stopPropagation()} onMouseDown={e => e.preventDefault()} className={toolbarClassName} style={toolbarStyle}>
         <div className="flex gap-4 text-[#A7A7A7]">
           <button type="button" onClick={() => applyFormat("bold")} className="hover:text-[#FFD2D7] transition-colors"><Bold size={18} /></button>
           <button type="button" onClick={() => applyFormat("italic")} className="hover:text-[#FFD2D7] transition-colors"><Italic size={18} /></button>
