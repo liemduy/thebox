@@ -2371,16 +2371,18 @@ function NotesPanel({
     className: "self-start text-[12px] font-extrabold text-[#FFD2D7] hover:text-white transition-colors px-1"
   }, "Clear"))), React.createElement("button", {
     type: "button",
-    onClick: onOpenExport,
-    className: "px-5 py-2 bg-transparent hover:border-white active:scale-95 text-white text-[13px] font-bold rounded-full border border-[#878787] transition-all flex items-center gap-2"
-  }, React.createElement(Download, {
-    size: 14
-  }), " Export"), React.createElement("button", {
-    type: "button",
     onClick: onCreateNote,
     className: "ml-auto px-5 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform",
     "aria-label": "Create note"
-  }, "+note")), hasViewBy && React.createElement("div", {
+  }, "+note"), React.createElement("button", {
+    type: "button",
+    onClick: onOpenExport,
+    className: "h-9 w-9 bg-transparent hover:border-white active:scale-95 text-white rounded-full border border-[#878787] transition-all grid place-items-center",
+    "aria-label": "Export notes",
+    title: "Export notes"
+  }, React.createElement(Download, {
+    size: 15
+  }))), hasViewBy && React.createElement("div", {
     className: "-mt-2 mb-5 flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold"
   }, selectedTags.slice(0, 3).map(tag => React.createElement("span", {
     key: tag,

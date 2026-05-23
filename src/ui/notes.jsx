@@ -80,11 +80,11 @@ function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isV
             </div>
           )}
         </div>
-        <button type="button" onClick={onOpenExport} className="px-5 py-2 bg-transparent hover:border-white active:scale-95 text-white text-[13px] font-bold rounded-full border border-[#878787] transition-all flex items-center gap-2">
-          <Download size={14} /> Export
-        </button>
         <button type="button" onClick={onCreateNote} className="ml-auto px-5 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform" aria-label="Create note">
           +note
+        </button>
+        <button type="button" onClick={onOpenExport} className="h-9 w-9 bg-transparent hover:border-white active:scale-95 text-white rounded-full border border-[#878787] transition-all grid place-items-center" aria-label="Export notes" title="Export notes">
+          <Download size={15} />
         </button>
       </div>
       {hasViewBy && (
