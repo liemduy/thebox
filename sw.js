@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v85-note-table-popup';
+const CACHE_NAME = 'idea-box-v86-note-table-autofit-toggle';
 const APP_SHELL = [
   './',
   './index.html',

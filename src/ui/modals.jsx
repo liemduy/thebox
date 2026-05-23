@@ -230,7 +230,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
                 <div className="table-menu-grid">
                   <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-row-add"))} className="table-menu-action">Row +</button>
                   <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-col-add"))} className="table-menu-action">Col +</button>
-                  <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-autofit"))} className="table-menu-action table-menu-accent">Auto</button>
+                  <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-autofit"))} className="table-menu-action table-menu-accent">Auto fit</button>
                   <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-row-delete"))} className="table-menu-action">Row -</button>
                   <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-col-delete"))} className="table-menu-action">Col -</button>
                   <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-delete"))} className="table-menu-action table-menu-danger">Delete</button>

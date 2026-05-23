@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-note-table-popup-1";
-const APP_CACHE_NAME = "idea-box-v85-note-table-popup";
+const APP_BUILD_ID = "2026-05-23-note-table-autofit-toggle-1";
+const APP_CACHE_NAME = "idea-box-v86-note-table-autofit-toggle";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -4236,14 +4236,15 @@ function deleteTableColumnCommand(schema) {
     return true;
   };
 }
-function autoFitTableCommand() {
+function toggleAutoFitTableCommand() {
   return (state, dispatch) => {
     const info = currentTableInfo(state);
     if (!info) return false;
+    const nextLayout = info.table.attrs.layout === "auto" ? "fixed" : "auto";
     if (dispatch) {
       dispatch(state.tr.setNodeMarkup(info.tablePos, undefined, {
         ...info.table.attrs,
-        layout: "auto"
+        layout: nextLayout
       }).scrollIntoView());
     }
     return true;
@@ -4313,7 +4314,7 @@ function runNoteEditorCommand(view, commandName, options = {}) {
     "table-col-add": addTableColumnCommand(schema),
     "table-col-delete": deleteTableColumnCommand(schema),
     "table-delete": deleteTableCommand(schema),
-    "table-autofit": autoFitTableCommand(),
+    "table-autofit": toggleAutoFitTableCommand(),
     "table-after": ensureParagraphAfterTableCommand(schema, pm),
     quote: toggleQuoteCommand(schema),
     "indent-in": indentCommand(schema, 1),
@@ -4773,7 +4774,7 @@ function RichNoteModal({
     type: "button"
   }, tablePanelButtonProps(() => runTableCommand("table-autofit")), {
     className: "table-menu-action table-menu-accent"
-  }), "Auto"), React.createElement("button", _extends({
+  }), "Auto fit"), React.createElement("button", _extends({
     type: "button"
   }, tablePanelButtonProps(() => runTableCommand("table-row-delete")), {
     className: "table-menu-action"

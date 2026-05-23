@@ -779,12 +779,13 @@ function deleteTableColumnCommand(schema) {
   };
 }
 
-function autoFitTableCommand() {
+function toggleAutoFitTableCommand() {
   return (state, dispatch) => {
     const info = currentTableInfo(state);
     if (!info) return false;
+    const nextLayout = info.table.attrs.layout === "auto" ? "fixed" : "auto";
     if (dispatch) {
-      dispatch(state.tr.setNodeMarkup(info.tablePos, undefined, { ...info.table.attrs, layout: "auto" }).scrollIntoView());
+      dispatch(state.tr.setNodeMarkup(info.tablePos, undefined, { ...info.table.attrs, layout: nextLayout }).scrollIntoView());
     }
     return true;
   };
@@ -857,7 +858,7 @@ function runNoteEditorCommand(view, commandName, options = {}) {
     "table-col-add": addTableColumnCommand(schema),
     "table-col-delete": deleteTableColumnCommand(schema),
     "table-delete": deleteTableCommand(schema),
-    "table-autofit": autoFitTableCommand(),
+    "table-autofit": toggleAutoFitTableCommand(),
     "table-after": ensureParagraphAfterTableCommand(schema, pm),
     quote: toggleQuoteCommand(schema),
     "indent-in": indentCommand(schema, 1),
