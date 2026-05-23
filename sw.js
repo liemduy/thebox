@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v57-stability-hardening';
+const CACHE_NAME = 'idea-box-v58-custom-range-menu';
 const APP_SHELL = [
   './',
   './index.html',
