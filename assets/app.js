@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-note-table-polish-2";
-const APP_CACHE_NAME = "idea-box-v84-note-table-polish";
+const APP_BUILD_ID = "2026-05-23-note-table-popup-1";
+const APP_CACHE_NAME = "idea-box-v85-note-table-popup";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -4399,7 +4399,7 @@ function NoteTableGlyph({
   }, React.createElement("span", {
     className: "note-table-glyph-grid",
     "aria-hidden": "true"
-  }, React.createElement("span", null), React.createElement("span", null), React.createElement("span", null), React.createElement("span", null)), menuHint ? React.createElement("span", {
+  }), menuHint ? React.createElement("span", {
     className: "note-table-menu-hint",
     "aria-hidden": "true"
   }, React.createElement("span", null), React.createElement("span", null), React.createElement("span", null)) : null);
@@ -4710,53 +4710,57 @@ function RichNoteModal({
   }) : React.createElement(Check, {
     size: 20
   })))), tablePanel ? React.createElement("div", {
-    className: "fixed left-0 right-0 z-[61] flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150",
+    className: "fixed inset-0 z-[61]",
+    onPointerDown: () => setTablePanel(null)
+  }, React.createElement("div", {
+    className: "fixed left-0 right-0 flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150",
     style: tablePanelStyle
   }, React.createElement("div", {
-    className: "table-action-panel w-full max-w-[360px] bg-[#171717] border border-[#353535] shadow-2xl px-3 py-3"
+    className: "table-action-panel w-full max-w-[360px] bg-[#1A1A1A] border border-[#444444] shadow-2xl px-3 py-3",
+    onPointerDown: e => e.stopPropagation(),
+    onMouseDown: e => e.stopPropagation(),
+    onClick: e => e.stopPropagation()
   }, tablePanel === "insert" ? React.createElement("form", {
-    className: "space-y-3",
+    className: "table-panel-form",
     onSubmit: submitCustomTable
   }, React.createElement("div", {
-    className: "grid grid-cols-2 gap-2"
-  }, React.createElement("label", {
-    className: "block"
+    className: "table-dimension-row"
   }, React.createElement("span", {
-    className: "block text-[11px] font-bold text-[#8f8f8f] mb-1"
-  }, "Rows"), React.createElement("input", {
+    className: "table-dimension-label"
+  }, "Row"), React.createElement("input", {
     type: "text",
     inputMode: "numeric",
     pattern: "[0-9]*",
+    "aria-label": "Rows",
     value: tableRows,
     onFocus: e => e.currentTarget.select(),
     onChange: updateTableDimension(setTableRows),
     onBlur: () => settleTableDimension(setTableRows, tableRows, 2, 12),
-    className: "table-dimension-input w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]"
-  })), React.createElement("label", {
-    className: "block"
-  }, React.createElement("span", {
-    className: "block text-[11px] font-bold text-[#8f8f8f] mb-1"
-  }, "Cols"), React.createElement("input", {
+    className: "table-dimension-input"
+  }), React.createElement("span", {
+    className: "table-dimension-label"
+  }, "Col"), React.createElement("input", {
     type: "text",
     inputMode: "numeric",
     pattern: "[0-9]*",
+    "aria-label": "Cols",
     value: tableCols,
     onFocus: e => e.currentTarget.select(),
     onChange: updateTableDimension(setTableCols),
     onBlur: () => settleTableDimension(setTableCols, tableCols, 2, 8),
-    className: "table-dimension-input w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]"
-  }))), React.createElement("div", {
-    className: "flex justify-between items-center"
+    className: "table-dimension-input"
+  })), React.createElement("div", {
+    className: "table-panel-footer"
   }, React.createElement("button", _extends({
     type: "button"
   }, tablePanelButtonProps(() => setTablePanel(null)), {
-    className: "text-[#A7A7A7] text-[13px] font-bold"
+    className: "table-panel-link table-panel-muted"
   }), "Cancel"), React.createElement("button", _extends({
     type: "submit"
   }, tablePanelButtonProps(insertCustomTable), {
-    className: "text-[#FFD2D7] text-[13px] font-extrabold underline underline-offset-4"
+    className: "table-panel-link table-panel-accent"
   }), "Insert"))) : React.createElement("div", {
-    className: "grid grid-cols-2 gap-1.5"
+    className: "table-menu-grid"
   }, React.createElement("button", _extends({
     type: "button"
   }, tablePanelButtonProps(() => runTableCommand("table-row-add")), {
@@ -4767,6 +4771,10 @@ function RichNoteModal({
     className: "table-menu-action"
   }), "Col +"), React.createElement("button", _extends({
     type: "button"
+  }, tablePanelButtonProps(() => runTableCommand("table-autofit")), {
+    className: "table-menu-action table-menu-accent"
+  }), "Auto"), React.createElement("button", _extends({
+    type: "button"
   }, tablePanelButtonProps(() => runTableCommand("table-row-delete")), {
     className: "table-menu-action"
   }), "Row -"), React.createElement("button", _extends({
@@ -4775,13 +4783,9 @@ function RichNoteModal({
     className: "table-menu-action"
   }), "Col -"), React.createElement("button", _extends({
     type: "button"
-  }, tablePanelButtonProps(() => runTableCommand("table-autofit")), {
-    className: "table-menu-action table-menu-accent"
-  }), "Auto"), React.createElement("button", _extends({
-    type: "button"
   }, tablePanelButtonProps(() => runTableCommand("table-delete")), {
     className: "table-menu-action table-menu-danger"
-  }), "Delete table")))) : null, React.createElement("div", {
+  }), "Delete"))))) : null, React.createElement("div", {
     className: "w-full max-w-md h-[100dvh] bg-[#0a0a0a] flex flex-col",
     style: editorScreenStyle
   }, React.createElement("div", {

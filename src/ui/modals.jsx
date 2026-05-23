@@ -1,12 +1,7 @@
 function NoteTableGlyph({ active = false, menuHint = false }) {
   return (
     <span className={`note-table-glyph ${active ? "is-active" : ""}`}>
-      <span className="note-table-glyph-grid" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-        <span />
-      </span>
+      <span className="note-table-glyph-grid" aria-hidden="true" />
       {menuHint ? (
         <span className="note-table-menu-hint" aria-hidden="true">
           <span />
@@ -215,35 +210,33 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
         </div>
       </div>
       {tablePanel ? (
-        <div className="fixed left-0 right-0 z-[61] flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150" style={tablePanelStyle}>
-          <div className="table-action-panel w-full max-w-[360px] bg-[#171717] border border-[#353535] shadow-2xl px-3 py-3">
-            {tablePanel === "insert" ? (
-              <form className="space-y-3" onSubmit={submitCustomTable}>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="block">
-                    <span className="block text-[11px] font-bold text-[#8f8f8f] mb-1">Rows</span>
-                    <input type="text" inputMode="numeric" pattern="[0-9]*" value={tableRows} onFocus={e => e.currentTarget.select()} onChange={updateTableDimension(setTableRows)} onBlur={() => settleTableDimension(setTableRows, tableRows, 2, 12)} className="table-dimension-input w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]" />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[11px] font-bold text-[#8f8f8f] mb-1">Cols</span>
-                    <input type="text" inputMode="numeric" pattern="[0-9]*" value={tableCols} onFocus={e => e.currentTarget.select()} onChange={updateTableDimension(setTableCols)} onBlur={() => settleTableDimension(setTableCols, tableCols, 2, 8)} className="table-dimension-input w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]" />
-                  </label>
+        <div className="fixed inset-0 z-[61]" onPointerDown={() => setTablePanel(null)}>
+          <div className="fixed left-0 right-0 flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150" style={tablePanelStyle}>
+            <div className="table-action-panel w-full max-w-[360px] bg-[#1A1A1A] border border-[#444444] shadow-2xl px-3 py-3" onPointerDown={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+              {tablePanel === "insert" ? (
+                <form className="table-panel-form" onSubmit={submitCustomTable}>
+                  <div className="table-dimension-row">
+                    <span className="table-dimension-label">Row</span>
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" aria-label="Rows" value={tableRows} onFocus={e => e.currentTarget.select()} onChange={updateTableDimension(setTableRows)} onBlur={() => settleTableDimension(setTableRows, tableRows, 2, 12)} className="table-dimension-input" />
+                    <span className="table-dimension-label">Col</span>
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" aria-label="Cols" value={tableCols} onFocus={e => e.currentTarget.select()} onChange={updateTableDimension(setTableCols)} onBlur={() => settleTableDimension(setTableCols, tableCols, 2, 8)} className="table-dimension-input" />
+                  </div>
+                  <div className="table-panel-footer">
+                    <button type="button" {...tablePanelButtonProps(() => setTablePanel(null))} className="table-panel-link table-panel-muted">Cancel</button>
+                    <button type="submit" {...tablePanelButtonProps(insertCustomTable)} className="table-panel-link table-panel-accent">Insert</button>
+                  </div>
+                </form>
+              ) : (
+                <div className="table-menu-grid">
+                  <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-row-add"))} className="table-menu-action">Row +</button>
+                  <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-col-add"))} className="table-menu-action">Col +</button>
+                  <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-autofit"))} className="table-menu-action table-menu-accent">Auto</button>
+                  <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-row-delete"))} className="table-menu-action">Row -</button>
+                  <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-col-delete"))} className="table-menu-action">Col -</button>
+                  <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-delete"))} className="table-menu-action table-menu-danger">Delete</button>
                 </div>
-                <div className="flex justify-between items-center">
-                  <button type="button" {...tablePanelButtonProps(() => setTablePanel(null))} className="text-[#A7A7A7] text-[13px] font-bold">Cancel</button>
-                  <button type="submit" {...tablePanelButtonProps(insertCustomTable)} className="text-[#FFD2D7] text-[13px] font-extrabold underline underline-offset-4">Insert</button>
-                </div>
-              </form>
-            ) : (
-              <div className="grid grid-cols-2 gap-1.5">
-                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-row-add"))} className="table-menu-action">Row +</button>
-                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-col-add"))} className="table-menu-action">Col +</button>
-                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-row-delete"))} className="table-menu-action">Row -</button>
-                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-col-delete"))} className="table-menu-action">Col -</button>
-                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-autofit"))} className="table-menu-action table-menu-accent">Auto</button>
-                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-delete"))} className="table-menu-action table-menu-danger">Delete table</button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       ) : null}

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v84-note-table-polish';
+const CACHE_NAME = 'idea-box-v85-note-table-popup';
 const APP_SHELL = [
   './',
   './index.html',
