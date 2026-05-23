@@ -1394,10 +1394,10 @@ function App() {
                         />
                         Show days
                       </label>
-                      <div className="border-t border-[#3E3E3E] mt-1 px-4 py-3 space-y-2">
-                        <input type="date" aria-label="Start date" value={db.ui.boxFilterFrom || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterFrom: e.target.value } }))} className="w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]" />
-                        <input type="date" aria-label="End date" value={db.ui.boxFilterTo || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterTo: e.target.value } }))} className="w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]" />
-                        <button type="button" onClick={() => { setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom" } })); setIsDateMenuOpen(false); }} className="w-full bg-[#FFD2D7] hover:bg-[#ffe1e5] active:scale-95 text-black text-[14px] font-bold rounded-[10px] px-3 py-2.5 transition-all">
+                      <div className="border-t border-[#3E3E3E] mt-1 px-4 py-3 grid grid-cols-1 gap-2">
+                        <input type="date" aria-label="Start date" value={db.ui.boxFilterFrom || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterFrom: e.target.value } }))} className="block w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]" />
+                        <input type="date" aria-label="End date" value={db.ui.boxFilterTo || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterTo: e.target.value } }))} className="block w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]" />
+                        <button type="button" onClick={() => { setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom" } })); setIsDateMenuOpen(false); }} className="justify-self-start text-[#FFD2D7] hover:text-white active:scale-95 text-[14px] font-bold underline underline-offset-4 decoration-[#FFD2D7] transition-all">
                           Apply
                         </button>
                       </div>

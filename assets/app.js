@@ -5379,7 +5379,7 @@ function App() {
     })),
     className: "h-4 w-4 accent-[#FFD2D7] cursor-pointer"
   }), "Show days"), React.createElement("div", {
-    className: "border-t border-[#3E3E3E] mt-1 px-4 py-3 space-y-2"
+    className: "border-t border-[#3E3E3E] mt-1 px-4 py-3 grid grid-cols-1 gap-2"
   }, React.createElement("input", {
     type: "date",
     "aria-label": "Start date",
@@ -5391,7 +5391,7 @@ function App() {
         boxFilterFrom: e.target.value
       }
     })),
-    className: "w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]"
+    className: "block w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]"
   }), React.createElement("input", {
     type: "date",
     "aria-label": "End date",
@@ -5403,7 +5403,7 @@ function App() {
         boxFilterTo: e.target.value
       }
     })),
-    className: "w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]"
+    className: "block w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]"
   }), React.createElement("button", {
     type: "button",
     onClick: () => {
@@ -5416,7 +5416,7 @@ function App() {
       }));
       setIsDateMenuOpen(false);
     },
-    className: "w-full bg-[#FFD2D7] hover:bg-[#ffe1e5] active:scale-95 text-black text-[14px] font-bold rounded-[10px] px-3 py-2.5 transition-all"
+    className: "justify-self-start text-[#FFD2D7] hover:text-white active:scale-95 text-[14px] font-bold underline underline-offset-4 decoration-[#FFD2D7] transition-all"
   }, "Apply")))), React.createElement("button", {
     type: "button",
     onClick: createRootBox,
