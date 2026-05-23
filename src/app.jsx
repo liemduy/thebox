@@ -1394,15 +1394,12 @@ function App() {
                         />
                         Show days
                       </label>
-                      <div className="border-t border-[#3E3E3E] mt-1 px-3 py-3 space-y-2">
-                        <label className="flex items-center gap-3 rounded-[10px] bg-[#111111] border border-[#333333] px-3 py-2">
-                          <span className="w-12 text-[10px] text-[#A7A7A7] uppercase tracking-wider font-extrabold whitespace-nowrap">Start</span>
-                          <input type="date" value={db.ui.boxFilterFrom || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom", boxFilterFrom: e.target.value } }))} className="min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none [color-scheme:dark]" />
-                        </label>
-                        <label className="flex items-center gap-3 rounded-[10px] bg-[#111111] border border-[#333333] px-3 py-2">
-                          <span className="w-12 text-[10px] text-[#A7A7A7] uppercase tracking-wider font-extrabold whitespace-nowrap">End</span>
-                          <input type="date" value={db.ui.boxFilterTo || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom", boxFilterTo: e.target.value } }))} className="min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none [color-scheme:dark]" />
-                        </label>
+                      <div className="border-t border-[#3E3E3E] mt-1 px-4 py-3 space-y-2">
+                        <input type="date" aria-label="Start date" value={db.ui.boxFilterFrom || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterFrom: e.target.value } }))} className="w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]" />
+                        <input type="date" aria-label="End date" value={db.ui.boxFilterTo || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterTo: e.target.value } }))} className="w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]" />
+                        <button type="button" onClick={() => { setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom" } })); setIsDateMenuOpen(false); }} className="w-full bg-[#FFD2D7] hover:bg-[#ffe1e5] active:scale-95 text-black text-[14px] font-bold rounded-[10px] px-3 py-2.5 transition-all">
+                          Apply
+                        </button>
                       </div>
                     </div>
                   )}
@@ -1447,7 +1444,7 @@ function App() {
 
                 <div className="relative flex items-center justify-between bg-transparent border border-[#555555] rounded-full px-4 py-1.5 hover:border-white transition-colors group flex-1">
                   <button type="button" onClick={() => selectActionDate(addDaysYMD(selectedDate, -1))} className="text-[#A7A7A7] group-hover:text-white transition-colors"><ChevronLeft size={16} /></button>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); setIsActionCalendarOpen(!isActionCalendarOpen); setIsActionsMenuOpen(false); }} className="flex items-center gap-2 text-white font-bold text-[13px] min-w-0">
+                  <button type="button" aria-label="Select action date" onClick={(e) => { e.stopPropagation(); setIsActionCalendarOpen(!isActionCalendarOpen); setIsActionsMenuOpen(false); }} className="flex items-center gap-2 text-white font-bold text-[13px] min-w-0">
                     {displayDate(selectedDate, true)} {actionProgress ? <span className="text-[#A7A7A7] font-semibold">{actionProgress.done}/{actionProgress.total}</span> : null} <CalendarDays size={14} className="text-[#FFD2D7]" />
                   </button>
                   <button type="button" onClick={() => selectActionDate(addDaysYMD(selectedDate, 1))} className="text-[#A7A7A7] group-hover:text-white transition-colors"><ChevronRight size={16} /></button>

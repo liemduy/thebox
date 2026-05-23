@@ -2413,15 +2413,15 @@ function NotesPanel({
       "aria-label": collapsed ? "Expand notes date" : "Collapse notes date"
     }, React.createElement("span", {
       className: "flex items-center gap-1.5 min-w-0"
-    }, collapsed ? React.createElement(ChevronRight, {
+    }, React.createElement("span", {
+      className: "truncate"
+    }, displayDate(group.date)), collapsed ? React.createElement(ChevronRight, {
       size: 14,
       className: "shrink-0"
     }) : React.createElement(ChevronDown, {
       size: 14,
       className: "shrink-0"
-    }), React.createElement("span", {
-      className: "truncate"
-    }, displayDate(group.date))), React.createElement("span", {
+    })), React.createElement("span", {
       className: "text-[11px] text-[#666666] shrink-0"
     }, group.items.length)), !collapsed && React.createElement("div", {
       className: "space-y-3"
@@ -5379,40 +5379,45 @@ function App() {
     })),
     className: "h-4 w-4 accent-[#FFD2D7] cursor-pointer"
   }), "Show days"), React.createElement("div", {
-    className: "border-t border-[#3E3E3E] mt-1 px-3 py-3 space-y-2"
-  }, React.createElement("label", {
-    className: "flex items-center gap-3 rounded-[10px] bg-[#111111] border border-[#333333] px-3 py-2"
-  }, React.createElement("span", {
-    className: "w-12 text-[10px] text-[#A7A7A7] uppercase tracking-wider font-extrabold whitespace-nowrap"
-  }, "Start"), React.createElement("input", {
+    className: "border-t border-[#3E3E3E] mt-1 px-4 py-3 space-y-2"
+  }, React.createElement("input", {
     type: "date",
+    "aria-label": "Start date",
     value: db.ui.boxFilterFrom || "",
     onChange: e => setDb(prev => markPendingSync({
       ...prev,
       ui: {
         ...prev.ui,
-        boxFilter: "custom",
         boxFilterFrom: e.target.value
       }
     })),
-    className: "min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none [color-scheme:dark]"
-  })), React.createElement("label", {
-    className: "flex items-center gap-3 rounded-[10px] bg-[#111111] border border-[#333333] px-3 py-2"
-  }, React.createElement("span", {
-    className: "w-12 text-[10px] text-[#A7A7A7] uppercase tracking-wider font-extrabold whitespace-nowrap"
-  }, "End"), React.createElement("input", {
+    className: "w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]"
+  }), React.createElement("input", {
     type: "date",
+    "aria-label": "End date",
     value: db.ui.boxFilterTo || "",
     onChange: e => setDb(prev => markPendingSync({
       ...prev,
       ui: {
         ...prev.ui,
-        boxFilter: "custom",
         boxFilterTo: e.target.value
       }
     })),
-    className: "min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none [color-scheme:dark]"
-  }))))), React.createElement("button", {
+    className: "w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]"
+  }), React.createElement("button", {
+    type: "button",
+    onClick: () => {
+      setDb(prev => markPendingSync({
+        ...prev,
+        ui: {
+          ...prev.ui,
+          boxFilter: "custom"
+        }
+      }));
+      setIsDateMenuOpen(false);
+    },
+    className: "w-full bg-[#FFD2D7] hover:bg-[#ffe1e5] active:scale-95 text-black text-[14px] font-bold rounded-[10px] px-3 py-2.5 transition-all"
+  }, "Apply")))), React.createElement("button", {
     type: "button",
     onClick: createRootBox,
     className: "ml-auto px-5 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform",
@@ -5490,6 +5495,7 @@ function App() {
     size: 16
   })), React.createElement("button", {
     type: "button",
+    "aria-label": "Select action date",
     onClick: e => {
       e.stopPropagation();
       setIsActionCalendarOpen(!isActionCalendarOpen);

@@ -104,8 +104,8 @@ function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isV
               <section key={group.date}>
                 <button type="button" onClick={() => onToggleDate(group.date)} className="w-full flex items-center justify-between text-left text-[12px] font-extrabold text-[#A7A7A7] mb-2 px-1 hover:text-white transition-colors" aria-label={collapsed ? "Expand notes date" : "Collapse notes date"}>
                   <span className="flex items-center gap-1.5 min-w-0">
-                    {collapsed ? <ChevronRight size={14} className="shrink-0" /> : <ChevronDown size={14} className="shrink-0" />}
                     <span className="truncate">{displayDate(group.date)}</span>
+                    {collapsed ? <ChevronRight size={14} className="shrink-0" /> : <ChevronDown size={14} className="shrink-0" />}
                   </span>
                   <span className="text-[11px] text-[#666666] shrink-0">{group.items.length}</span>
                 </button>
