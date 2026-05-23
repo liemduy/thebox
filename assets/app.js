@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-inline-date-calendar";
-const APP_CACHE_NAME = "idea-box-v60-inline-date-calendar";
+const APP_BUILD_ID = "2026-05-23-range-calendar-placement";
+const APP_CACHE_NAME = "idea-box-v63-range-calendar-placement";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -3185,7 +3185,9 @@ function ActionDatePickerPanel({
   selectedDate,
   actionDays,
   onSelect,
-  align = "right"
+  align = "right",
+  compact = false,
+  placement = "down"
 }) {
   const [month, setMonth] = useState(String(selectedDate || todayYMD()).slice(0, 7));
   useEffect(() => {
@@ -3206,9 +3208,13 @@ function ActionDatePickerPanel({
     const next = new Date(year, monthNumber - 1 + offset, 1);
     setMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
   }
+  const horizontalClass = compact ? "left-0" : align === "left" ? "left-0" : "right-0";
+  const verticalClass = placement === "up" ? "bottom-full mb-2" : "top-full mt-2";
+  const originClass = placement === "up" ? align === "left" || compact ? "origin-bottom-left" : "origin-bottom-right" : align === "left" || compact ? "origin-top-left" : "origin-top-right";
+  const widthClass = compact ? "w-full max-w-full" : "w-[292px] max-w-[calc(100vw-2rem)]";
   return React.createElement("div", {
     onClick: e => e.stopPropagation(),
-    className: `absolute top-full ${align === "left" ? "left-0 origin-top-left" : "right-0 origin-top-right"} mt-2 w-[292px] max-w-[calc(100vw-2rem)] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] p-3 animate-in fade-in zoom-in-95 duration-100 z-50`
+    className: `absolute ${verticalClass} ${horizontalClass} ${originClass} ${widthClass} bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] p-3 animate-in fade-in zoom-in-95 duration-100 z-50`
   }, React.createElement("div", {
     className: "flex items-center justify-between mb-3"
   }, React.createElement("button", {
@@ -5493,6 +5499,8 @@ function App() {
     selectedDate: db.ui.boxFilterFrom || todayYMD(),
     actionDays: db.actionDays,
     align: "left",
+    compact: true,
+    placement: "up",
     onSelect: date => {
       setDb(prev => markPendingSync({
         ...prev,
@@ -5533,6 +5541,8 @@ function App() {
     selectedDate: db.ui.boxFilterTo || db.ui.boxFilterFrom || todayYMD(),
     actionDays: db.actionDays,
     align: "left",
+    compact: true,
+    placement: "up",
     onSelect: date => {
       setDb(prev => markPendingSync({
         ...prev,

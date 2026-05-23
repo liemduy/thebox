@@ -1416,6 +1416,8 @@ function App() {
                               selectedDate={db.ui.boxFilterFrom || todayYMD()}
                               actionDays={db.actionDays}
                               align="left"
+                              compact
+                              placement="up"
                               onSelect={(date) => {
                                 setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterFrom: date } }));
                                 setBoxDateCalendarTarget(null);
@@ -1441,6 +1443,8 @@ function App() {
                               selectedDate={db.ui.boxFilterTo || db.ui.boxFilterFrom || todayYMD()}
                               actionDays={db.actionDays}
                               align="left"
+                              compact
+                              placement="up"
                               onSelect={(date) => {
                                 setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterTo: date } }));
                                 setBoxDateCalendarTarget(null);

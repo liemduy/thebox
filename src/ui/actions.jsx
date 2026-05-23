@@ -185,7 +185,7 @@ function actionDayHasEntries(day) {
   return (day.nodes || []).some(node => entriesFor(node).length > 0);
 }
 
-function ActionDatePickerPanel({ selectedDate, actionDays, onSelect, align = "right" }) {
+function ActionDatePickerPanel({ selectedDate, actionDays, onSelect, align = "right", compact = false, placement = "down" }) {
   const [month, setMonth] = useState(String(selectedDate || todayYMD()).slice(0, 7));
   useEffect(() => { setMonth(String(selectedDate || todayYMD()).slice(0, 7)); }, [selectedDate]);
   const [year, monthNumber] = month.split("-").map(Number);
@@ -205,8 +205,15 @@ function ActionDatePickerPanel({ selectedDate, actionDays, onSelect, align = "ri
     setMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
   }
 
+  const horizontalClass = compact ? "left-0" : (align === "left" ? "left-0" : "right-0");
+  const verticalClass = placement === "up" ? "bottom-full mb-2" : "top-full mt-2";
+  const originClass = placement === "up"
+    ? (align === "left" || compact ? "origin-bottom-left" : "origin-bottom-right")
+    : (align === "left" || compact ? "origin-top-left" : "origin-top-right");
+  const widthClass = compact ? "w-full max-w-full" : "w-[292px] max-w-[calc(100vw-2rem)]";
+
   return (
-    <div onClick={e => e.stopPropagation()} className={`absolute top-full ${align === "left" ? "left-0 origin-top-left" : "right-0 origin-top-right"} mt-2 w-[292px] max-w-[calc(100vw-2rem)] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] p-3 animate-in fade-in zoom-in-95 duration-100 z-50`}>
+    <div onClick={e => e.stopPropagation()} className={`absolute ${verticalClass} ${horizontalClass} ${originClass} ${widthClass} bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] p-3 animate-in fade-in zoom-in-95 duration-100 z-50`}>
       <div className="flex items-center justify-between mb-3">
         <button type="button" onClick={() => shiftMonth(-1)} className="h-8 w-8 grid place-items-center rounded-full text-[#A7A7A7] hover:text-white hover:bg-[#333333] transition-colors" aria-label="Previous month"><ChevronLeft size={16} /></button>
         <div className="text-white text-[13px] font-extrabold">
