@@ -1,7 +1,11 @@
 function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel = "", onSyncNow = () => {} }) {
   const titleRef = useRef(null);
   const editorApiRef = useRef(null);
+  const tablePanelActionRef = useRef(0);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
+  const [tablePanel, setTablePanel] = useState(null);
+  const [tableRows, setTableRows] = useState(2);
+  const [tableCols, setTableCols] = useState(2);
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
@@ -15,6 +19,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
 
   useEffect(() => {
     setToolbarState(NOTE_EDITOR_EMPTY_TOOLBAR);
+    setTablePanel(null);
     window.setTimeout(() => titleRef.current?.focus(), 40);
   }, [editorKey]);
 
@@ -26,8 +31,48 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
     else onSave({ dayId: modal.dayId, nodeId: modal.nodeId, entryId: modal.entryId || null, title: title || "Note", bodyHtml: html });
   }
 
-  function runEditorCommand(command) {
-    editorApiRef.current?.run(command);
+  function runEditorCommand(command, options = {}) {
+    const api = editorApiRef.current;
+    if (!api) {
+      console.warn("Note editor is not ready", command);
+      return false;
+    }
+    return Boolean(api.run(command, options));
+  }
+
+  function runEditorCommandAfterFocus(command, options = {}) {
+    window.setTimeout(() => {
+      try {
+        editorApiRef.current?.focus();
+        runEditorCommand(command, options);
+      } catch (error) {
+        console.warn("Could not run note editor command", command, error);
+      }
+    }, 40);
+  }
+
+  function openTablePanel() {
+    setTablePanel(prev => {
+      const nextType = toolbarState.table ? "actions" : "insert";
+      return prev === nextType ? null : nextType;
+    });
+  }
+
+  function insertCustomTable() {
+    const options = { rows: tableRows, cols: tableCols };
+    setTablePanel(null);
+    runEditorCommandAfterFocus("insert-table", options);
+  }
+
+  function submitCustomTable(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    insertCustomTable();
+  }
+
+  function runTableCommand(command) {
+    setTablePanel(null);
+    runEditorCommandAfterFocus(command);
   }
 
   const editorScreenStyle = {
@@ -72,6 +117,33 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
     },
     tabIndex: -1
   });
+  const runTablePanelAction = (event, action) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const stamp = Date.now();
+    if (stamp - tablePanelActionRef.current < 500) return;
+    tablePanelActionRef.current = stamp;
+    action();
+  };
+  const tablePanelButtonProps = (action) => ({
+    onPointerDown: (event) => {
+      runTablePanelAction(event, action);
+    },
+    onMouseDown: (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    onTouchEnd: (event) => runTablePanelAction(event, action),
+    onKeyDown: (event) => {
+      if (event.key === "Enter" || event.key === " ") runTablePanelAction(event, action);
+    },
+    onTouchStart: (event) => {
+      event.stopPropagation();
+    },
+    onClick: (event) => runTablePanelAction(event, action),
+    tabIndex: -1
+  });
+  const tablePanelStyle = { top: "calc(env(safe-area-inset-top, 0px) + 54px)" };
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden">
@@ -90,7 +162,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("indent-in"))} className={topButtonClassName(false)} aria-label="Indent"><IndentIncrease size={17} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("quote"))} className={topButtonClassName(toolbarState.quote)} aria-label="Quote"><Quote size={16} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("checklist"))} className={topButtonClassName(toolbarState.checklist)} aria-label="Checklist"><CheckSquare size={16} /></button>
-            <button type="button" {...toolbarButtonProps(() => runEditorCommand("table"))} className={topButtonClassName(toolbarState.table)} aria-label="Insert table"><Table2 size={16} /></button>
+            <button type="button" {...toolbarButtonProps(openTablePanel)} className={topButtonClassName(toolbarState.table || tablePanel)} aria-label={toolbarState.table ? "Table menu" : "Insert table"}><Table2 size={16} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("list"))} className={topButtonClassName(toolbarState.bullet || toolbarState.ordered)} aria-label={listLabel}>
               <span className="text-[15px] font-extrabold leading-none">{listButtonText}</span>
             </button>
@@ -103,6 +175,39 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
           </button>
         </div>
       </div>
+      {tablePanel ? (
+        <div className="fixed left-0 right-0 z-[61] flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150" style={tablePanelStyle}>
+          <div className="w-full max-w-[360px] bg-[#171717] border border-[#353535] shadow-2xl px-3 py-3">
+            {tablePanel === "insert" ? (
+              <form className="space-y-3" onSubmit={submitCustomTable}>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="block text-[11px] font-bold text-[#8f8f8f] mb-1">Rows</span>
+                    <input type="number" min="1" max="12" value={tableRows} onChange={e => setTableRows(Math.max(1, Math.min(12, Number(e.target.value) || 1)))} className="w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]" />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[11px] font-bold text-[#8f8f8f] mb-1">Cols</span>
+                    <input type="number" min="1" max="8" value={tableCols} onChange={e => setTableCols(Math.max(1, Math.min(8, Number(e.target.value) || 1)))} className="w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]" />
+                  </label>
+                </div>
+                <div className="flex justify-between items-center">
+                  <button type="button" {...tablePanelButtonProps(() => setTablePanel(null))} className="text-[#A7A7A7] text-[13px] font-bold">Cancel</button>
+                  <button type="submit" {...tablePanelButtonProps(insertCustomTable)} className="text-[#FFD2D7] text-[13px] font-extrabold underline underline-offset-4">Insert</button>
+                </div>
+              </form>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-row-add"))} className="bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2">Row +</button>
+                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-row-delete"))} className="bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2">Row -</button>
+                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-after"))} className="bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2">Below</button>
+                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-col-add"))} className="bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2">Col +</button>
+                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-col-delete"))} className="bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2">Col -</button>
+                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-delete"))} className="bg-[#2a1212] text-red-200 text-[12px] font-extrabold px-2 py-2">Delete</button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
       <div className="w-full max-w-md h-[100dvh] bg-[#0a0a0a] flex flex-col" style={editorScreenStyle}>
         <div className="flex-1 min-h-0 overflow-y-auto thin-scroll px-5 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]">
           <input ref={titleRef} type="text" placeholder="Title" defaultValue={initialTitle} className="note-title-input w-full bg-transparent border-none outline-none px-0 pt-3 pb-2 text-white font-black leading-[1.04] placeholder:text-[#555555] tracking-normal" />
@@ -110,7 +215,9 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
             key={editorKey}
             initialHtml={initialHtml}
             className={editorClassName}
-            onReady={(api) => { editorApiRef.current = api; }}
+            onReady={(api) => {
+              editorApiRef.current = api;
+            }}
             onToolbarState={setToolbarState}
           />
         </div>

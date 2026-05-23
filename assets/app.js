@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-note-editor-lists-tables";
-const APP_CACHE_NAME = "idea-box-v70-note-editor-lists-tables";
+const APP_BUILD_ID = "2026-05-23-note-table-controls-11";
+const APP_CACHE_NAME = "idea-box-v82-note-table-controls";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -3544,7 +3544,7 @@ function createNoteEditorSchema() {
     }
   });
   nodes = nodes.addToEnd("table_cell", {
-    content: "paragraph block*",
+    content: "block+",
     isolating: true,
     parseDOM: [{
       tag: "td"
@@ -3819,6 +3819,37 @@ function activeListItemType(state) {
 function insideTable(state) {
   return Boolean(findParentNodeOfType(state, state.schema.nodes.table));
 }
+function currentTableInfo(state) {
+  const schema = state.schema;
+  const {
+    $from
+  } = state.selection;
+  let tableDepth = null;
+  let rowDepth = null;
+  let cellDepth = null;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth);
+    if (node.type === schema.nodes.table_cell && cellDepth == null) cellDepth = depth;
+    if (node.type === schema.nodes.table_row && rowDepth == null) rowDepth = depth;
+    if (node.type === schema.nodes.table && tableDepth == null) tableDepth = depth;
+  }
+  if (tableDepth == null) return null;
+  const table = $from.node(tableDepth);
+  const row = rowDepth != null ? $from.node(rowDepth) : null;
+  const cell = cellDepth != null ? $from.node(cellDepth) : null;
+  return {
+    table,
+    tablePos: $from.before(tableDepth),
+    row,
+    rowPos: rowDepth != null ? $from.before(rowDepth) : null,
+    rowIndex: rowDepth != null ? $from.index(tableDepth) : 0,
+    cell,
+    cellPos: cellDepth != null ? $from.before(cellDepth) : null,
+    cellIndex: cellDepth != null ? $from.index(rowDepth) : 0,
+    rowCount: table.childCount,
+    colCount: table.firstChild?.childCount || 0
+  };
+}
 function textLevelForBlock(node, schema) {
   if (!node) return "body";
   if (node.type === schema.nodes.heading) {
@@ -4015,24 +4046,161 @@ function toggleChecklistCommand(schema) {
 }
 function createEmptyTable(schema, rows = 2, cols = 2) {
   const tableRows = [];
-  for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
+  const safeRows = Math.max(1, Math.min(12, Number(rows) || 2));
+  const safeCols = Math.max(1, Math.min(8, Number(cols) || 2));
+  for (let rowIndex = 0; rowIndex < safeRows; rowIndex += 1) {
     const cells = [];
-    for (let colIndex = 0; colIndex < cols; colIndex += 1) {
+    for (let colIndex = 0; colIndex < safeCols; colIndex += 1) {
       cells.push(schema.nodes.table_cell.create(null, schema.nodes.paragraph.create()));
     }
     tableRows.push(schema.nodes.table_row.create(null, cells));
   }
   return schema.nodes.table.create(null, tableRows);
 }
-function insertTableCommand(schema) {
+function createEmptyTableRow(schema, cols = 2) {
+  const safeCols = Math.max(1, Math.min(8, Number(cols) || 2));
+  const cells = [];
+  for (let colIndex = 0; colIndex < safeCols; colIndex += 1) {
+    cells.push(schema.nodes.table_cell.create(null, schema.nodes.paragraph.create()));
+  }
+  return schema.nodes.table_row.create(null, cells);
+}
+function tableCellStart(tablePos, table, rowIndex, cellIndex) {
+  let rowOffset = 0;
+  for (let index = 0; index < rowIndex; index += 1) rowOffset += table.child(index).nodeSize;
+  const row = table.child(rowIndex);
+  let cellOffset = 0;
+  for (let index = 0; index < cellIndex; index += 1) cellOffset += row.child(index).nodeSize;
+  return tablePos + 1 + rowOffset + 1 + cellOffset;
+}
+function selectNearPosition(pm, tr, pos) {
+  const safePos = Math.max(0, Math.min(tr.doc.content.size, Number(pos) || 0));
+  return tr.setSelection(pm.TextSelection.near(tr.doc.resolve(safePos)));
+}
+function findNearestTableInDoc(doc, schema, around, expectedSize) {
+  let best = null;
+  doc.descendants((node, pos) => {
+    if (node.type !== schema.nodes.table) return true;
+    if (expectedSize && node.nodeSize !== expectedSize) return false;
+    const score = Math.abs(pos - around);
+    if (!best || score < best.score) best = {
+      node,
+      pos,
+      score
+    };
+    return false;
+  });
+  return best;
+}
+function ensureParagraphAfterTableCommand(schema, pm) {
+  return (state, dispatch) => {
+    const info = currentTableInfo(state);
+    if (!info) return false;
+    const tableEnd = info.tablePos + info.table.nodeSize;
+    if (dispatch) {
+      let tr = state.tr;
+      const nodeAfter = state.doc.nodeAt(tableEnd);
+      if (!nodeAfter || !nodeAfter.isTextblock) tr = tr.insert(tableEnd, schema.nodes.paragraph.create());
+      tr = selectNearPosition(pm, tr, tableEnd + 1).scrollIntoView();
+      dispatch(tr);
+    }
+    return true;
+  };
+}
+function deleteTableCommand(schema) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
-    const table = createEmptyTable(schema, 2, 2);
+    const info = currentTableInfo(state);
+    if (!info) return false;
+    if (dispatch) {
+      let tr = state.tr.replaceWith(info.tablePos, info.tablePos + info.table.nodeSize, schema.nodes.paragraph.create()).scrollIntoView();
+      tr = selectNearPosition(pm, tr, info.tablePos + 1);
+      dispatch(tr);
+    }
+    return true;
+  };
+}
+function addTableRowCommand(schema) {
+  return (state, dispatch) => {
+    const info = currentTableInfo(state);
+    if (!info || !info.row) return false;
+    const insertPos = info.rowPos + info.row.nodeSize;
+    if (dispatch) dispatch(state.tr.insert(insertPos, createEmptyTableRow(schema, info.colCount)).scrollIntoView());
+    return true;
+  };
+}
+function deleteTableRowCommand(schema) {
+  return (state, dispatch) => {
+    const info = currentTableInfo(state);
+    if (!info || !info.row) return false;
+    if (info.rowCount <= 1) return deleteTableCommand(schema)(state, dispatch);
+    if (dispatch) dispatch(state.tr.delete(info.rowPos, info.rowPos + info.row.nodeSize).scrollIntoView());
+    return true;
+  };
+}
+function addTableColumnCommand(schema) {
+  return (state, dispatch) => {
+    const info = currentTableInfo(state);
+    if (!info || info.cellIndex == null) return false;
+    let tr = state.tr;
+    const inserts = [];
+    for (let rowIndex = 0; rowIndex < info.table.childCount; rowIndex += 1) {
+      const row = info.table.child(rowIndex);
+      const safeIndex = Math.min(info.cellIndex, row.childCount - 1);
+      const cell = row.child(safeIndex);
+      const cellPos = tableCellStart(info.tablePos, info.table, rowIndex, safeIndex);
+      inserts.push({
+        pos: cellPos + cell.nodeSize,
+        node: schema.nodes.table_cell.create(null, schema.nodes.paragraph.create())
+      });
+    }
+    inserts.sort((a, b) => b.pos - a.pos).forEach(insert => {
+      tr = tr.insert(insert.pos, insert.node);
+    });
+    if (dispatch) dispatch(tr.scrollIntoView());
+    return true;
+  };
+}
+function deleteTableColumnCommand(schema) {
+  return (state, dispatch) => {
+    const info = currentTableInfo(state);
+    if (!info || info.cellIndex == null) return false;
+    if (info.colCount <= 1) return deleteTableCommand(schema)(state, dispatch);
+    let tr = state.tr;
+    const deletes = [];
+    for (let rowIndex = 0; rowIndex < info.table.childCount; rowIndex += 1) {
+      const row = info.table.child(rowIndex);
+      const safeIndex = Math.min(info.cellIndex, row.childCount - 1);
+      const cell = row.child(safeIndex);
+      const cellPos = tableCellStart(info.tablePos, info.table, rowIndex, safeIndex);
+      deletes.push({
+        from: cellPos,
+        to: cellPos + cell.nodeSize
+      });
+    }
+    deletes.sort((a, b) => b.from - a.from).forEach(range => {
+      tr = tr.delete(range.from, range.to);
+    });
+    if (dispatch) dispatch(tr.scrollIntoView());
+    return true;
+  };
+}
+function insertTableCommand(schema, options = {}) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    const table = createEmptyTable(schema, options.rows || 2, options.cols || 2);
     if (dispatch) {
       const from = state.selection.from;
-      let tr = state.tr.replaceSelectionWith(table).scrollIntoView();
-      const focusPos = Math.min(tr.doc.content.size - 1, from + 4);
-      if (focusPos > 0) tr = tr.setSelection(pm.TextSelection.near(tr.doc.resolve(focusPos)));
+      let tr = state.tr.replaceSelectionWith(table);
+      const mappedFrom = tr.mapping.map(from, -1);
+      const inserted = findNearestTableInDoc(tr.doc, schema, mappedFrom, table.nodeSize);
+      const tablePos = inserted?.pos ?? Math.max(0, mappedFrom - 1);
+      const tableEnd = tablePos + table.nodeSize;
+      const nodeAfter = tr.doc.nodeAt(tableEnd);
+      if (!nodeAfter || !nodeAfter.isTextblock) tr = tr.insert(tableEnd, schema.nodes.paragraph.create());
+      tr = tr.scrollIntoView();
+      const focusPos = Math.min(tr.doc.content.size - 1, tablePos + 4);
+      if (focusPos > 0) tr = selectNearPosition(pm, tr, focusPos);
       dispatch(tr);
     }
     return true;
@@ -4063,7 +4231,7 @@ function indentCommand(schema, delta) {
     return updateSelectedBlockIndent(schema, delta)(state, dispatch);
   };
 }
-function runNoteEditorCommand(view, commandName) {
+function runNoteEditorCommand(view, commandName, options = {}) {
   const pm = noteEditorPM();
   if (!view || !pm) return false;
   const schema = view.state.schema;
@@ -4074,7 +4242,14 @@ function runNoteEditorCommand(view, commandName) {
     heading: cycleTextLevelCommand(schema),
     list: cycleListCommand(schema),
     checklist: toggleChecklistCommand(schema),
-    table: insertTableCommand(schema),
+    table: insertTableCommand(schema, options),
+    "insert-table": insertTableCommand(schema, options),
+    "table-row-add": addTableRowCommand(schema),
+    "table-row-delete": deleteTableRowCommand(schema),
+    "table-col-add": addTableColumnCommand(schema),
+    "table-col-delete": deleteTableColumnCommand(schema),
+    "table-delete": deleteTableCommand(schema),
+    "table-after": ensureParagraphAfterTableCommand(schema, pm),
     quote: toggleQuoteCommand(schema),
     "indent-in": indentCommand(schema, 1),
     "indent-out": indentCommand(schema, -1),
@@ -4123,8 +4298,10 @@ function ProseMirrorNoteEditor({
       focus() {
         view.focus();
       },
-      run(commandName) {
-        const handled = runNoteEditorCommand(view, commandName);
+      run(commandName, options = {}) {
+        view.focus();
+        view.dispatch(view.state.tr.setSelection(view.state.selection));
+        const handled = runNoteEditorCommand(view, commandName, options);
         toolbarRef.current?.(readNoteEditorToolbarState(view));
         return handled;
       },
@@ -4158,7 +4335,11 @@ function RichNoteModal({
 }) {
   const titleRef = useRef(null);
   const editorApiRef = useRef(null);
+  const tablePanelActionRef = useRef(0);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
+  const [tablePanel, setTablePanel] = useState(null);
+  const [tableRows, setTableRows] = useState(2);
+  const [tableCols, setTableCols] = useState(2);
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
@@ -4171,6 +4352,7 @@ function RichNoteModal({
   const editorKey = `${modal.type}-${modal.noteId || modal.boxId || ""}-${modal.dayId || ""}-${modal.nodeId || ""}-${modal.entryId || "new"}`;
   useEffect(() => {
     setToolbarState(NOTE_EDITOR_EMPTY_TOOLBAR);
+    setTablePanel(null);
     window.setTimeout(() => titleRef.current?.focus(), 40);
   }, [editorKey]);
   function save() {
@@ -4194,8 +4376,46 @@ function RichNoteModal({
       bodyHtml: html
     });
   }
-  function runEditorCommand(command) {
-    editorApiRef.current?.run(command);
+  function runEditorCommand(command, options = {}) {
+    const api = editorApiRef.current;
+    if (!api) {
+      console.warn("Note editor is not ready", command);
+      return false;
+    }
+    return Boolean(api.run(command, options));
+  }
+  function runEditorCommandAfterFocus(command, options = {}) {
+    window.setTimeout(() => {
+      try {
+        editorApiRef.current?.focus();
+        runEditorCommand(command, options);
+      } catch (error) {
+        console.warn("Could not run note editor command", command, error);
+      }
+    }, 40);
+  }
+  function openTablePanel() {
+    setTablePanel(prev => {
+      const nextType = toolbarState.table ? "actions" : "insert";
+      return prev === nextType ? null : nextType;
+    });
+  }
+  function insertCustomTable() {
+    const options = {
+      rows: tableRows,
+      cols: tableCols
+    };
+    setTablePanel(null);
+    runEditorCommandAfterFocus("insert-table", options);
+  }
+  function submitCustomTable(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    insertCustomTable();
+  }
+  function runTableCommand(command) {
+    setTablePanel(null);
+    runEditorCommandAfterFocus(command);
   }
   const editorScreenStyle = {
     paddingTop: "calc(env(safe-area-inset-top, 0px) + 52px)"
@@ -4247,6 +4467,35 @@ function RichNoteModal({
     },
     tabIndex: -1
   });
+  const runTablePanelAction = (event, action) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const stamp = Date.now();
+    if (stamp - tablePanelActionRef.current < 500) return;
+    tablePanelActionRef.current = stamp;
+    action();
+  };
+  const tablePanelButtonProps = action => ({
+    onPointerDown: event => {
+      runTablePanelAction(event, action);
+    },
+    onMouseDown: event => {
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    onTouchEnd: event => runTablePanelAction(event, action),
+    onKeyDown: event => {
+      if (event.key === "Enter" || event.key === " ") runTablePanelAction(event, action);
+    },
+    onTouchStart: event => {
+      event.stopPropagation();
+    },
+    onClick: event => runTablePanelAction(event, action),
+    tabIndex: -1
+  });
+  const tablePanelStyle = {
+    top: "calc(env(safe-area-inset-top, 0px) + 54px)"
+  };
   return React.createElement("div", {
     className: "fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden"
   }, React.createElement("div", {
@@ -4320,9 +4569,9 @@ function RichNoteModal({
     size: 16
   })), React.createElement("button", _extends({
     type: "button"
-  }, toolbarButtonProps(() => runEditorCommand("table")), {
-    className: topButtonClassName(toolbarState.table),
-    "aria-label": "Insert table"
+  }, toolbarButtonProps(openTablePanel), {
+    className: topButtonClassName(toolbarState.table || tablePanel),
+    "aria-label": toolbarState.table ? "Table menu" : "Insert table"
   }), React.createElement(Table2, {
     size: 16
   })), React.createElement("button", _extends({
@@ -4367,7 +4616,75 @@ function RichNoteModal({
     className: "animate-pulse"
   }) : React.createElement(Check, {
     size: 20
-  })))), React.createElement("div", {
+  })))), tablePanel ? React.createElement("div", {
+    className: "fixed left-0 right-0 z-[61] flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150",
+    style: tablePanelStyle
+  }, React.createElement("div", {
+    className: "w-full max-w-[360px] bg-[#171717] border border-[#353535] shadow-2xl px-3 py-3"
+  }, tablePanel === "insert" ? React.createElement("form", {
+    className: "space-y-3",
+    onSubmit: submitCustomTable
+  }, React.createElement("div", {
+    className: "grid grid-cols-2 gap-2"
+  }, React.createElement("label", {
+    className: "block"
+  }, React.createElement("span", {
+    className: "block text-[11px] font-bold text-[#8f8f8f] mb-1"
+  }, "Rows"), React.createElement("input", {
+    type: "number",
+    min: "1",
+    max: "12",
+    value: tableRows,
+    onChange: e => setTableRows(Math.max(1, Math.min(12, Number(e.target.value) || 1))),
+    className: "w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]"
+  })), React.createElement("label", {
+    className: "block"
+  }, React.createElement("span", {
+    className: "block text-[11px] font-bold text-[#8f8f8f] mb-1"
+  }, "Cols"), React.createElement("input", {
+    type: "number",
+    min: "1",
+    max: "8",
+    value: tableCols,
+    onChange: e => setTableCols(Math.max(1, Math.min(8, Number(e.target.value) || 1))),
+    className: "w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]"
+  }))), React.createElement("div", {
+    className: "flex justify-between items-center"
+  }, React.createElement("button", _extends({
+    type: "button"
+  }, tablePanelButtonProps(() => setTablePanel(null)), {
+    className: "text-[#A7A7A7] text-[13px] font-bold"
+  }), "Cancel"), React.createElement("button", _extends({
+    type: "submit"
+  }, tablePanelButtonProps(insertCustomTable), {
+    className: "text-[#FFD2D7] text-[13px] font-extrabold underline underline-offset-4"
+  }), "Insert"))) : React.createElement("div", {
+    className: "grid grid-cols-3 gap-2"
+  }, React.createElement("button", _extends({
+    type: "button"
+  }, tablePanelButtonProps(() => runTableCommand("table-row-add")), {
+    className: "bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2"
+  }), "Row +"), React.createElement("button", _extends({
+    type: "button"
+  }, tablePanelButtonProps(() => runTableCommand("table-row-delete")), {
+    className: "bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2"
+  }), "Row -"), React.createElement("button", _extends({
+    type: "button"
+  }, tablePanelButtonProps(() => runTableCommand("table-after")), {
+    className: "bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2"
+  }), "Below"), React.createElement("button", _extends({
+    type: "button"
+  }, tablePanelButtonProps(() => runTableCommand("table-col-add")), {
+    className: "bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2"
+  }), "Col +"), React.createElement("button", _extends({
+    type: "button"
+  }, tablePanelButtonProps(() => runTableCommand("table-col-delete")), {
+    className: "bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2"
+  }), "Col -"), React.createElement("button", _extends({
+    type: "button"
+  }, tablePanelButtonProps(() => runTableCommand("table-delete")), {
+    className: "bg-[#2a1212] text-red-200 text-[12px] font-extrabold px-2 py-2"
+  }), "Delete")))) : null, React.createElement("div", {
     className: "w-full max-w-md h-[100dvh] bg-[#0a0a0a] flex flex-col",
     style: editorScreenStyle
   }, React.createElement("div", {

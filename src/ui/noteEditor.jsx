@@ -161,7 +161,7 @@ function createNoteEditorSchema() {
   });
 
   nodes = nodes.addToEnd("table_cell", {
-    content: "paragraph block*",
+    content: "block+",
     isolating: true,
     parseDOM: [{ tag: "td" }, { tag: "th" }],
     toDOM() {
@@ -397,6 +397,36 @@ function insideTable(state) {
   return Boolean(findParentNodeOfType(state, state.schema.nodes.table));
 }
 
+function currentTableInfo(state) {
+  const schema = state.schema;
+  const { $from } = state.selection;
+  let tableDepth = null;
+  let rowDepth = null;
+  let cellDepth = null;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth);
+    if (node.type === schema.nodes.table_cell && cellDepth == null) cellDepth = depth;
+    if (node.type === schema.nodes.table_row && rowDepth == null) rowDepth = depth;
+    if (node.type === schema.nodes.table && tableDepth == null) tableDepth = depth;
+  }
+  if (tableDepth == null) return null;
+  const table = $from.node(tableDepth);
+  const row = rowDepth != null ? $from.node(rowDepth) : null;
+  const cell = cellDepth != null ? $from.node(cellDepth) : null;
+  return {
+    table,
+    tablePos: $from.before(tableDepth),
+    row,
+    rowPos: rowDepth != null ? $from.before(rowDepth) : null,
+    rowIndex: rowDepth != null ? $from.index(tableDepth) : 0,
+    cell,
+    cellPos: cellDepth != null ? $from.before(cellDepth) : null,
+    cellIndex: cellDepth != null ? $from.index(rowDepth) : 0,
+    rowCount: table.childCount,
+    colCount: table.firstChild?.childCount || 0
+  };
+}
+
 function textLevelForBlock(node, schema) {
   if (!node) return "body";
   if (node.type === schema.nodes.heading) {
@@ -567,9 +597,11 @@ function toggleChecklistCommand(schema) {
 
 function createEmptyTable(schema, rows = 2, cols = 2) {
   const tableRows = [];
-  for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
+  const safeRows = Math.max(1, Math.min(12, Number(rows) || 2));
+  const safeCols = Math.max(1, Math.min(8, Number(cols) || 2));
+  for (let rowIndex = 0; rowIndex < safeRows; rowIndex += 1) {
     const cells = [];
-    for (let colIndex = 0; colIndex < cols; colIndex += 1) {
+    for (let colIndex = 0; colIndex < safeCols; colIndex += 1) {
       cells.push(schema.nodes.table_cell.create(null, schema.nodes.paragraph.create()));
     }
     tableRows.push(schema.nodes.table_row.create(null, cells));
@@ -577,15 +609,146 @@ function createEmptyTable(schema, rows = 2, cols = 2) {
   return schema.nodes.table.create(null, tableRows);
 }
 
-function insertTableCommand(schema) {
+function createEmptyTableRow(schema, cols = 2) {
+  const safeCols = Math.max(1, Math.min(8, Number(cols) || 2));
+  const cells = [];
+  for (let colIndex = 0; colIndex < safeCols; colIndex += 1) {
+    cells.push(schema.nodes.table_cell.create(null, schema.nodes.paragraph.create()));
+  }
+  return schema.nodes.table_row.create(null, cells);
+}
+
+function tableCellStart(tablePos, table, rowIndex, cellIndex) {
+  let rowOffset = 0;
+  for (let index = 0; index < rowIndex; index += 1) rowOffset += table.child(index).nodeSize;
+  const row = table.child(rowIndex);
+  let cellOffset = 0;
+  for (let index = 0; index < cellIndex; index += 1) cellOffset += row.child(index).nodeSize;
+  return tablePos + 1 + rowOffset + 1 + cellOffset;
+}
+
+function selectNearPosition(pm, tr, pos) {
+  const safePos = Math.max(0, Math.min(tr.doc.content.size, Number(pos) || 0));
+  return tr.setSelection(pm.TextSelection.near(tr.doc.resolve(safePos)));
+}
+
+function findNearestTableInDoc(doc, schema, around, expectedSize) {
+  let best = null;
+  doc.descendants((node, pos) => {
+    if (node.type !== schema.nodes.table) return true;
+    if (expectedSize && node.nodeSize !== expectedSize) return false;
+    const score = Math.abs(pos - around);
+    if (!best || score < best.score) best = { node, pos, score };
+    return false;
+  });
+  return best;
+}
+
+function ensureParagraphAfterTableCommand(schema, pm) {
+  return (state, dispatch) => {
+    const info = currentTableInfo(state);
+    if (!info) return false;
+    const tableEnd = info.tablePos + info.table.nodeSize;
+    if (dispatch) {
+      let tr = state.tr;
+      const nodeAfter = state.doc.nodeAt(tableEnd);
+      if (!nodeAfter || !nodeAfter.isTextblock) tr = tr.insert(tableEnd, schema.nodes.paragraph.create());
+      tr = selectNearPosition(pm, tr, tableEnd + 1).scrollIntoView();
+      dispatch(tr);
+    }
+    return true;
+  };
+}
+
+function deleteTableCommand(schema) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
-    const table = createEmptyTable(schema, 2, 2);
+    const info = currentTableInfo(state);
+    if (!info) return false;
+    if (dispatch) {
+      let tr = state.tr.replaceWith(info.tablePos, info.tablePos + info.table.nodeSize, schema.nodes.paragraph.create()).scrollIntoView();
+      tr = selectNearPosition(pm, tr, info.tablePos + 1);
+      dispatch(tr);
+    }
+    return true;
+  };
+}
+
+function addTableRowCommand(schema) {
+  return (state, dispatch) => {
+    const info = currentTableInfo(state);
+    if (!info || !info.row) return false;
+    const insertPos = info.rowPos + info.row.nodeSize;
+    if (dispatch) dispatch(state.tr.insert(insertPos, createEmptyTableRow(schema, info.colCount)).scrollIntoView());
+    return true;
+  };
+}
+
+function deleteTableRowCommand(schema) {
+  return (state, dispatch) => {
+    const info = currentTableInfo(state);
+    if (!info || !info.row) return false;
+    if (info.rowCount <= 1) return deleteTableCommand(schema)(state, dispatch);
+    if (dispatch) dispatch(state.tr.delete(info.rowPos, info.rowPos + info.row.nodeSize).scrollIntoView());
+    return true;
+  };
+}
+
+function addTableColumnCommand(schema) {
+  return (state, dispatch) => {
+    const info = currentTableInfo(state);
+    if (!info || info.cellIndex == null) return false;
+    let tr = state.tr;
+    const inserts = [];
+    for (let rowIndex = 0; rowIndex < info.table.childCount; rowIndex += 1) {
+      const row = info.table.child(rowIndex);
+      const safeIndex = Math.min(info.cellIndex, row.childCount - 1);
+      const cell = row.child(safeIndex);
+      const cellPos = tableCellStart(info.tablePos, info.table, rowIndex, safeIndex);
+      inserts.push({ pos: cellPos + cell.nodeSize, node: schema.nodes.table_cell.create(null, schema.nodes.paragraph.create()) });
+    }
+    inserts.sort((a, b) => b.pos - a.pos).forEach(insert => { tr = tr.insert(insert.pos, insert.node); });
+    if (dispatch) dispatch(tr.scrollIntoView());
+    return true;
+  };
+}
+
+function deleteTableColumnCommand(schema) {
+  return (state, dispatch) => {
+    const info = currentTableInfo(state);
+    if (!info || info.cellIndex == null) return false;
+    if (info.colCount <= 1) return deleteTableCommand(schema)(state, dispatch);
+    let tr = state.tr;
+    const deletes = [];
+    for (let rowIndex = 0; rowIndex < info.table.childCount; rowIndex += 1) {
+      const row = info.table.child(rowIndex);
+      const safeIndex = Math.min(info.cellIndex, row.childCount - 1);
+      const cell = row.child(safeIndex);
+      const cellPos = tableCellStart(info.tablePos, info.table, rowIndex, safeIndex);
+      deletes.push({ from: cellPos, to: cellPos + cell.nodeSize });
+    }
+    deletes.sort((a, b) => b.from - a.from).forEach(range => { tr = tr.delete(range.from, range.to); });
+    if (dispatch) dispatch(tr.scrollIntoView());
+    return true;
+  };
+}
+
+function insertTableCommand(schema, options = {}) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    const table = createEmptyTable(schema, options.rows || 2, options.cols || 2);
     if (dispatch) {
       const from = state.selection.from;
-      let tr = state.tr.replaceSelectionWith(table).scrollIntoView();
-      const focusPos = Math.min(tr.doc.content.size - 1, from + 4);
-      if (focusPos > 0) tr = tr.setSelection(pm.TextSelection.near(tr.doc.resolve(focusPos)));
+      let tr = state.tr.replaceSelectionWith(table);
+      const mappedFrom = tr.mapping.map(from, -1);
+      const inserted = findNearestTableInDoc(tr.doc, schema, mappedFrom, table.nodeSize);
+      const tablePos = inserted?.pos ?? Math.max(0, mappedFrom - 1);
+      const tableEnd = tablePos + table.nodeSize;
+      const nodeAfter = tr.doc.nodeAt(tableEnd);
+      if (!nodeAfter || !nodeAfter.isTextblock) tr = tr.insert(tableEnd, schema.nodes.paragraph.create());
+      tr = tr.scrollIntoView();
+      const focusPos = Math.min(tr.doc.content.size - 1, tablePos + 4);
+      if (focusPos > 0) tr = selectNearPosition(pm, tr, focusPos);
       dispatch(tr);
     }
     return true;
@@ -619,7 +782,7 @@ function indentCommand(schema, delta) {
   };
 }
 
-function runNoteEditorCommand(view, commandName) {
+function runNoteEditorCommand(view, commandName, options = {}) {
   const pm = noteEditorPM();
   if (!view || !pm) return false;
   const schema = view.state.schema;
@@ -630,7 +793,14 @@ function runNoteEditorCommand(view, commandName) {
     heading: cycleTextLevelCommand(schema),
     list: cycleListCommand(schema),
     checklist: toggleChecklistCommand(schema),
-    table: insertTableCommand(schema),
+    table: insertTableCommand(schema, options),
+    "insert-table": insertTableCommand(schema, options),
+    "table-row-add": addTableRowCommand(schema),
+    "table-row-delete": deleteTableRowCommand(schema),
+    "table-col-add": addTableColumnCommand(schema),
+    "table-col-delete": deleteTableColumnCommand(schema),
+    "table-delete": deleteTableCommand(schema),
+    "table-after": ensureParagraphAfterTableCommand(schema, pm),
     quote: toggleQuoteCommand(schema),
     "indent-in": indentCommand(schema, 1),
     "indent-out": indentCommand(schema, -1),
@@ -679,8 +849,10 @@ function ProseMirrorNoteEditor({ initialHtml, className = "", onReady, onToolbar
       focus() {
         view.focus();
       },
-      run(commandName) {
-        const handled = runNoteEditorCommand(view, commandName);
+      run(commandName, options = {}) {
+        view.focus();
+        view.dispatch(view.state.tr.setSelection(view.state.selection));
+        const handled = runNoteEditorCommand(view, commandName, options);
         toolbarRef.current?.(readNoteEditorToolbarState(view));
         return handled;
       },

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v70-note-editor-lists-tables';
+const CACHE_NAME = 'idea-box-v82-note-table-controls';
 const APP_SHELL = [
   './',
   './index.html',

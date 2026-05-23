@@ -47,6 +47,8 @@
     .rich-editor table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: .65rem 0; border: 1px solid #353535; }
     .rich-editor td, .rich-editor th { min-width: 4rem; border: 1px solid #353535; padding: .55rem .6rem; vertical-align: top; }
     .rich-editor td p, .rich-editor th p { margin: 0; min-height: 1.35em; }
+    .rich-editor table + p { min-height: 1.65em; margin-top: .45rem; }
+    .rich-editor td blockquote, .rich-editor th blockquote { margin: .1rem 0; }
     .rich-editor blockquote { border-left: 1.5px solid #8b8b8b; margin: .38rem 0; padding-left: .8rem; color: #ccc; }
     .note-title-input { font-size: 32px !important; }
     .note-toolbar-scroll { scrollbar-width: none; -ms-overflow-style: none; }
