@@ -541,10 +541,11 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-technical-hardening-1";
-const APP_CACHE_NAME = "idea-box-v87-technical-hardening";
+const APP_BUILD_ID = "2026-05-23-runtime-hardening-2";
+const APP_CACHE_NAME = "idea-box-v88-runtime-hardening";
+const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
-const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
@@ -605,6 +606,155 @@ function withTimeout(promise, ms, label) {
     timerId = window.setTimeout(() => reject(new Error(`${label} timed out`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timerId));
+}
+function useAuthSession({
+  setCurrentUser,
+  setBooting,
+  hydrateUserState,
+  hydratedRef
+}) {
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
+  const [authView, setAuthView] = useState("login");
+  useEffect(() => {
+    let alive = true;
+    async function boot() {
+      if (!sb) {
+        const localUser = {
+          id: "local",
+          email: "local"
+        };
+        setCurrentUser(localUser);
+        await hydrateUserState(localUser);
+        return;
+      }
+      try {
+        const {
+          data,
+          error
+        } = await withTimeout(sb.auth.getSession(), CLOUD_READ_TIMEOUT_MS, "Session check");
+        if (error) console.warn(error);
+        if (!alive) return;
+        if (data?.session?.user) {
+          setCurrentUser(data.session.user);
+          await hydrateUserState(data.session.user);
+        } else {
+          setBooting(false);
+          hydratedRef.current = false;
+        }
+        sb.auth.onAuthStateChange(async (event, session) => {
+          if (event === "PASSWORD_RECOVERY") {
+            setAuthView("updatePassword");
+            setBooting(false);
+            return;
+          }
+          if (event === "SIGNED_IN" && session?.user) {
+            setCurrentUser(session.user);
+            await hydrateUserState(session.user);
+          }
+          if (event === "SIGNED_OUT") {
+            hydratedRef.current = false;
+            setCurrentUser(null);
+            setAuthView("login");
+            setAuthMessage("Logged out");
+          }
+        });
+      } catch (error) {
+        console.warn(error);
+        setBooting(false);
+      }
+    }
+    boot();
+    return () => {
+      alive = false;
+    };
+  }, []);
+  async function handleAuth(action, payload) {
+    if (!sb) {
+      const localUser = {
+        id: "local",
+        email: "local"
+      };
+      setCurrentUser(localUser);
+      setAuthMessage("");
+      await hydrateUserState(localUser);
+      return;
+    }
+    const email = String(payload.email || "").trim();
+    const password = String(payload.password || "");
+    setAuthBusy(true);
+    setAuthMessage(action === "signup" ? "Signing up..." : action === "forgot" ? "Sending reset email..." : "Logging in...");
+    try {
+      if (action === "forgot") {
+        if (!email) throw new Error("Enter email first");
+        const {
+          error
+        } = await withTimeout(sb.auth.resetPasswordForEmail(email, {
+          redirectTo: location.origin + location.pathname
+        }), CLOUD_READ_TIMEOUT_MS, "Password reset");
+        if (error) throw error;
+        setAuthMessage("Check email to reset password");
+        return;
+      }
+      if (action === "update-password") {
+        if (password.length < 6) throw new Error("Password must have at least 6 characters");
+        const {
+          error
+        } = await withTimeout(sb.auth.updateUser({
+          password
+        }), CLOUD_READ_TIMEOUT_MS, "Password update");
+        if (error) throw error;
+        setAuthView("login");
+        setAuthMessage("Password updated");
+        return;
+      }
+      if (!email || !password) throw new Error("Enter email and password");
+      if (password.length < 6) throw new Error("Password must have at least 6 characters");
+      const redirectTo = `${location.origin}${location.pathname}`;
+      const result = await withTimeout(action === "signup" ? sb.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectTo
+        }
+      }) : sb.auth.signInWithPassword({
+        email,
+        password
+      }), CLOUD_READ_TIMEOUT_MS, action === "signup" ? "Sign up" : "Login");
+      if (result.error) throw result.error;
+      const session = result.data?.session || (await withTimeout(sb.auth.getSession(), CLOUD_READ_TIMEOUT_MS, "Session check")).data?.session;
+      if (session?.user) {
+        setCurrentUser(session.user);
+        await hydrateUserState(session.user);
+      } else {
+        setAuthMessage("Check email to confirm, then login again");
+      }
+    } catch (error) {
+      setAuthMessage(error.message || "Auth error");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+  async function signOut() {
+    hydratedRef.current = false;
+    setCurrentUser(null);
+    setAuthMessage("Logged out");
+    if (sb) {
+      try {
+        await sb.auth.signOut({
+          scope: "local"
+        });
+      } catch {}
+    }
+  }
+  return {
+    authBusy,
+    authMessage,
+    authView,
+    setAuthView,
+    handleAuth,
+    signOut
+  };
 }
 const iconPaths = {
   MoreHorizontal: React.createElement(React.Fragment, null, React.createElement("circle", {
@@ -1022,6 +1172,42 @@ function Header({
     type: "file",
     accept: "application/json"
   })));
+}
+const CURRENT_STATE_VERSION = 5;
+function stateVersionOf(value) {
+  const version = Number(value?.version || 0);
+  return Number.isFinite(version) && version > 0 ? version : 0;
+}
+function cloneForMigration(value) {
+  if (!value || typeof value !== "object") return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return {
+      ...value
+    };
+  }
+}
+function migrateToV5(state) {
+  const next = cloneForMigration(state);
+  if (!next || typeof next !== "object") return next;
+  if (!Array.isArray(next.boxNodes) && Array.isArray(next.nodes)) next.boxNodes = next.nodes;
+  if (!Array.isArray(next.boxNodes)) next.boxNodes = [];
+  if (!Array.isArray(next.actionDays)) next.actionDays = [];
+  if (!Array.isArray(next.notes)) next.notes = [];
+  if (!Array.isArray(next.noteLinks)) next.noteLinks = [];
+  if (!next.ui || typeof next.ui !== "object" || Array.isArray(next.ui)) next.ui = {};
+  if (!next.meta || typeof next.meta !== "object" || Array.isArray(next.meta)) next.meta = {};
+  next.version = CURRENT_STATE_VERSION;
+  return next;
+}
+function migrateState(raw) {
+  if (!raw || typeof raw !== "object") return raw;
+  let next = cloneForMigration(raw);
+  const version = stateVersionOf(next);
+  if (version < CURRENT_STATE_VERSION) next = migrateToV5(next);
+  if (stateVersionOf(next) < CURRENT_STATE_VERSION) next.version = CURRENT_STATE_VERSION;
+  return next;
 }
 let idSequence = 0;
 const runtimeUsedIds = new Set();
@@ -1512,6 +1698,7 @@ function shouldPreferLocal(localState, cloudState, cloudUpdatedAt = "") {
   return localTime > cloudTime;
 }
 function normalizeState(parsed) {
+  parsed = typeof migrateState === "function" ? migrateState(parsed) : parsed;
   if (!parsed || typeof parsed !== "object") return seed();
   const hasSourceNodes = Array.isArray(parsed.boxNodes) || Array.isArray(parsed.nodes);
   const fallback = hasSourceNodes ? null : seed();
@@ -1557,7 +1744,7 @@ function normalizeState(parsed) {
   const notes = Array.isArray(parsed.notes) ? parsed.notes.map(normalizeNote) : [];
   const noteLinks = Array.isArray(parsed.noteLinks) ? parsed.noteLinks.map(normalizeNoteLink).filter(link => link.noteId) : [];
   const state = ensureCentralNotes({
-    version: 5,
+    version: CURRENT_STATE_VERSION,
     boxNodes,
     actionDays,
     notes,
@@ -1567,7 +1754,7 @@ function normalizeState(parsed) {
   const ids = collectStateIds(state.boxNodes, state.actionDays, state.notes, state.noteLinks);
   const normalized = {
     ...state,
-    version: 5,
+    version: CURRENT_STATE_VERSION,
     meta: normalizeMeta(parsed.meta || {}, ids)
   };
   return typeof repairStateIntegrity === "function" ? repairStateIntegrity(normalized) : normalized;
@@ -1575,7 +1762,7 @@ function normalizeState(parsed) {
 function sanitizedState(state) {
   const normalized = normalizeState(clone(state));
   const clean = {
-    version: 5,
+    version: CURRENT_STATE_VERSION,
     meta: normalizeMeta(normalized.meta || {}, new Set(normalized.meta?.usedIds || [])),
     boxNodes: normalized.boxNodes.map(n => ({
       ...n,
@@ -2066,6 +2253,682 @@ function stateIntegrityReport(state) {
     orphanUiBoxIds: (normalized.ui.collapsedBoxNodes || []).filter(id => !getNode(normalized.boxNodes, id)).length + (normalized.ui.expandedBoxNodes || []).filter(id => !getNode(normalized.boxNodes, id)).length
   };
 }
+function useBoxActions({
+  db,
+  setDb,
+  commit
+}) {
+  function createRootBox() {
+    commit("Create box", state => {
+      const t = now();
+      state.ui.boxView = "active";
+      state.boxNodes.push({
+        id: uid("box"),
+        parentId: null,
+        level: 1,
+        title: "Untitled",
+        sort: childrenOf(null, state.boxNodes).length + 1,
+        boxNoteTitle: "",
+        boxNoteHtml: "",
+        archivedAt: null,
+        doneAt: null,
+        createdAt: t,
+        updatedAt: t
+      });
+    });
+  }
+  function addSub(targetId) {
+    commit("Create sub", state => {
+      const target = getNode(state.boxNodes, targetId);
+      if (!target || boxIsInactive(target)) return false;
+      const t = now();
+      const isRootTarget = target.level === 1;
+      const parentId = isRootTarget ? target.id : target.parentId ?? null;
+      const level = isRootTarget ? target.level + 1 : target.level;
+      if (level > 5) return false;
+      const siblings = childrenOf(parentId, state.boxNodes);
+      const child = {
+        id: uid("sub"),
+        parentId,
+        level,
+        title: "Untitled",
+        sort: siblings.length + 1,
+        boxNoteTitle: "",
+        boxNoteHtml: "",
+        archivedAt: null,
+        doneAt: null,
+        createdAt: t,
+        updatedAt: t
+      };
+      state.boxNodes.push(child);
+      if (!isRootTarget) {
+        const ordered = [...siblings, child].filter(Boolean);
+        const targetIndex = ordered.findIndex(node => node.id === target.id);
+        const currentIndex = ordered.findIndex(node => node.id === child.id);
+        if (targetIndex >= 0 && currentIndex >= 0) {
+          const [inserted] = ordered.splice(currentIndex, 1);
+          ordered.splice(targetIndex + 1, 0, inserted);
+          ordered.forEach((node, index) => {
+            const real = getNode(state.boxNodes, node.id);
+            if (real) real.sort = index + 1;
+          });
+        }
+      }
+      if (isRootTarget) state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(id => id !== target.id);else {
+        const parent = getNode(state.boxNodes, parentId);
+        if (parent?.level === 1) state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(id => id !== parent.id);else if (parent?.id) state.ui.expandedBoxNodes = [...new Set([...(state.ui.expandedBoxNodes || []), parent.id])];
+      }
+    });
+  }
+  function renameBox(id, text) {
+    const nextTitle = cleanTitle(text);
+    const current = getNode(db.boxNodes, id);
+    if (!current || current.title === nextTitle) return;
+    commit("Rename box", state => {
+      const node = getNode(state.boxNodes, id);
+      if (!node) return false;
+      node.title = nextTitle;
+      node.updatedAt = now();
+      state.actionDays.forEach(day => day.nodes.forEach(actionNode => {
+        if (actionNode.sourceBoxNodeId === id) {
+          actionNode.title = nextTitle;
+          actionNode.updatedAt = now();
+        }
+      }));
+    }, {
+      sync: false
+    });
+  }
+  function toggleBoxOpen(id) {
+    setDb(prev => {
+      const next = normalizeState(clone(prev));
+      const node = getNode(next.boxNodes, id);
+      if (!node) return prev;
+      const view = next.ui.boxView || "active";
+      const getChildren = item => childrenOf(item.id, next.boxNodes).filter(child => shouldShowChildInView(child, view));
+      const hasOwnContent = item => next.ui.showBoxDays !== false && actionTimelineForBox(next, item).length > 0;
+      const maxDepth = cascadeMaxDepth(node, getChildren, hasOwnContent);
+      const currentDepth = Math.min(maxDepth, cascadeOpenDepth(node, getChildren, item => isBoxOpen(next, item), hasOwnContent));
+      const plan = cascadePlan(currentDepth, maxDepth, next.ui.boxCascadeModes?.[id]);
+      applyCascadeDepth(node, plan.nextDepth, getChildren, (item, open) => setBoxOpen(next, item, open));
+      next.ui.boxCascadeModes = {
+        ...normalizeModeMap(next.ui.boxCascadeModes),
+        [id]: plan.nextMode
+      };
+      return markPendingSync(next);
+    });
+  }
+  function toggleBoxTimelineDay(boxId, date) {
+    setDb(prev => {
+      const next = normalizeState(clone(prev));
+      next.ui.expandedBoxActionDays = toggleId(next.ui.expandedBoxActionDays || [], `${boxId}:${date}`);
+      return markPendingSync(next);
+    });
+  }
+  function archiveBox(id) {
+    commit("Archive box", state => {
+      const ids = new Set([id, ...descendantsOf(id, state.boxNodes).map(n => n.id)]);
+      const t = now();
+      state.boxNodes.forEach(n => {
+        if (ids.has(n.id)) {
+          n.archivedAt = t;
+          n.doneAt = null;
+          n.updatedAt = t;
+        }
+      });
+    });
+  }
+  function doneBox(id) {
+    commit("Done box", state => {
+      const node = getNode(state.boxNodes, id);
+      if (!node) return false;
+      const t = now();
+      if (node.level === 1) {
+        const ids = new Set([id, ...descendantsOf(id, state.boxNodes).map(n => n.id)]);
+        state.boxNodes.forEach(n => {
+          if (ids.has(n.id)) {
+            n.doneAt = t;
+            n.archivedAt = null;
+            n.updatedAt = t;
+          }
+        });
+        state.ui.boxView = "done";
+      } else {
+        node.doneAt = node.doneAt ? null : t;
+        node.updatedAt = t;
+      }
+    });
+  }
+  function restoreBox(id) {
+    commit("Restore box", state => {
+      const ids = new Set([id, ...descendantsOf(id, state.boxNodes).map(n => n.id), ...ancestorsOf(id, state.boxNodes).map(n => n.id)]);
+      const t = now();
+      state.boxNodes.forEach(n => {
+        if (ids.has(n.id)) {
+          n.archivedAt = null;
+          n.doneAt = null;
+          n.updatedAt = t;
+        }
+      });
+      state.ui.boxView = "active";
+    });
+  }
+  function deleteBox(id) {
+    commit("Delete box", state => {
+      const ids = new Set([id, ...descendantsOf(id, state.boxNodes).map(n => n.id)]);
+      state.boxNodes = state.boxNodes.filter(n => !ids.has(n.id));
+      const deletedNoteIds = new Set((state.noteLinks || []).filter(link => link.boxNodeId && ids.has(link.boxNodeId)).map(link => link.noteId));
+      const t = now();
+      state.notes.forEach(note => {
+        if (deletedNoteIds.has(note.id)) {
+          note.deletedAt = t;
+          note.updatedAt = t;
+          note.clientUpdatedAt = t;
+        }
+      });
+      state.noteLinks = (state.noteLinks || []).filter(link => !deletedNoteIds.has(link.noteId));
+      state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(x => !ids.has(x));
+      state.ui.expandedBoxNodes = (state.ui.expandedBoxNodes || []).filter(x => !ids.has(x));
+      state.ui.boxCascadeModes = Object.fromEntries(Object.entries(state.ui.boxCascadeModes || {}).filter(([key]) => !ids.has(key)));
+      state.actionDays.forEach(day => {
+        const removedActionIds = new Set(day.nodes.filter(n => ids.has(n.sourceBoxNodeId)).map(n => n.id));
+        day.nodes = day.nodes.filter(n => !ids.has(n.sourceBoxNodeId));
+        state.ui.actionCascadeModes = Object.fromEntries(Object.entries(state.ui.actionCascadeModes || {}).filter(([key]) => !removedActionIds.has(key)));
+      });
+    }, {
+      sync: false
+    });
+  }
+  function reorderBox(dragId, targetId) {
+    commit("Reorder boxes", state => {
+      const drag = getNode(state.boxNodes, dragId);
+      const target = getNode(state.boxNodes, targetId);
+      if (!drag || !target || (drag.parentId ?? null) !== (target.parentId ?? null)) return false;
+      const siblings = childrenOf(drag.parentId, state.boxNodes);
+      const next = siblings.filter(n => n.id !== dragId);
+      const targetIndex = next.findIndex(n => n.id === targetId);
+      next.splice(Math.max(0, targetIndex), 0, drag);
+      next.forEach((n, index) => {
+        n.sort = index + 1;
+        n.updatedAt = now();
+      });
+    });
+  }
+  return {
+    createRootBox,
+    addSub,
+    renameBox,
+    toggleBoxOpen,
+    toggleBoxTimelineDay,
+    archiveBox,
+    doneBox,
+    restoreBox,
+    deleteBox,
+    reorderBox
+  };
+}
+function useNoteActions({
+  db,
+  commit,
+  setModal,
+  flashAfterNavigation,
+  notesForView,
+  showToast
+}) {
+  function upsertCentralNote(state, {
+    noteId,
+    title,
+    bodyHtml,
+    noteDate,
+    link
+  }) {
+    const t = now();
+    const id = noteId || uid("note");
+    const html = sanitizeHtml(bodyHtml || "");
+    const cleanNote = normalizeNote({
+      id,
+      title: cleanOptionalTitle(title || "") || (htmlToText(html) ? "Untitled" : ""),
+      bodyHtml: html,
+      noteDate: validNoteDate(noteDate || todayYMD()),
+      createdAt: getNote(state, id)?.createdAt || t,
+      updatedAt: t,
+      clientUpdatedAt: t
+    });
+    const existing = getNote(state, id);
+    if (existing) Object.assign(existing, cleanNote, {
+      id,
+      createdAt: existing.createdAt || cleanNote.createdAt
+    });else state.notes.push(cleanNote);
+    if (link) upsertNoteLink(state, {
+      ...link,
+      noteId: id
+    });
+    return id;
+  }
+  function saveCentralNote({
+    noteId,
+    title,
+    bodyHtml,
+    noteDate,
+    link
+  }) {
+    let savedId = noteId;
+    commit("Save note", state => {
+      savedId = upsertCentralNote(state, {
+        noteId,
+        title,
+        bodyHtml,
+        noteDate,
+        link
+      });
+      syncNoteToLinkedLegacy(state, savedId);
+      state.ui.notesView = link ? "linked" : state.ui.notesView || "free";
+    }, {
+      sync: false
+    });
+    setModal(null);
+    if (savedId) flashAfterNavigation({
+      type: "note",
+      id: savedId
+    });
+  }
+  function deleteCentralNote({
+    noteId
+  }) {
+    if (!noteId) {
+      setModal(null);
+      return;
+    }
+    commit("Delete note", state => {
+      const note = getNote(state, noteId);
+      if (!note) return false;
+      syncNoteToLinkedLegacy(state, noteId, true);
+      note.deletedAt = now();
+      note.updatedAt = note.deletedAt;
+      note.clientUpdatedAt = note.deletedAt;
+      state.noteLinks = (state.noteLinks || []).filter(link => link.noteId !== noteId);
+    }, {
+      sync: false
+    });
+    setModal(null);
+  }
+  function saveBoxNote({
+    boxId,
+    title,
+    bodyHtml
+  }) {
+    commit("Save box note", state => {
+      const node = getNode(state.boxNodes, boxId);
+      if (!node) return false;
+      const t = now();
+      node.boxNoteTitle = cleanOptionalTitle(title || "");
+      node.boxNoteHtml = sanitizeHtml(bodyHtml || "");
+      node.updatedAt = t;
+      upsertCentralNote(state, {
+        noteId: boxNoteId(boxId),
+        title: node.boxNoteTitle,
+        bodyHtml: node.boxNoteHtml,
+        noteDate: String(t).slice(0, 10),
+        link: {
+          id: boxNoteLinkId(boxId),
+          linkType: "box",
+          boxNodeId: boxId
+        }
+      });
+    });
+    setModal(null);
+  }
+  function deleteBoxNote({
+    boxId
+  }) {
+    commit("Delete box note", state => {
+      const node = getNode(state.boxNodes, boxId);
+      if (!node || !boxHasNote(node)) return false;
+      const note = getNote(state, boxNoteId(boxId));
+      if (note) {
+        note.deletedAt = now();
+        note.updatedAt = note.deletedAt;
+        note.clientUpdatedAt = note.deletedAt;
+      }
+      state.noteLinks = (state.noteLinks || []).filter(link => link.noteId !== boxNoteId(boxId));
+      node.boxNoteTitle = "";
+      node.boxNoteHtml = "";
+      node.updatedAt = now();
+    });
+    setModal(null);
+  }
+  function exportAiNotes(options = {}) {
+    const tags = exportTagsFromInput(options.tagsInput || "");
+    const dateFilters = parseExportDateFilters(options.datesInput || "");
+    const selected = notesForView.filter(note => {
+      const noteTags = noteTagList(note);
+      const tagMatch = !tags.length || tags.every(tag => noteTags.includes(tag));
+      return tagMatch && noteMatchesExportDates(note, dateFilters);
+    });
+    if (!selected.length) {
+      showToast("No notes to export");
+      return;
+    }
+    const markdown = selected.map(note => {
+      const links = noteLinksFor(db, note.id).map(link => linkLabel(db, link));
+      const tags = noteTagList(note).map(tag => `#${tag}`).join(" ");
+      return [`# ${noteDisplayTitle(note)}`, "", `Date: ${note.noteDate}`, `Type: ${links.length ? "Linked" : "Free"}`, links.length ? `Linked: ${links.join("; ")}` : "", tags ? `Tags: ${tags}` : "", "", noteBodyText(note) || "(empty)", ""].filter(line => line !== "").join("\n");
+    }).join("\n---\n\n");
+    const blob = new Blob([markdown], {
+      type: "text/markdown"
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `liems-notes-for-ai-${todayYMD()}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 500);
+    showToast("Exported notes for AI");
+    setModal(null);
+  }
+  return {
+    upsertCentralNote,
+    saveCentralNote,
+    deleteCentralNote,
+    saveBoxNote,
+    deleteBoxNote,
+    exportAiNotes
+  };
+}
+function useActionEntries({
+  selectedDate,
+  setDb,
+  commit,
+  setModal,
+  setCurrentView,
+  setIsSearchOpen,
+  flashAfterNavigation,
+  upsertCentralNote
+}) {
+  function createActionsForDate(date = selectedDate) {
+    commit("Create actions", state => {
+      const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) ? date : todayYMD();
+      state.ui.selectedActionDate = ymd;
+      let day = state.actionDays.find(item => item.date === ymd);
+      if (!day) {
+        const t = now();
+        day = {
+          id: uid("day"),
+          date: ymd,
+          createdAt: t,
+          updatedAt: t,
+          nodes: []
+        };
+        state.actionDays.push(day);
+      }
+      syncActionDayWithBox(state, day);
+    }, {
+      sync: false
+    });
+  }
+  function selectActionDate(date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return;
+    setDb(prev => {
+      const next = normalizeState(clone(prev));
+      next.ui.selectedActionDate = date;
+      syncSelectedActionDayWithBox(next);
+      return markPendingSync(next);
+    });
+  }
+  function toggleActionOpen(id) {
+    setDb(prev => {
+      const next = normalizeState(clone(prev));
+      const day = next.actionDays.find(item => item.date === (next.ui.selectedActionDate || todayYMD()));
+      const node = day ? getNode(day.nodes, id) : null;
+      if (!day || !node) return prev;
+      const filter = next.ui.actionFilter || "all";
+      const getChildren = item => childrenOf(item.id, day.nodes).filter(child => hasVisibleAction(child, day.nodes, filter));
+      const hasOwnContent = item => visibleEntriesFor(item, filter).length > 0;
+      const maxDepth = cascadeMaxDepth(node, getChildren, hasOwnContent);
+      const currentDepth = Math.min(maxDepth, cascadeOpenDepth(node, getChildren, item => isActionOpen(next, item), hasOwnContent));
+      const plan = cascadePlan(currentDepth, maxDepth, next.ui.actionCascadeModes?.[id]);
+      applyCascadeDepth(node, plan.nextDepth, getChildren, (item, open) => setActionOpen(next, item, open));
+      next.ui.actionCascadeModes = {
+        ...normalizeModeMap(next.ui.actionCascadeModes),
+        [id]: plan.nextMode
+      };
+      return markPendingSync(next);
+    });
+  }
+  function openActionDate(date, actionNodeId = null, entryId = null) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return;
+    setDb(prev => {
+      const state = normalizeState(clone(prev));
+      state.ui.selectedActionDate = date;
+      state.ui.actionFilter = "all";
+      const day = state.actionDays.find(item => item.date === date);
+      if (day && actionNodeId) {
+        const idsToOpen = [...ancestorsOf(actionNodeId, day.nodes).map(node => node.id), actionNodeId];
+        state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => !idsToOpen.includes(id));
+      }
+      syncSelectedActionDayWithBox(state);
+      return markPendingSync(state);
+    });
+    setCurrentView("actions");
+    setIsSearchOpen(false);
+    if (entryId) flashAfterNavigation({
+      type: "entry",
+      id: entryId
+    });else if (actionNodeId) flashAfterNavigation({
+      type: "action",
+      id: actionNodeId
+    });
+  }
+  function addActionEntries(dayId, nodeId, lines) {
+    const cleaned = String(lines || "").split(/\n+/).map(cleanTitle).filter(Boolean);
+    if (!cleaned.length) {
+      setModal(null);
+      return;
+    }
+    commit("Add actions", state => {
+      const day = state.actionDays.find(d => d.id === dayId);
+      const node = day ? getNode(day.nodes, nodeId) : null;
+      if (!day || !node) return false;
+      const t = now();
+      node.entries = normalizeEntries(node);
+      cleaned.forEach(text => node.entries.push(normalizeEntry({
+        type: "action",
+        text,
+        createdAt: t,
+        updatedAt: t
+      }, node.entries.length)));
+      node.updatedAt = t;
+      day.updatedAt = t;
+      state.ui.actionFilter = "all";
+      state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => id !== nodeId);
+    }, {
+      sync: false
+    });
+    setModal(null);
+  }
+  function saveActionNote({
+    dayId,
+    nodeId,
+    entryId,
+    title,
+    bodyHtml
+  }) {
+    commit("Save action note", state => {
+      const day = state.actionDays.find(d => d.id === dayId);
+      const node = day ? getNode(day.nodes, nodeId) : null;
+      if (!day || !node) return false;
+      const t = now();
+      node.entries = normalizeEntries(node);
+      const entry = entryId ? node.entries.find(e => e.id === entryId) : null;
+      let savedEntryId = entry?.id || null;
+      if (entry) {
+        entry.title = cleanTitle(title || "Note");
+        entry.bodyHtml = sanitizeHtml(bodyHtml || "");
+        entry.tags = entryTagList(entry);
+        entry.updatedAt = t;
+      } else {
+        const nextEntry = normalizeEntry({
+          type: "note",
+          title: title || "Note",
+          bodyHtml,
+          createdAt: t,
+          updatedAt: t
+        }, node.entries.length);
+        savedEntryId = nextEntry.id;
+        node.entries.push(nextEntry);
+      }
+      node.updatedAt = t;
+      day.updatedAt = t;
+      if (savedEntryId) {
+        upsertCentralNote(state, {
+          noteId: actionNoteId(savedEntryId),
+          title: title || "Note",
+          bodyHtml,
+          noteDate: day.date,
+          link: {
+            id: actionNoteLinkId(savedEntryId),
+            linkType: "action_entry",
+            actionDate: day.date,
+            actionNodeId: node.id,
+            actionEntryId: savedEntryId,
+            boxNodeId: node.sourceBoxNodeId || null
+          }
+        });
+      }
+      state.ui.actionFilter = "all";
+      state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => id !== nodeId);
+    }, {
+      sync: false
+    });
+    setModal(null);
+  }
+  function deleteActionNoteMirror(state, entryId) {
+    const note = getNote(state, actionNoteId(entryId));
+    if (note) {
+      const t = now();
+      note.deletedAt = t;
+      note.updatedAt = t;
+      note.clientUpdatedAt = t;
+    }
+    state.noteLinks = (state.noteLinks || []).filter(link => link.noteId !== actionNoteId(entryId));
+  }
+  function deleteActionNote({
+    dayId,
+    nodeId,
+    entryId
+  }) {
+    if (!entryId) {
+      setModal(null);
+      return;
+    }
+    commit("Delete action note", state => {
+      const day = state.actionDays.find(d => d.id === dayId);
+      const node = day ? getNode(day.nodes, nodeId) : null;
+      const entry = node ? entriesFor(node).find(e => e.id === entryId) : null;
+      if (!day || !node || !entry || entry.type !== "note") return false;
+      node.entries = normalizeEntries(node).filter(e => e.id !== entryId);
+      deleteActionNoteMirror(state, entryId);
+      node.updatedAt = now();
+      day.updatedAt = now();
+    }, {
+      sync: false
+    });
+    setModal(null);
+  }
+  function toggleEntry(dayId, nodeId, entryId) {
+    commit("Toggle action", state => {
+      const day = state.actionDays.find(d => d.id === dayId);
+      const node = day ? getNode(day.nodes, nodeId) : null;
+      const entry = node ? entriesFor(node).find(e => e.id === entryId) : null;
+      if (!day || !node || !entry || entry.type !== "action") return false;
+      entry.done = !entry.done;
+      entry.updatedAt = now();
+      node.entries = node.entries.map(e => e.id === entry.id ? entry : e);
+      node.updatedAt = entry.updatedAt;
+      day.updatedAt = entry.updatedAt;
+    }, {
+      sync: false
+    });
+  }
+  function renameEntry(dayId, nodeId, entryId, text) {
+    const nextText = cleanTitle(text || "Action");
+    commit("Rename action", state => {
+      const day = state.actionDays.find(d => d.id === dayId);
+      const node = day ? getNode(day.nodes, nodeId) : null;
+      const entry = node ? entriesFor(node).find(e => e.id === entryId) : null;
+      if (!day || !node || !entry || entry.type !== "action" || entry.text === nextText) return false;
+      entry.text = nextText;
+      entry.tags = entryTagList(entry);
+      entry.updatedAt = now();
+      node.entries = node.entries.map(e => e.id === entry.id ? entry : e);
+      node.updatedAt = entry.updatedAt;
+      day.updatedAt = entry.updatedAt;
+    }, {
+      sync: false
+    });
+  }
+  function deleteEntry(dayId, nodeId, entryId) {
+    commit("Delete entry", state => {
+      const day = state.actionDays.find(d => d.id === dayId);
+      const node = day ? getNode(day.nodes, nodeId) : null;
+      if (!day || !node) return false;
+      const entry = entriesFor(node).find(e => e.id === entryId);
+      if (entry?.type === "note") deleteActionNoteMirror(state, entryId);
+      node.entries = normalizeEntries(node).filter(e => e.id !== entryId);
+      node.updatedAt = now();
+      day.updatedAt = now();
+    }, {
+      sync: false
+    });
+  }
+  function doneAllEntries(dayId, nodeId) {
+    commit("Done entries", state => {
+      const day = state.actionDays.find(d => d.id === dayId);
+      const node = day ? getNode(day.nodes, nodeId) : null;
+      if (!day || !node) return false;
+      const actions = actionEntriesFor(node);
+      if (!actions.length) return false;
+      const shouldDone = actions.some(e => !e.done);
+      node.entries = normalizeEntries(node).map(e => e.type === "action" ? {
+        ...e,
+        done: shouldDone,
+        updatedAt: now()
+      } : e);
+      node.updatedAt = now();
+      day.updatedAt = now();
+    }, {
+      sync: false
+    });
+  }
+  function clearEntries(dayId, nodeId) {
+    commit("Clear entries", state => {
+      const day = state.actionDays.find(d => d.id === dayId);
+      const node = day ? getNode(day.nodes, nodeId) : null;
+      if (!day || !node || !entriesFor(node).length) return false;
+      entriesFor(node, "note").forEach(entry => deleteActionNoteMirror(state, entry.id));
+      node.entries = [];
+      node.updatedAt = now();
+      day.updatedAt = now();
+    }, {
+      sync: false
+    });
+  }
+  return {
+    createActionsForDate,
+    selectActionDate,
+    toggleActionOpen,
+    openActionDate,
+    addActionEntries,
+    saveActionNote,
+    deleteActionNote,
+    toggleEntry,
+    renameEntry,
+    deleteEntry,
+    doneAllEntries,
+    clearEntries
+  };
+}
 const SYNC_STATUS_VALUES = new Set(["saved", "saving", "pending", "offline", "error"]);
 const SYNC_STUCK_TIMEOUT_MS = 18000;
 function normalizeSyncStatus(status, online = navigator.onLine) {
@@ -2121,6 +2984,235 @@ function useSyncStatusMachine(initialStatus = navigator.onLine ? "saved" : "offl
     setSyncStatus,
     setSyncLabel,
     setSyncState
+  };
+}
+function useCloudSync({
+  db,
+  setDb,
+  currentUser,
+  setBooting,
+  setRuntimeFromRoute,
+  setSyncStatus,
+  setSyncLabel,
+  showToast
+}) {
+  const hydratedRef = useRef(false);
+  const saveTimerRef = useRef(null);
+  const cloudTimerRef = useRef(null);
+  const skipNextAutoSaveRef = useRef(false);
+  async function hydrateUserState(user) {
+    const userId = user?.id;
+    const localState = loadLocalForUser(userId) || loadLegacyLocal();
+    let next = localState || seed();
+    let usedCloudFallback = false;
+    let allowCloudNotes = true;
+    if (sb && userId) {
+      try {
+        setSyncStatus("saving");
+        setSyncLabel("Loading");
+        const stateRow = await loadCloudWorkspace(userId);
+        if (stateRow?.data) {
+          const cloudUpdatedAt = validTimestamp(stateRow.updatedAt) || validTimestamp(stateRow.data?.meta?.cloudUpdatedAt);
+          const cloudState = markCloudSynced(normalizeState(stateRow.data), cloudUpdatedAt || now());
+          const preferLocal = shouldPreferLocal(localState, cloudState, cloudUpdatedAt);
+          allowCloudNotes = !preferLocal;
+          next = preferLocal ? markPendingSync(localState, localState?.meta?.localUpdatedAt || now()) : cloudState;
+        } else if (localState && userId !== "local") {
+          next = markPendingSync(localState, localState.meta?.localUpdatedAt || now());
+          allowCloudNotes = false;
+        }
+        if (allowCloudNotes) {
+          const normalizedNotes = await loadNormalizedNoteTables(userId);
+          if (normalizedNotes) next = mergeNormalizedNotes(next, normalizedNotes.notes, normalizedNotes.links);
+        }
+        setSyncStatus("saved");
+        setSyncLabel("Saved");
+      } catch (error) {
+        console.warn(error);
+        usedCloudFallback = true;
+        setSyncStatus("offline");
+        setSyncLabel("Local saved");
+      }
+    }
+    try {
+      const route = parseRouteHash();
+      applyRouteToState(next, route);
+      setRuntimeFromRoute(route);
+      syncSelectedActionDayWithBox(next);
+      if (usedCloudFallback && userId && userId !== "local") skipNextAutoSaveRef.current = true;
+      setDb(normalizeState(next));
+    } catch (error) {
+      console.warn(error);
+      setDb(normalizeState(next));
+    } finally {
+      setBooting(false);
+      hydratedRef.current = true;
+    }
+  }
+  function scheduleCloudSync(snapshot, user, delay = 850) {
+    const clean = sanitizedState(snapshot);
+    clearTimeout(cloudTimerRef.current);
+    if (!clean.meta?.pendingSync) {
+      setSyncStatus(navigator.onLine ? "saved" : "offline");
+      setSyncLabel(navigator.onLine ? "Saved" : "Local saved");
+      return;
+    }
+    if (!canUseCloudSync(user)) {
+      setSyncStatus("offline");
+      setSyncLabel("Local saved");
+      return;
+    }
+    setSyncStatus("saving");
+    setSyncLabel("Saving");
+    cloudTimerRef.current = setTimeout(() => pushCloudState(clean, user), delay);
+  }
+  function reconcileSyncStatus(delay = 200) {
+    if (!hydratedRef.current || !currentUser) return;
+    const clean = sanitizedState(db);
+    const localState = loadLocalForUser(currentUser.id);
+    let snapshot = clean;
+    if (localState) {
+      const localClean = normalizeState(localState);
+      const localTime = timestampMs(localClean.meta?.localUpdatedAt);
+      const cleanTime = timestampMs(clean.meta?.localUpdatedAt);
+      const localSettledSameEdit = localTime >= cleanTime && !localClean.meta?.pendingSync && clean.meta?.pendingSync;
+      const localHasNewerEdit = localTime > cleanTime && localClean.meta?.pendingSync;
+      if (localSettledSameEdit) {
+        snapshot = normalizeState({
+          ...clean,
+          meta: {
+            ...clean.meta,
+            pendingSync: false,
+            cloudUpdatedAt: localClean.meta?.cloudUpdatedAt || clean.meta?.cloudUpdatedAt,
+            lastSyncedAt: localClean.meta?.lastSyncedAt || clean.meta?.lastSyncedAt
+          }
+        });
+        setDb(snapshot);
+      } else if (localHasNewerEdit) {
+        snapshot = localClean;
+        setDb(localClean);
+      }
+    }
+    scheduleCloudSync(snapshot, currentUser, delay);
+  }
+  async function pushCloudState(snapshot, user, options = {}) {
+    if (!canUseCloudSync(user)) {
+      setSyncStatus("offline");
+      setSyncLabel("Local saved");
+      return;
+    }
+    try {
+      const clean = sanitizedState(snapshot);
+      if (!options.force && !clean.meta?.pendingSync) {
+        setSyncStatus("saved");
+        setSyncLabel("Saved");
+        return;
+      }
+      const syncedAt = now();
+      const cloudSnapshot = markCloudSynced(clean, syncedAt);
+      await saveCloudWorkspace(user.id, cloudSnapshot, syncedAt);
+      await pushNormalizedNoteTables(cloudSnapshot, user);
+      const currentLocal = loadLocalForUser(user.id);
+      const pushedTime = timestampMs(cloudSnapshot.meta?.localUpdatedAt);
+      const hasNewerLocalEdit = Boolean(currentLocal?.meta?.pendingSync && timestampMs(currentLocal.meta?.localUpdatedAt) > pushedTime);
+      if (!hasNewerLocalEdit) {
+        saveLocal(cloudSnapshot, user.id);
+      }
+      setDb(prev => {
+        const current = normalizeState(prev);
+        if (timestampMs(current.meta?.localUpdatedAt) > pushedTime && current.meta?.pendingSync) return current;
+        return normalizeState({
+          ...current,
+          meta: {
+            ...current.meta,
+            pendingSync: false,
+            cloudUpdatedAt: syncedAt,
+            lastSyncedAt: syncedAt
+          }
+        });
+      });
+      if (hasNewerLocalEdit) {
+        setSyncStatus("saving");
+        setSyncLabel("Saving");
+        clearTimeout(cloudTimerRef.current);
+        cloudTimerRef.current = setTimeout(() => pushCloudState(currentLocal, user), 850);
+      } else {
+        setSyncStatus("saved");
+        setSyncLabel("Saved");
+      }
+    } catch (error) {
+      console.warn(error);
+      setSyncStatus("offline");
+      setSyncLabel("Local saved");
+    }
+  }
+  function syncNow() {
+    saveLocal(db, currentUser?.id);
+    if (!canUseCloudSync(currentUser)) {
+      setSyncStatus("offline");
+      setSyncLabel("Local saved");
+      showToast?.("Saved locally");
+      return;
+    }
+    setSyncStatus("saving");
+    setSyncLabel("Saving");
+    clearTimeout(cloudTimerRef.current);
+    cloudTimerRef.current = setTimeout(() => pushCloudState(db, currentUser, {
+      force: true
+    }), 500);
+  }
+  useEffect(() => {
+    if (!hydratedRef.current || !currentUser) return;
+    const clean = sanitizedState(db);
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false;
+      saveLocal(clean, currentUser.id);
+      clearTimeout(saveTimerRef.current);
+      clearTimeout(cloudTimerRef.current);
+      setSyncStatus("offline");
+      setSyncLabel("Local saved");
+      return;
+    }
+    saveLocal(clean, currentUser.id);
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => saveLocal(clean, currentUser.id), 120);
+    scheduleCloudSync(clean, currentUser, 850);
+  }, [db, currentUser?.id]);
+  useEffect(() => {
+    const online = () => reconcileSyncStatus(150);
+    const offline = () => {
+      clearTimeout(cloudTimerRef.current);
+      setSyncStatus("offline");
+      setSyncLabel("Local saved");
+    };
+    const resume = () => {
+      if (document.visibilityState === "hidden") {
+        const clean = sanitizedState(db);
+        if (!clean.meta?.pendingSync) clearTimeout(cloudTimerRef.current);
+        return;
+      }
+      reconcileSyncStatus(150);
+    };
+    window.addEventListener("online", online);
+    window.addEventListener("offline", offline);
+    window.addEventListener("focus", resume);
+    window.addEventListener("pageshow", resume);
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      window.removeEventListener("online", online);
+      window.removeEventListener("offline", offline);
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("pageshow", resume);
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, [db, currentUser?.id]);
+  return {
+    hydratedRef,
+    hydrateUserState,
+    scheduleCloudSync,
+    reconcileSyncStatus,
+    pushCloudState,
+    syncNow
   };
 }
 function usePlannerHistory(setDb, syncBeforeSave) {
@@ -5324,9 +6416,6 @@ function App() {
   const [db, setDb] = useState(() => normalizeState(applyRouteToState(loadLocalForUser(null) || loadLegacyLocal() || seed(), initialRouteRef.current)));
   const [booting, setBooting] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
-  const [authBusy, setAuthBusy] = useState(false);
-  const [authMessage, setAuthMessage] = useState("");
-  const [authView, setAuthView] = useState("login");
   const [currentView, setCurrentView] = useState(() => routeView(initialRouteRef.current));
   const [isSearchOpen, setIsSearchOpen] = useState(() => initialRouteRef.current?.name === "search");
   const [searchQuery, setSearchQuery] = useState(() => initialRouteRef.current?.query || "");
@@ -5358,11 +6447,7 @@ function App() {
   } = useSyncStatusMachine(navigator.onLine ? "saved" : "offline");
   const [dragState, setDragState] = useState(null);
   const fileInputRef = useRef(null);
-  const hydratedRef = useRef(false);
-  const saveTimerRef = useRef(null);
-  const cloudTimerRef = useRef(null);
   const routeApplyRef = useRef(false);
-  const skipNextAutoSaveRef = useRef(false);
   const {
     historyTick,
     undoRef,
@@ -5371,12 +6456,93 @@ function App() {
     undo,
     redo
   } = usePlannerHistory(setDb, syncSelectedActionDayWithBox);
+  const {
+    hydratedRef,
+    hydrateUserState,
+    syncNow
+  } = useCloudSync({
+    db,
+    setDb,
+    currentUser,
+    setBooting,
+    setRuntimeFromRoute,
+    setSyncStatus,
+    setSyncLabel,
+    showToast
+  });
+  const {
+    authBusy,
+    authMessage,
+    authView,
+    setAuthView,
+    handleAuth,
+    signOut
+  } = useAuthSession({
+    setCurrentUser,
+    setBooting,
+    hydrateUserState,
+    hydratedRef
+  });
+  const {
+    createRootBox,
+    addSub,
+    renameBox,
+    toggleBoxOpen,
+    toggleBoxTimelineDay,
+    archiveBox,
+    doneBox,
+    restoreBox,
+    deleteBox,
+    reorderBox
+  } = useBoxActions({
+    db,
+    setDb,
+    commit
+  });
   const selectedDate = db.ui.selectedActionDate || todayYMD();
   const selectedDay = db.actionDays.find(day => day.date === selectedDate);
   const boxView = db.ui.boxView || "active";
   const searchResults = useMemo(() => collectSearchResults(db, searchQuery, searchFilters), [db, searchQuery, searchFilters]);
   const noteTags = useMemo(() => allNoteTags(db), [db]);
   const notesForView = useMemo(() => filteredNotes(db), [db]);
+  const {
+    upsertCentralNote,
+    saveCentralNote,
+    deleteCentralNote,
+    saveBoxNote,
+    deleteBoxNote,
+    exportAiNotes
+  } = useNoteActions({
+    db,
+    commit,
+    setModal,
+    flashAfterNavigation,
+    notesForView,
+    showToast
+  });
+  const {
+    createActionsForDate,
+    selectActionDate,
+    toggleActionOpen,
+    openActionDate,
+    addActionEntries,
+    saveActionNote,
+    deleteActionNote,
+    toggleEntry,
+    renameEntry,
+    deleteEntry,
+    doneAllEntries,
+    clearEntries
+  } = useActionEntries({
+    selectedDate,
+    setDb,
+    commit,
+    setModal,
+    setCurrentView,
+    setIsSearchOpen,
+    flashAfterNavigation,
+    upsertCentralNote
+  });
   function showToast(message) {
     setToast(message);
     setTimeout(() => setToast(""), 2600);
@@ -5451,108 +6617,6 @@ function App() {
       routeApplyRef.current = false;
     }, 0);
   }
-  async function hydrateUserState(user) {
-    const userId = user?.id;
-    const localState = loadLocalForUser(userId) || loadLegacyLocal();
-    let next = localState || seed();
-    let usedCloudFallback = false;
-    let allowCloudNotes = true;
-    if (sb && userId) {
-      try {
-        setSyncStatus("saving");
-        setSyncLabel("Loading");
-        const stateRow = await loadCloudWorkspace(userId);
-        if (stateRow?.data) {
-          const cloudUpdatedAt = validTimestamp(stateRow.updatedAt) || validTimestamp(stateRow.data?.meta?.cloudUpdatedAt);
-          const cloudState = markCloudSynced(normalizeState(stateRow.data), cloudUpdatedAt || now());
-          const preferLocal = shouldPreferLocal(localState, cloudState, cloudUpdatedAt);
-          allowCloudNotes = !preferLocal;
-          next = preferLocal ? markPendingSync(localState, localState?.meta?.localUpdatedAt || now()) : cloudState;
-        } else if (localState && userId !== "local") {
-          next = markPendingSync(localState, localState.meta?.localUpdatedAt || now());
-          allowCloudNotes = false;
-        }
-        if (allowCloudNotes) {
-          const normalizedNotes = await loadNormalizedNoteTables(userId);
-          if (normalizedNotes) next = mergeNormalizedNotes(next, normalizedNotes.notes, normalizedNotes.links);
-        }
-        setSyncStatus("saved");
-        setSyncLabel("Saved");
-      } catch (error) {
-        console.warn(error);
-        usedCloudFallback = true;
-        setSyncStatus("offline");
-        setSyncLabel("Local saved");
-      }
-    }
-    try {
-      const route = parseRouteHash();
-      applyRouteToState(next, route);
-      setRuntimeFromRoute(route);
-      syncSelectedActionDayWithBox(next);
-      if (usedCloudFallback && userId && userId !== "local") skipNextAutoSaveRef.current = true;
-      setDb(normalizeState(next));
-    } catch (error) {
-      console.warn(error);
-      setDb(normalizeState(next));
-    } finally {
-      setBooting(false);
-      hydratedRef.current = true;
-    }
-  }
-  useEffect(() => {
-    let alive = true;
-    async function boot() {
-      if (!sb) {
-        const localUser = {
-          id: "local",
-          email: "local"
-        };
-        setCurrentUser(localUser);
-        await hydrateUserState(localUser);
-        return;
-      }
-      try {
-        const {
-          data,
-          error
-        } = await withTimeout(sb.auth.getSession(), CLOUD_READ_TIMEOUT_MS, "Session check");
-        if (error) console.warn(error);
-        if (!alive) return;
-        if (data?.session?.user) {
-          setCurrentUser(data.session.user);
-          await hydrateUserState(data.session.user);
-        } else {
-          setBooting(false);
-          hydratedRef.current = false;
-        }
-        sb.auth.onAuthStateChange(async (event, session) => {
-          if (event === "PASSWORD_RECOVERY") {
-            setAuthView("updatePassword");
-            setBooting(false);
-            return;
-          }
-          if (event === "SIGNED_IN" && session?.user) {
-            setCurrentUser(session.user);
-            await hydrateUserState(session.user);
-          }
-          if (event === "SIGNED_OUT") {
-            hydratedRef.current = false;
-            setCurrentUser(null);
-            setAuthView("login");
-            setAuthMessage("Logged out");
-          }
-        });
-      } catch (error) {
-        console.warn(error);
-        setBooting(false);
-      }
-    }
-    boot();
-    return () => {
-      alive = false;
-    };
-  }, []);
   useEffect(() => {
     if ("serviceWorker" in navigator && location.protocol !== "file:") {
       navigator.serviceWorker.register("./sw.js").catch(error => console.warn("Service worker skipped", error));
@@ -5595,827 +6659,6 @@ function App() {
       clearTimeout(clearTimer);
     };
   }, [flashTarget, currentView, db]);
-  function scheduleCloudSync(snapshot, user, delay = 850) {
-    const clean = sanitizedState(snapshot);
-    clearTimeout(cloudTimerRef.current);
-    if (!clean.meta?.pendingSync) {
-      setSyncStatus(navigator.onLine ? "saved" : "offline");
-      setSyncLabel(navigator.onLine ? "Saved" : "Local saved");
-      return;
-    }
-    if (!canUseCloudSync(user)) {
-      setSyncStatus("offline");
-      setSyncLabel("Local saved");
-      return;
-    }
-    setSyncStatus("saving");
-    setSyncLabel("Saving");
-    cloudTimerRef.current = setTimeout(() => pushCloudState(clean, user), delay);
-  }
-  function reconcileSyncStatus(delay = 200) {
-    if (!hydratedRef.current || !currentUser) return;
-    const clean = sanitizedState(db);
-    const localState = loadLocalForUser(currentUser.id);
-    let snapshot = clean;
-    if (localState) {
-      const localClean = normalizeState(localState);
-      const localTime = timestampMs(localClean.meta?.localUpdatedAt);
-      const cleanTime = timestampMs(clean.meta?.localUpdatedAt);
-      const localSettledSameEdit = localTime >= cleanTime && !localClean.meta?.pendingSync && clean.meta?.pendingSync;
-      const localHasNewerEdit = localTime > cleanTime && localClean.meta?.pendingSync;
-      if (localSettledSameEdit) {
-        snapshot = normalizeState({
-          ...clean,
-          meta: {
-            ...clean.meta,
-            pendingSync: false,
-            cloudUpdatedAt: localClean.meta?.cloudUpdatedAt || clean.meta?.cloudUpdatedAt,
-            lastSyncedAt: localClean.meta?.lastSyncedAt || clean.meta?.lastSyncedAt
-          }
-        });
-        setDb(snapshot);
-      } else if (localHasNewerEdit) {
-        snapshot = localClean;
-        setDb(localClean);
-      }
-    }
-    scheduleCloudSync(snapshot, currentUser, delay);
-  }
-  async function pushCloudState(snapshot, user, options = {}) {
-    if (!canUseCloudSync(user)) {
-      setSyncStatus("offline");
-      setSyncLabel("Local saved");
-      return;
-    }
-    try {
-      const clean = sanitizedState(snapshot);
-      if (!options.force && !clean.meta?.pendingSync) {
-        setSyncStatus("saved");
-        setSyncLabel("Saved");
-        return;
-      }
-      const syncedAt = now();
-      const cloudSnapshot = markCloudSynced(clean, syncedAt);
-      await saveCloudWorkspace(user.id, cloudSnapshot, syncedAt);
-      await pushNormalizedNoteTables(cloudSnapshot, user);
-      const currentLocal = loadLocalForUser(user.id);
-      const pushedTime = timestampMs(cloudSnapshot.meta?.localUpdatedAt);
-      const hasNewerLocalEdit = Boolean(currentLocal?.meta?.pendingSync && timestampMs(currentLocal.meta?.localUpdatedAt) > pushedTime);
-      if (!hasNewerLocalEdit) {
-        saveLocal(cloudSnapshot, user.id);
-      }
-      setDb(prev => {
-        const current = normalizeState(prev);
-        if (timestampMs(current.meta?.localUpdatedAt) > pushedTime && current.meta?.pendingSync) return current;
-        return normalizeState({
-          ...current,
-          meta: {
-            ...current.meta,
-            pendingSync: false,
-            cloudUpdatedAt: syncedAt,
-            lastSyncedAt: syncedAt
-          }
-        });
-      });
-      if (hasNewerLocalEdit) {
-        setSyncStatus("saving");
-        setSyncLabel("Saving");
-        clearTimeout(cloudTimerRef.current);
-        cloudTimerRef.current = setTimeout(() => pushCloudState(currentLocal, user), 850);
-      } else {
-        setSyncStatus("saved");
-        setSyncLabel("Saved");
-      }
-    } catch (error) {
-      console.warn(error);
-      setSyncStatus("offline");
-      setSyncLabel("Local saved");
-    }
-  }
-  function syncNow() {
-    saveLocal(db, currentUser?.id);
-    if (!canUseCloudSync(currentUser)) {
-      setSyncStatus("offline");
-      setSyncLabel("Local saved");
-      showToast("Saved locally");
-      return;
-    }
-    setSyncStatus("saving");
-    setSyncLabel("Saving");
-    clearTimeout(cloudTimerRef.current);
-    cloudTimerRef.current = setTimeout(() => pushCloudState(db, currentUser, {
-      force: true
-    }), 500);
-  }
-  useEffect(() => {
-    if (!hydratedRef.current || !currentUser) return;
-    const clean = sanitizedState(db);
-    if (skipNextAutoSaveRef.current) {
-      skipNextAutoSaveRef.current = false;
-      saveLocal(clean, currentUser.id);
-      clearTimeout(saveTimerRef.current);
-      clearTimeout(cloudTimerRef.current);
-      setSyncStatus("offline");
-      setSyncLabel("Local saved");
-      return;
-    }
-    saveLocal(clean, currentUser.id);
-    clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => saveLocal(clean, currentUser.id), 120);
-    scheduleCloudSync(clean, currentUser, 850);
-  }, [db, currentUser?.id]);
-  useEffect(() => {
-    const online = () => reconcileSyncStatus(150);
-    const offline = () => {
-      clearTimeout(cloudTimerRef.current);
-      setSyncStatus("offline");
-      setSyncLabel("Local saved");
-    };
-    const resume = () => {
-      if (document.visibilityState === "hidden") {
-        const clean = sanitizedState(db);
-        if (!clean.meta?.pendingSync) clearTimeout(cloudTimerRef.current);
-        return;
-      }
-      reconcileSyncStatus(150);
-    };
-    window.addEventListener("online", online);
-    window.addEventListener("offline", offline);
-    window.addEventListener("focus", resume);
-    window.addEventListener("pageshow", resume);
-    document.addEventListener("visibilitychange", resume);
-    return () => {
-      window.removeEventListener("online", online);
-      window.removeEventListener("offline", offline);
-      window.removeEventListener("focus", resume);
-      window.removeEventListener("pageshow", resume);
-      document.removeEventListener("visibilitychange", resume);
-    };
-  }, [db, currentUser?.id]);
-  async function handleAuth(action, payload) {
-    if (!sb) {
-      const localUser = {
-        id: "local",
-        email: "local"
-      };
-      setCurrentUser(localUser);
-      setAuthMessage("");
-      await hydrateUserState(localUser);
-      return;
-    }
-    const email = String(payload.email || "").trim();
-    const password = String(payload.password || "");
-    setAuthBusy(true);
-    setAuthMessage(action === "signup" ? "Signing up..." : action === "forgot" ? "Sending reset email..." : "Logging in...");
-    try {
-      if (action === "forgot") {
-        if (!email) throw new Error("Enter email first");
-        const {
-          error
-        } = await withTimeout(sb.auth.resetPasswordForEmail(email, {
-          redirectTo: location.origin + location.pathname
-        }), CLOUD_READ_TIMEOUT_MS, "Password reset");
-        if (error) throw error;
-        setAuthMessage("Check email to reset password");
-        return;
-      }
-      if (action === "update-password") {
-        if (password.length < 6) throw new Error("Password must have at least 6 characters");
-        const {
-          error
-        } = await withTimeout(sb.auth.updateUser({
-          password
-        }), CLOUD_READ_TIMEOUT_MS, "Password update");
-        if (error) throw error;
-        setAuthView("login");
-        setAuthMessage("Password updated");
-        return;
-      }
-      if (!email || !password) throw new Error("Enter email and password");
-      if (password.length < 6) throw new Error("Password must have at least 6 characters");
-      const redirectTo = `${location.origin}${location.pathname}`;
-      const result = await withTimeout(action === "signup" ? sb.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: redirectTo
-        }
-      }) : sb.auth.signInWithPassword({
-        email,
-        password
-      }), CLOUD_READ_TIMEOUT_MS, action === "signup" ? "Sign up" : "Login");
-      if (result.error) throw result.error;
-      const session = result.data?.session || (await withTimeout(sb.auth.getSession(), CLOUD_READ_TIMEOUT_MS, "Session check")).data?.session;
-      if (session?.user) {
-        setCurrentUser(session.user);
-        await hydrateUserState(session.user);
-      } else {
-        setAuthMessage("Check email to confirm, then login again");
-      }
-    } catch (error) {
-      setAuthMessage(error.message || "Auth error");
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-  async function signOut() {
-    hydratedRef.current = false;
-    setCurrentUser(null);
-    setAuthMessage("Logged out");
-    if (sb) {
-      try {
-        await sb.auth.signOut({
-          scope: "local"
-        });
-      } catch {}
-    }
-  }
-  function createRootBox() {
-    commit("Create box", state => {
-      const t = now();
-      state.ui.boxView = "active";
-      state.boxNodes.push({
-        id: uid("box"),
-        parentId: null,
-        level: 1,
-        title: "Untitled",
-        sort: childrenOf(null, state.boxNodes).length + 1,
-        boxNoteTitle: "",
-        boxNoteHtml: "",
-        archivedAt: null,
-        doneAt: null,
-        createdAt: t,
-        updatedAt: t
-      });
-    });
-  }
-  function addSub(targetId) {
-    commit("Create sub", state => {
-      const target = getNode(state.boxNodes, targetId);
-      if (!target || boxIsInactive(target)) return false;
-      const t = now();
-      const isRootTarget = target.level === 1;
-      const parentId = isRootTarget ? target.id : target.parentId ?? null;
-      const level = isRootTarget ? target.level + 1 : target.level;
-      if (level > 5) return false;
-      const siblings = childrenOf(parentId, state.boxNodes);
-      const child = {
-        id: uid("sub"),
-        parentId,
-        level,
-        title: "Untitled",
-        sort: siblings.length + 1,
-        boxNoteTitle: "",
-        boxNoteHtml: "",
-        archivedAt: null,
-        doneAt: null,
-        createdAt: t,
-        updatedAt: t
-      };
-      state.boxNodes.push(child);
-      if (!isRootTarget) {
-        const ordered = [...siblings, child].filter(Boolean);
-        const targetIndex = ordered.findIndex(node => node.id === target.id);
-        const currentIndex = ordered.findIndex(node => node.id === child.id);
-        if (targetIndex >= 0 && currentIndex >= 0) {
-          const [inserted] = ordered.splice(currentIndex, 1);
-          ordered.splice(targetIndex + 1, 0, inserted);
-          ordered.forEach((node, index) => {
-            const real = getNode(state.boxNodes, node.id);
-            if (real) real.sort = index + 1;
-          });
-        }
-      }
-      if (isRootTarget) state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(id => id !== target.id);else {
-        const parent = getNode(state.boxNodes, parentId);
-        if (parent?.level === 1) state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(id => id !== parent.id);else if (parent?.id) state.ui.expandedBoxNodes = [...new Set([...(state.ui.expandedBoxNodes || []), parent.id])];
-      }
-    });
-  }
-  function renameBox(id, text) {
-    const nextTitle = cleanTitle(text);
-    const current = getNode(db.boxNodes, id);
-    if (!current || current.title === nextTitle) return;
-    commit("Rename box", state => {
-      const node = getNode(state.boxNodes, id);
-      if (!node) return false;
-      node.title = nextTitle;
-      node.updatedAt = now();
-      state.actionDays.forEach(day => day.nodes.forEach(actionNode => {
-        if (actionNode.sourceBoxNodeId === id) {
-          actionNode.title = nextTitle;
-          actionNode.updatedAt = now();
-        }
-      }));
-    }, {
-      sync: false
-    });
-  }
-  function toggleBoxOpen(id) {
-    setDb(prev => {
-      const next = normalizeState(clone(prev));
-      const node = getNode(next.boxNodes, id);
-      if (!node) return prev;
-      const view = next.ui.boxView || "active";
-      const getChildren = item => childrenOf(item.id, next.boxNodes).filter(child => shouldShowChildInView(child, view));
-      const hasOwnContent = item => next.ui.showBoxDays !== false && actionTimelineForBox(next, item).length > 0;
-      const maxDepth = cascadeMaxDepth(node, getChildren, hasOwnContent);
-      const currentDepth = Math.min(maxDepth, cascadeOpenDepth(node, getChildren, item => isBoxOpen(next, item), hasOwnContent));
-      const plan = cascadePlan(currentDepth, maxDepth, next.ui.boxCascadeModes?.[id]);
-      applyCascadeDepth(node, plan.nextDepth, getChildren, (item, open) => setBoxOpen(next, item, open));
-      next.ui.boxCascadeModes = {
-        ...normalizeModeMap(next.ui.boxCascadeModes),
-        [id]: plan.nextMode
-      };
-      return markPendingSync(next);
-    });
-  }
-  function toggleBoxTimelineDay(boxId, date) {
-    setDb(prev => {
-      const next = normalizeState(clone(prev));
-      next.ui.expandedBoxActionDays = toggleId(next.ui.expandedBoxActionDays || [], `${boxId}:${date}`);
-      return markPendingSync(next);
-    });
-  }
-  function archiveBox(id) {
-    commit("Archive box", state => {
-      const ids = new Set([id, ...descendantsOf(id, state.boxNodes).map(n => n.id)]);
-      const t = now();
-      state.boxNodes.forEach(n => {
-        if (ids.has(n.id)) {
-          n.archivedAt = t;
-          n.doneAt = null;
-          n.updatedAt = t;
-        }
-      });
-    });
-  }
-  function doneBox(id) {
-    commit("Done box", state => {
-      const node = getNode(state.boxNodes, id);
-      if (!node) return false;
-      const t = now();
-      if (node.level === 1) {
-        const ids = new Set([id, ...descendantsOf(id, state.boxNodes).map(n => n.id)]);
-        state.boxNodes.forEach(n => {
-          if (ids.has(n.id)) {
-            n.doneAt = t;
-            n.archivedAt = null;
-            n.updatedAt = t;
-          }
-        });
-        state.ui.boxView = "done";
-      } else {
-        node.doneAt = node.doneAt ? null : t;
-        node.updatedAt = t;
-      }
-    });
-  }
-  function restoreBox(id) {
-    commit("Restore box", state => {
-      const ids = new Set([id, ...descendantsOf(id, state.boxNodes).map(n => n.id), ...ancestorsOf(id, state.boxNodes).map(n => n.id)]);
-      const t = now();
-      state.boxNodes.forEach(n => {
-        if (ids.has(n.id)) {
-          n.archivedAt = null;
-          n.doneAt = null;
-          n.updatedAt = t;
-        }
-      });
-      state.ui.boxView = "active";
-    });
-  }
-  function deleteBox(id) {
-    commit("Delete box", state => {
-      const ids = new Set([id, ...descendantsOf(id, state.boxNodes).map(n => n.id)]);
-      state.boxNodes = state.boxNodes.filter(n => !ids.has(n.id));
-      const deletedNoteIds = new Set((state.noteLinks || []).filter(link => link.boxNodeId && ids.has(link.boxNodeId)).map(link => link.noteId));
-      const t = now();
-      state.notes.forEach(note => {
-        if (deletedNoteIds.has(note.id)) {
-          note.deletedAt = t;
-          note.updatedAt = t;
-          note.clientUpdatedAt = t;
-        }
-      });
-      state.noteLinks = (state.noteLinks || []).filter(link => !deletedNoteIds.has(link.noteId));
-      state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(x => !ids.has(x));
-      state.ui.expandedBoxNodes = (state.ui.expandedBoxNodes || []).filter(x => !ids.has(x));
-      state.ui.boxCascadeModes = Object.fromEntries(Object.entries(state.ui.boxCascadeModes || {}).filter(([key]) => !ids.has(key)));
-      state.actionDays.forEach(day => {
-        const removedActionIds = new Set(day.nodes.filter(n => ids.has(n.sourceBoxNodeId)).map(n => n.id));
-        day.nodes = day.nodes.filter(n => !ids.has(n.sourceBoxNodeId));
-        state.ui.actionCascadeModes = Object.fromEntries(Object.entries(state.ui.actionCascadeModes || {}).filter(([key]) => !removedActionIds.has(key)));
-      });
-    }, {
-      sync: false
-    });
-  }
-  function upsertCentralNote(state, {
-    noteId,
-    title,
-    bodyHtml,
-    noteDate,
-    link
-  }) {
-    const t = now();
-    const id = noteId || uid("note");
-    const html = sanitizeHtml(bodyHtml || "");
-    const cleanNote = normalizeNote({
-      id,
-      title: cleanOptionalTitle(title || "") || (htmlToText(html) ? "Untitled" : ""),
-      bodyHtml: html,
-      noteDate: validNoteDate(noteDate || todayYMD()),
-      createdAt: getNote(state, id)?.createdAt || t,
-      updatedAt: t,
-      clientUpdatedAt: t
-    });
-    const existing = getNote(state, id);
-    if (existing) Object.assign(existing, cleanNote, {
-      id,
-      createdAt: existing.createdAt || cleanNote.createdAt
-    });else state.notes.push(cleanNote);
-    if (link) upsertNoteLink(state, {
-      ...link,
-      noteId: id
-    });
-    return id;
-  }
-  function saveCentralNote({
-    noteId,
-    title,
-    bodyHtml,
-    noteDate,
-    link
-  }) {
-    let savedId = noteId;
-    commit("Save note", state => {
-      savedId = upsertCentralNote(state, {
-        noteId,
-        title,
-        bodyHtml,
-        noteDate,
-        link
-      });
-      syncNoteToLinkedLegacy(state, savedId);
-      state.ui.notesView = link ? "linked" : state.ui.notesView || "free";
-    }, {
-      sync: false
-    });
-    setModal(null);
-    if (savedId) flashAfterNavigation({
-      type: "note",
-      id: savedId
-    });
-  }
-  function deleteCentralNote({
-    noteId
-  }) {
-    if (!noteId) {
-      setModal(null);
-      return;
-    }
-    commit("Delete note", state => {
-      const note = getNote(state, noteId);
-      if (!note) return false;
-      syncNoteToLinkedLegacy(state, noteId, true);
-      note.deletedAt = now();
-      note.updatedAt = note.deletedAt;
-      note.clientUpdatedAt = note.deletedAt;
-      state.noteLinks = (state.noteLinks || []).filter(link => link.noteId !== noteId);
-    }, {
-      sync: false
-    });
-    setModal(null);
-  }
-  function saveBoxNote({
-    boxId,
-    title,
-    bodyHtml
-  }) {
-    commit("Save box note", state => {
-      const node = getNode(state.boxNodes, boxId);
-      if (!node) return false;
-      const t = now();
-      node.boxNoteTitle = cleanOptionalTitle(title || "");
-      node.boxNoteHtml = sanitizeHtml(bodyHtml || "");
-      node.updatedAt = t;
-      upsertCentralNote(state, {
-        noteId: boxNoteId(boxId),
-        title: node.boxNoteTitle,
-        bodyHtml: node.boxNoteHtml,
-        noteDate: String(t).slice(0, 10),
-        link: {
-          id: boxNoteLinkId(boxId),
-          linkType: "box",
-          boxNodeId: boxId
-        }
-      });
-    });
-    setModal(null);
-  }
-  function deleteBoxNote({
-    boxId
-  }) {
-    commit("Delete box note", state => {
-      const node = getNode(state.boxNodes, boxId);
-      if (!node || !boxHasNote(node)) return false;
-      const note = getNote(state, boxNoteId(boxId));
-      if (note) {
-        note.deletedAt = now();
-        note.updatedAt = note.deletedAt;
-        note.clientUpdatedAt = note.deletedAt;
-      }
-      state.noteLinks = (state.noteLinks || []).filter(link => link.noteId !== boxNoteId(boxId));
-      node.boxNoteTitle = "";
-      node.boxNoteHtml = "";
-      node.updatedAt = now();
-    });
-    setModal(null);
-  }
-  function reorderBox(dragId, targetId) {
-    commit("Reorder boxes", state => {
-      const drag = getNode(state.boxNodes, dragId);
-      const target = getNode(state.boxNodes, targetId);
-      if (!drag || !target || (drag.parentId ?? null) !== (target.parentId ?? null)) return false;
-      const siblings = childrenOf(drag.parentId, state.boxNodes);
-      const next = siblings.filter(n => n.id !== dragId);
-      const targetIndex = next.findIndex(n => n.id === targetId);
-      next.splice(Math.max(0, targetIndex), 0, drag);
-      next.forEach((n, index) => {
-        n.sort = index + 1;
-        n.updatedAt = now();
-      });
-    });
-  }
-  function createActionsForDate(date = selectedDate) {
-    commit("Create actions", state => {
-      const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) ? date : todayYMD();
-      state.ui.selectedActionDate = ymd;
-      let day = state.actionDays.find(item => item.date === ymd);
-      if (!day) {
-        const t = now();
-        day = {
-          id: uid("day"),
-          date: ymd,
-          createdAt: t,
-          updatedAt: t,
-          nodes: []
-        };
-        state.actionDays.push(day);
-      }
-      syncActionDayWithBox(state, day);
-    }, {
-      sync: false
-    });
-  }
-  function selectActionDate(date) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return;
-    setDb(prev => {
-      const next = normalizeState(clone(prev));
-      next.ui.selectedActionDate = date;
-      syncSelectedActionDayWithBox(next);
-      return markPendingSync(next);
-    });
-  }
-  function toggleActionOpen(id) {
-    setDb(prev => {
-      const next = normalizeState(clone(prev));
-      const day = next.actionDays.find(item => item.date === (next.ui.selectedActionDate || todayYMD()));
-      const node = day ? getNode(day.nodes, id) : null;
-      if (!day || !node) return prev;
-      const filter = next.ui.actionFilter || "all";
-      const getChildren = item => childrenOf(item.id, day.nodes).filter(child => hasVisibleAction(child, day.nodes, filter));
-      const hasOwnContent = item => visibleEntriesFor(item, filter).length > 0;
-      const maxDepth = cascadeMaxDepth(node, getChildren, hasOwnContent);
-      const currentDepth = Math.min(maxDepth, cascadeOpenDepth(node, getChildren, item => isActionOpen(next, item), hasOwnContent));
-      const plan = cascadePlan(currentDepth, maxDepth, next.ui.actionCascadeModes?.[id]);
-      applyCascadeDepth(node, plan.nextDepth, getChildren, (item, open) => setActionOpen(next, item, open));
-      next.ui.actionCascadeModes = {
-        ...normalizeModeMap(next.ui.actionCascadeModes),
-        [id]: plan.nextMode
-      };
-      return markPendingSync(next);
-    });
-  }
-  function openActionDate(date, actionNodeId = null, entryId = null) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return;
-    setDb(prev => {
-      const state = normalizeState(clone(prev));
-      state.ui.selectedActionDate = date;
-      state.ui.actionFilter = "all";
-      const day = state.actionDays.find(item => item.date === date);
-      if (day && actionNodeId) {
-        const idsToOpen = [...ancestorsOf(actionNodeId, day.nodes).map(node => node.id), actionNodeId];
-        state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => !idsToOpen.includes(id));
-      }
-      syncSelectedActionDayWithBox(state);
-      return markPendingSync(state);
-    });
-    setCurrentView("actions");
-    setIsSearchOpen(false);
-    if (entryId) flashAfterNavigation({
-      type: "entry",
-      id: entryId
-    });else if (actionNodeId) flashAfterNavigation({
-      type: "action",
-      id: actionNodeId
-    });
-  }
-  function addActionEntries(dayId, nodeId, lines) {
-    const cleaned = String(lines || "").split(/\n+/).map(cleanTitle).filter(Boolean);
-    if (!cleaned.length) {
-      setModal(null);
-      return;
-    }
-    commit("Add actions", state => {
-      const day = state.actionDays.find(d => d.id === dayId);
-      const node = day ? getNode(day.nodes, nodeId) : null;
-      if (!day || !node) return false;
-      const t = now();
-      node.entries = normalizeEntries(node);
-      cleaned.forEach(text => node.entries.push(normalizeEntry({
-        type: "action",
-        text,
-        createdAt: t,
-        updatedAt: t
-      }, node.entries.length)));
-      node.updatedAt = t;
-      day.updatedAt = t;
-      state.ui.actionFilter = "all";
-      state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => id !== nodeId);
-    }, {
-      sync: false
-    });
-    setModal(null);
-  }
-  function saveActionNote({
-    dayId,
-    nodeId,
-    entryId,
-    title,
-    bodyHtml
-  }) {
-    commit("Save action note", state => {
-      const day = state.actionDays.find(d => d.id === dayId);
-      const node = day ? getNode(day.nodes, nodeId) : null;
-      if (!day || !node) return false;
-      const t = now();
-      node.entries = normalizeEntries(node);
-      const entry = entryId ? node.entries.find(e => e.id === entryId) : null;
-      let savedEntryId = entry?.id || null;
-      if (entry) {
-        entry.title = cleanTitle(title || "Note");
-        entry.bodyHtml = sanitizeHtml(bodyHtml || "");
-        entry.tags = entryTagList(entry);
-        entry.updatedAt = t;
-      } else {
-        const nextEntry = normalizeEntry({
-          type: "note",
-          title: title || "Note",
-          bodyHtml,
-          createdAt: t,
-          updatedAt: t
-        }, node.entries.length);
-        savedEntryId = nextEntry.id;
-        node.entries.push(nextEntry);
-      }
-      node.updatedAt = t;
-      day.updatedAt = t;
-      if (savedEntryId) {
-        upsertCentralNote(state, {
-          noteId: actionNoteId(savedEntryId),
-          title: title || "Note",
-          bodyHtml,
-          noteDate: day.date,
-          link: {
-            id: actionNoteLinkId(savedEntryId),
-            linkType: "action_entry",
-            actionDate: day.date,
-            actionNodeId: node.id,
-            actionEntryId: savedEntryId,
-            boxNodeId: node.sourceBoxNodeId || null
-          }
-        });
-      }
-      state.ui.actionFilter = "all";
-      state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => id !== nodeId);
-    }, {
-      sync: false
-    });
-    setModal(null);
-  }
-  function deleteActionNoteMirror(state, entryId) {
-    const note = getNote(state, actionNoteId(entryId));
-    if (note) {
-      const t = now();
-      note.deletedAt = t;
-      note.updatedAt = t;
-      note.clientUpdatedAt = t;
-    }
-    state.noteLinks = (state.noteLinks || []).filter(link => link.noteId !== actionNoteId(entryId));
-  }
-  function deleteActionNote({
-    dayId,
-    nodeId,
-    entryId
-  }) {
-    if (!entryId) {
-      setModal(null);
-      return;
-    }
-    commit("Delete action note", state => {
-      const day = state.actionDays.find(d => d.id === dayId);
-      const node = day ? getNode(day.nodes, nodeId) : null;
-      const entry = node ? entriesFor(node).find(e => e.id === entryId) : null;
-      if (!day || !node || !entry || entry.type !== "note") return false;
-      node.entries = normalizeEntries(node).filter(e => e.id !== entryId);
-      deleteActionNoteMirror(state, entryId);
-      node.updatedAt = now();
-      day.updatedAt = now();
-    }, {
-      sync: false
-    });
-    setModal(null);
-  }
-  function toggleEntry(dayId, nodeId, entryId) {
-    commit("Toggle action", state => {
-      const day = state.actionDays.find(d => d.id === dayId);
-      const node = day ? getNode(day.nodes, nodeId) : null;
-      const entry = node ? entriesFor(node).find(e => e.id === entryId) : null;
-      if (!day || !node || !entry || entry.type !== "action") return false;
-      entry.done = !entry.done;
-      entry.updatedAt = now();
-      node.entries = node.entries.map(e => e.id === entry.id ? entry : e);
-      node.updatedAt = entry.updatedAt;
-      day.updatedAt = entry.updatedAt;
-    }, {
-      sync: false
-    });
-  }
-  function renameEntry(dayId, nodeId, entryId, text) {
-    const nextText = cleanTitle(text || "Action");
-    commit("Rename action", state => {
-      const day = state.actionDays.find(d => d.id === dayId);
-      const node = day ? getNode(day.nodes, nodeId) : null;
-      const entry = node ? entriesFor(node).find(e => e.id === entryId) : null;
-      if (!day || !node || !entry || entry.type !== "action" || entry.text === nextText) return false;
-      entry.text = nextText;
-      entry.tags = entryTagList(entry);
-      entry.updatedAt = now();
-      node.entries = node.entries.map(e => e.id === entry.id ? entry : e);
-      node.updatedAt = entry.updatedAt;
-      day.updatedAt = entry.updatedAt;
-    }, {
-      sync: false
-    });
-  }
-  function deleteEntry(dayId, nodeId, entryId) {
-    commit("Delete entry", state => {
-      const day = state.actionDays.find(d => d.id === dayId);
-      const node = day ? getNode(day.nodes, nodeId) : null;
-      if (!day || !node) return false;
-      const entry = entriesFor(node).find(e => e.id === entryId);
-      if (entry?.type === "note") deleteActionNoteMirror(state, entryId);
-      node.entries = normalizeEntries(node).filter(e => e.id !== entryId);
-      node.updatedAt = now();
-      day.updatedAt = now();
-    }, {
-      sync: false
-    });
-  }
-  function doneAllEntries(dayId, nodeId) {
-    commit("Done entries", state => {
-      const day = state.actionDays.find(d => d.id === dayId);
-      const node = day ? getNode(day.nodes, nodeId) : null;
-      if (!day || !node) return false;
-      const actions = actionEntriesFor(node);
-      if (!actions.length) return false;
-      const shouldDone = actions.some(e => !e.done);
-      node.entries = normalizeEntries(node).map(e => e.type === "action" ? {
-        ...e,
-        done: shouldDone,
-        updatedAt: now()
-      } : e);
-      node.updatedAt = now();
-      day.updatedAt = now();
-    }, {
-      sync: false
-    });
-  }
-  function clearEntries(dayId, nodeId) {
-    commit("Clear entries", state => {
-      const day = state.actionDays.find(d => d.id === dayId);
-      const node = day ? getNode(day.nodes, nodeId) : null;
-      if (!day || !node || !entriesFor(node).length) return false;
-      entriesFor(node, "note").forEach(entry => deleteActionNoteMirror(state, entry.id));
-      node.entries = [];
-      node.updatedAt = now();
-      day.updatedAt = now();
-    }, {
-      sync: false
-    });
-  }
   function exportJson() {
     const clean = sanitizedState(db);
     const backup = createBackupEnvelope(clean, {
@@ -6517,36 +6760,6 @@ function App() {
       info: makeDebugInfo()
     });
     setIsHeaderMenuOpen(false);
-  }
-  function exportAiNotes(options = {}) {
-    const tags = exportTagsFromInput(options.tagsInput || "");
-    const dateFilters = parseExportDateFilters(options.datesInput || "");
-    const selected = notesForView.filter(note => {
-      const noteTags = noteTagList(note);
-      const tagMatch = !tags.length || tags.every(tag => noteTags.includes(tag));
-      return tagMatch && noteMatchesExportDates(note, dateFilters);
-    });
-    if (!selected.length) {
-      showToast("No notes to export");
-      return;
-    }
-    const markdown = selected.map(note => {
-      const links = noteLinksFor(db, note.id).map(link => linkLabel(db, link));
-      const tags = noteTagList(note).map(tag => `#${tag}`).join(" ");
-      return [`# ${noteDisplayTitle(note)}`, "", `Date: ${note.noteDate}`, `Type: ${links.length ? "Linked" : "Free"}`, links.length ? `Linked: ${links.join("; ")}` : "", tags ? `Tags: ${tags}` : "", "", noteBodyText(note) || "(empty)", ""].filter(line => line !== "").join("\n");
-    }).join("\n---\n\n");
-    const blob = new Blob([markdown], {
-      type: "text/markdown"
-    });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `liems-notes-for-ai-${todayYMD()}.md`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 500);
-    showToast("Exported notes for AI");
-    setModal(null);
   }
   function setNotesUI(key, value) {
     setDb(prev => markPendingSync({

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v87-technical-hardening';
+const CACHE_NAME = 'idea-box-v88-runtime-hardening';
 const APP_SHELL = [
   './',
   './index.html',

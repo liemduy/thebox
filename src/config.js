@@ -6,8 +6,9 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-technical-hardening-1";
-const APP_CACHE_NAME = "idea-box-v87-technical-hardening";
+const APP_BUILD_ID = "2026-05-23-runtime-hardening-2";
+const APP_CACHE_NAME = "idea-box-v88-runtime-hardening";
+const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = [
   "idea-box-html-v12-stable-ids",
   "idea-box-html-v10-action-days-db",
@@ -20,7 +21,7 @@ const LEGACY_KEYS = [
   "idea-box-html-v2-inline-format"
 ];
 
-const sb = window.supabase?.createClient
+const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     })

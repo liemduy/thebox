@@ -14,9 +14,15 @@ function test(name, fn) {
 test("build includes technical hardening modules", () => {
   const build = fs.readFileSync("scripts/build-js.mjs", "utf8");
   [
+    "src/auth/useAuthSession.jsx",
+    "src/state/migrations.js",
     "src/state/integrity.js",
+    "src/state/useBoxActions.jsx",
+    "src/state/useNoteActions.jsx",
+    "src/state/useActionEntries.jsx",
     "src/sync/cloudState.js",
     "src/sync/syncState.js",
+    "src/sync/useCloudSync.jsx",
     "src/appHooks.jsx",
     "src/ui/noteEditorTableState.jsx"
   ].forEach(file => assert.match(build, new RegExp(file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
@@ -58,4 +64,12 @@ test("note editor no longer relies on execCommand", () => {
   const editor = fs.readFileSync("src/ui/noteEditor.jsx", "utf8");
   const modals = fs.readFileSync("src/ui/modals.jsx", "utf8");
   assert.equal(/execCommand/.test(editor + modals), false);
+});
+
+test("github actions verifies build and browser smoke", () => {
+  const workflow = fs.readFileSync(".github/workflows/verify.yml", "utf8");
+  assert.match(workflow, /npm ci/);
+  assert.match(workflow, /npm run verify/);
+  assert.match(workflow, /npm run test:browser/);
+  assert.match(workflow, /playwright install --with-deps chromium/);
 });

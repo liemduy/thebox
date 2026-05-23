@@ -434,6 +434,7 @@ function shouldPreferLocal(localState, cloudState, cloudUpdatedAt = "") {
 }
 
 function normalizeState(parsed) {
+  parsed = typeof migrateState === "function" ? migrateState(parsed) : parsed;
   if (!parsed || typeof parsed !== "object") return seed();
   const hasSourceNodes = Array.isArray(parsed.boxNodes) || Array.isArray(parsed.nodes);
   const fallback = hasSourceNodes ? null : seed();
@@ -475,16 +476,16 @@ function normalizeState(parsed) {
   })) : [];
   const notes = Array.isArray(parsed.notes) ? parsed.notes.map(normalizeNote) : [];
   const noteLinks = Array.isArray(parsed.noteLinks) ? parsed.noteLinks.map(normalizeNoteLink).filter(link => link.noteId) : [];
-  const state = ensureCentralNotes({ version: 5, boxNodes, actionDays, notes, noteLinks, ui });
+  const state = ensureCentralNotes({ version: CURRENT_STATE_VERSION, boxNodes, actionDays, notes, noteLinks, ui });
   const ids = collectStateIds(state.boxNodes, state.actionDays, state.notes, state.noteLinks);
-  const normalized = { ...state, version: 5, meta: normalizeMeta(parsed.meta || {}, ids) };
+  const normalized = { ...state, version: CURRENT_STATE_VERSION, meta: normalizeMeta(parsed.meta || {}, ids) };
   return typeof repairStateIntegrity === "function" ? repairStateIntegrity(normalized) : normalized;
 }
 
 function sanitizedState(state) {
   const normalized = normalizeState(clone(state));
   const clean = {
-    version: 5,
+    version: CURRENT_STATE_VERSION,
     meta: normalizeMeta(normalized.meta || {}, new Set(normalized.meta?.usedIds || [])),
     boxNodes: normalized.boxNodes.map(n => ({ ...n, title: cleanTitle(n.title), boxNoteTitle: cleanOptionalTitle(n.boxNoteTitle || ""), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || "") })),
     actionDays: normalized.actionDays.map(day => ({
