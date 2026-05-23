@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-note-table-controls-11";
-const APP_CACHE_NAME = "idea-box-v82-note-table-controls";
+const APP_BUILD_ID = "2026-05-23-note-table-polish-2";
+const APP_CACHE_NAME = "idea-box-v84-note-table-polish";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -3527,11 +3527,21 @@ function createNoteEditorSchema() {
     group: "block",
     content: "table_row+",
     isolating: true,
+    attrs: {
+      layout: {
+        default: "fixed"
+      }
+    },
     parseDOM: [{
-      tag: "table"
+      tag: "table",
+      getAttrs: dom => ({
+        layout: dom?.getAttribute?.("data-layout") === "auto" ? "auto" : "fixed"
+      })
     }],
-    toDOM() {
-      return ["table", ["tbody", 0]];
+    toDOM(node) {
+      return ["table", {
+        "data-layout": node.attrs.layout === "auto" ? "auto" : "fixed"
+      }, ["tbody", 0]];
     }
   });
   nodes = nodes.addToEnd("table_row", {
@@ -3710,6 +3720,47 @@ function noteEditorChecklistPlugin(schema) {
     }
   });
 }
+function placeSelectionAfterTable(view, schema, rawPos) {
+  const pm = noteEditorPM();
+  if (!view || !pm) return false;
+  const pos = Math.max(0, Math.min(view.state.doc.content.size, Number(rawPos) || 0));
+  let tr = view.state.tr;
+  const nodeAfter = tr.doc.nodeAt(pos);
+  if (!nodeAfter || !nodeAfter.isTextblock) tr = tr.insert(pos, schema.nodes.paragraph.create());
+  tr = selectNearPosition(pm, tr, pos + 1).scrollIntoView();
+  view.dispatch(tr);
+  view.focus();
+  return true;
+}
+function noteEditorTableExitPlugin(schema) {
+  const pm = noteEditorPM();
+  return new pm.Plugin({
+    props: {
+      decorations(state) {
+        const decorations = [];
+        state.doc.descendants((node, pos) => {
+          if (node.type !== schema.nodes.table) return true;
+          decorations.push(pm.Decoration.widget(pos + node.nodeSize, (view, getPos) => {
+            const zone = document.createElement("div");
+            zone.className = "note-table-exit-zone";
+            zone.setAttribute("contenteditable", "false");
+            zone.setAttribute("aria-hidden", "true");
+            zone.addEventListener("pointerdown", event => {
+              event.preventDefault();
+              event.stopPropagation();
+              placeSelectionAfterTable(view, schema, getPos());
+            });
+            return zone;
+          }, {
+            side: 1
+          }));
+          return false;
+        });
+        return decorations.length ? pm.DecorationSet.create(state.doc, decorations) : null;
+      }
+    }
+  });
+}
 function createNoteEditorState(schema, html) {
   const pm = noteEditorPM();
   const doc = parseNoteEditorDoc(schema, html);
@@ -3718,7 +3769,7 @@ function createNoteEditorState(schema, html) {
     doc,
     plugins: [pm.history({
       depth: 120
-    }), noteEditorHashtagPlugin(), noteEditorChecklistPlugin(schema), noteEditorPlaceholderPlugin(schema), pm.keymap(commands), pm.keymap(pm.baseKeymap)]
+    }), noteEditorHashtagPlugin(), noteEditorChecklistPlugin(schema), noteEditorTableExitPlugin(schema), noteEditorPlaceholderPlugin(schema), pm.keymap(commands), pm.keymap(pm.baseKeymap)]
   });
 }
 function noteEditorKeymapCommands(schema) {
@@ -4185,6 +4236,19 @@ function deleteTableColumnCommand(schema) {
     return true;
   };
 }
+function autoFitTableCommand() {
+  return (state, dispatch) => {
+    const info = currentTableInfo(state);
+    if (!info) return false;
+    if (dispatch) {
+      dispatch(state.tr.setNodeMarkup(info.tablePos, undefined, {
+        ...info.table.attrs,
+        layout: "auto"
+      }).scrollIntoView());
+    }
+    return true;
+  };
+}
 function insertTableCommand(schema, options = {}) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
@@ -4249,6 +4313,7 @@ function runNoteEditorCommand(view, commandName, options = {}) {
     "table-col-add": addTableColumnCommand(schema),
     "table-col-delete": deleteTableColumnCommand(schema),
     "table-delete": deleteTableCommand(schema),
+    "table-autofit": autoFitTableCommand(),
     "table-after": ensureParagraphAfterTableCommand(schema, pm),
     quote: toggleQuoteCommand(schema),
     "indent-in": indentCommand(schema, 1),
@@ -4325,6 +4390,20 @@ function ProseMirrorNoteEditor({
     className: className
   });
 }
+function NoteTableGlyph({
+  active = false,
+  menuHint = false
+}) {
+  return React.createElement("span", {
+    className: `note-table-glyph ${active ? "is-active" : ""}`
+  }, React.createElement("span", {
+    className: "note-table-glyph-grid",
+    "aria-hidden": "true"
+  }, React.createElement("span", null), React.createElement("span", null), React.createElement("span", null), React.createElement("span", null)), menuHint ? React.createElement("span", {
+    className: "note-table-menu-hint",
+    "aria-hidden": "true"
+  }, React.createElement("span", null), React.createElement("span", null), React.createElement("span", null)) : null);
+}
 function RichNoteModal({
   modal,
   state,
@@ -4338,8 +4417,8 @@ function RichNoteModal({
   const tablePanelActionRef = useRef(0);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
   const [tablePanel, setTablePanel] = useState(null);
-  const [tableRows, setTableRows] = useState(2);
-  const [tableCols, setTableCols] = useState(2);
+  const [tableRows, setTableRows] = useState("2");
+  const [tableCols, setTableCols] = useState("2");
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
@@ -4400,11 +4479,24 @@ function RichNoteModal({
       return prev === nextType ? null : nextType;
     });
   }
+  function normalizeTableDimension(value, fallback, max) {
+    const parsed = Number.parseInt(String(value || "").replace(/\D/g, ""), 10);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(1, Math.min(max, parsed));
+  }
+  function updateTableDimension(setter) {
+    return event => setter(event.target.value.replace(/\D/g, "").slice(0, 2));
+  }
+  function settleTableDimension(setter, value, fallback, max) {
+    setter(String(normalizeTableDimension(value, fallback, max)));
+  }
   function insertCustomTable() {
     const options = {
-      rows: tableRows,
-      cols: tableCols
+      rows: normalizeTableDimension(tableRows, 2, 12),
+      cols: normalizeTableDimension(tableCols, 2, 8)
     };
+    setTableRows(String(options.rows));
+    setTableCols(String(options.cols));
     setTablePanel(null);
     runEditorCommandAfterFocus("insert-table", options);
   }
@@ -4571,9 +4663,10 @@ function RichNoteModal({
     type: "button"
   }, toolbarButtonProps(openTablePanel), {
     className: topButtonClassName(toolbarState.table || tablePanel),
-    "aria-label": toolbarState.table ? "Table menu" : "Insert table"
-  }), React.createElement(Table2, {
-    size: 16
+    "aria-label": toolbarState.table ? "Table options" : "Insert table"
+  }), React.createElement(NoteTableGlyph, {
+    active: toolbarState.table || Boolean(tablePanel),
+    menuHint: toolbarState.table
   })), React.createElement("button", _extends({
     type: "button"
   }, toolbarButtonProps(() => runEditorCommand("list")), {
@@ -4620,7 +4713,7 @@ function RichNoteModal({
     className: "fixed left-0 right-0 z-[61] flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150",
     style: tablePanelStyle
   }, React.createElement("div", {
-    className: "w-full max-w-[360px] bg-[#171717] border border-[#353535] shadow-2xl px-3 py-3"
+    className: "table-action-panel w-full max-w-[360px] bg-[#171717] border border-[#353535] shadow-2xl px-3 py-3"
   }, tablePanel === "insert" ? React.createElement("form", {
     className: "space-y-3",
     onSubmit: submitCustomTable
@@ -4631,23 +4724,27 @@ function RichNoteModal({
   }, React.createElement("span", {
     className: "block text-[11px] font-bold text-[#8f8f8f] mb-1"
   }, "Rows"), React.createElement("input", {
-    type: "number",
-    min: "1",
-    max: "12",
+    type: "text",
+    inputMode: "numeric",
+    pattern: "[0-9]*",
     value: tableRows,
-    onChange: e => setTableRows(Math.max(1, Math.min(12, Number(e.target.value) || 1))),
-    className: "w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]"
+    onFocus: e => e.currentTarget.select(),
+    onChange: updateTableDimension(setTableRows),
+    onBlur: () => settleTableDimension(setTableRows, tableRows, 2, 12),
+    className: "table-dimension-input w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]"
   })), React.createElement("label", {
     className: "block"
   }, React.createElement("span", {
     className: "block text-[11px] font-bold text-[#8f8f8f] mb-1"
   }, "Cols"), React.createElement("input", {
-    type: "number",
-    min: "1",
-    max: "8",
+    type: "text",
+    inputMode: "numeric",
+    pattern: "[0-9]*",
     value: tableCols,
-    onChange: e => setTableCols(Math.max(1, Math.min(8, Number(e.target.value) || 1))),
-    className: "w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]"
+    onFocus: e => e.currentTarget.select(),
+    onChange: updateTableDimension(setTableCols),
+    onBlur: () => settleTableDimension(setTableCols, tableCols, 2, 8),
+    className: "table-dimension-input w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]"
   }))), React.createElement("div", {
     className: "flex justify-between items-center"
   }, React.createElement("button", _extends({
@@ -4659,32 +4756,32 @@ function RichNoteModal({
   }, tablePanelButtonProps(insertCustomTable), {
     className: "text-[#FFD2D7] text-[13px] font-extrabold underline underline-offset-4"
   }), "Insert"))) : React.createElement("div", {
-    className: "grid grid-cols-3 gap-2"
+    className: "grid grid-cols-2 gap-1.5"
   }, React.createElement("button", _extends({
     type: "button"
   }, tablePanelButtonProps(() => runTableCommand("table-row-add")), {
-    className: "bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2"
+    className: "table-menu-action"
   }), "Row +"), React.createElement("button", _extends({
     type: "button"
-  }, tablePanelButtonProps(() => runTableCommand("table-row-delete")), {
-    className: "bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2"
-  }), "Row -"), React.createElement("button", _extends({
-    type: "button"
-  }, tablePanelButtonProps(() => runTableCommand("table-after")), {
-    className: "bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2"
-  }), "Below"), React.createElement("button", _extends({
-    type: "button"
   }, tablePanelButtonProps(() => runTableCommand("table-col-add")), {
-    className: "bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2"
+    className: "table-menu-action"
   }), "Col +"), React.createElement("button", _extends({
     type: "button"
+  }, tablePanelButtonProps(() => runTableCommand("table-row-delete")), {
+    className: "table-menu-action"
+  }), "Row -"), React.createElement("button", _extends({
+    type: "button"
   }, tablePanelButtonProps(() => runTableCommand("table-col-delete")), {
-    className: "bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2"
+    className: "table-menu-action"
   }), "Col -"), React.createElement("button", _extends({
     type: "button"
+  }, tablePanelButtonProps(() => runTableCommand("table-autofit")), {
+    className: "table-menu-action table-menu-accent"
+  }), "Auto"), React.createElement("button", _extends({
+    type: "button"
   }, tablePanelButtonProps(() => runTableCommand("table-delete")), {
-    className: "bg-[#2a1212] text-red-200 text-[12px] font-extrabold px-2 py-2"
-  }), "Delete")))) : null, React.createElement("div", {
+    className: "table-menu-action table-menu-danger"
+  }), "Delete table")))) : null, React.createElement("div", {
     className: "w-full max-w-md h-[100dvh] bg-[#0a0a0a] flex flex-col",
     style: editorScreenStyle
   }, React.createElement("div", {

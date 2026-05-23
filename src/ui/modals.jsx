@@ -1,11 +1,31 @@
+function NoteTableGlyph({ active = false, menuHint = false }) {
+  return (
+    <span className={`note-table-glyph ${active ? "is-active" : ""}`}>
+      <span className="note-table-glyph-grid" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+        <span />
+      </span>
+      {menuHint ? (
+        <span className="note-table-menu-hint" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel = "", onSyncNow = () => {} }) {
   const titleRef = useRef(null);
   const editorApiRef = useRef(null);
   const tablePanelActionRef = useRef(0);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
   const [tablePanel, setTablePanel] = useState(null);
-  const [tableRows, setTableRows] = useState(2);
-  const [tableCols, setTableCols] = useState(2);
+  const [tableRows, setTableRows] = useState("2");
+  const [tableCols, setTableCols] = useState("2");
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
@@ -58,8 +78,27 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
     });
   }
 
+  function normalizeTableDimension(value, fallback, max) {
+    const parsed = Number.parseInt(String(value || "").replace(/\D/g, ""), 10);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(1, Math.min(max, parsed));
+  }
+
+  function updateTableDimension(setter) {
+    return (event) => setter(event.target.value.replace(/\D/g, "").slice(0, 2));
+  }
+
+  function settleTableDimension(setter, value, fallback, max) {
+    setter(String(normalizeTableDimension(value, fallback, max)));
+  }
+
   function insertCustomTable() {
-    const options = { rows: tableRows, cols: tableCols };
+    const options = {
+      rows: normalizeTableDimension(tableRows, 2, 12),
+      cols: normalizeTableDimension(tableCols, 2, 8)
+    };
+    setTableRows(String(options.rows));
+    setTableCols(String(options.cols));
     setTablePanel(null);
     runEditorCommandAfterFocus("insert-table", options);
   }
@@ -162,7 +201,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("indent-in"))} className={topButtonClassName(false)} aria-label="Indent"><IndentIncrease size={17} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("quote"))} className={topButtonClassName(toolbarState.quote)} aria-label="Quote"><Quote size={16} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("checklist"))} className={topButtonClassName(toolbarState.checklist)} aria-label="Checklist"><CheckSquare size={16} /></button>
-            <button type="button" {...toolbarButtonProps(openTablePanel)} className={topButtonClassName(toolbarState.table || tablePanel)} aria-label={toolbarState.table ? "Table menu" : "Insert table"}><Table2 size={16} /></button>
+            <button type="button" {...toolbarButtonProps(openTablePanel)} className={topButtonClassName(toolbarState.table || tablePanel)} aria-label={toolbarState.table ? "Table options" : "Insert table"}><NoteTableGlyph active={toolbarState.table || Boolean(tablePanel)} menuHint={toolbarState.table} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("list"))} className={topButtonClassName(toolbarState.bullet || toolbarState.ordered)} aria-label={listLabel}>
               <span className="text-[15px] font-extrabold leading-none">{listButtonText}</span>
             </button>
@@ -177,17 +216,17 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
       </div>
       {tablePanel ? (
         <div className="fixed left-0 right-0 z-[61] flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150" style={tablePanelStyle}>
-          <div className="w-full max-w-[360px] bg-[#171717] border border-[#353535] shadow-2xl px-3 py-3">
+          <div className="table-action-panel w-full max-w-[360px] bg-[#171717] border border-[#353535] shadow-2xl px-3 py-3">
             {tablePanel === "insert" ? (
               <form className="space-y-3" onSubmit={submitCustomTable}>
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block">
                     <span className="block text-[11px] font-bold text-[#8f8f8f] mb-1">Rows</span>
-                    <input type="number" min="1" max="12" value={tableRows} onChange={e => setTableRows(Math.max(1, Math.min(12, Number(e.target.value) || 1)))} className="w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]" />
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" value={tableRows} onFocus={e => e.currentTarget.select()} onChange={updateTableDimension(setTableRows)} onBlur={() => settleTableDimension(setTableRows, tableRows, 2, 12)} className="table-dimension-input w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]" />
                   </label>
                   <label className="block">
                     <span className="block text-[11px] font-bold text-[#8f8f8f] mb-1">Cols</span>
-                    <input type="number" min="1" max="8" value={tableCols} onChange={e => setTableCols(Math.max(1, Math.min(8, Number(e.target.value) || 1)))} className="w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]" />
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" value={tableCols} onFocus={e => e.currentTarget.select()} onChange={updateTableDimension(setTableCols)} onBlur={() => settleTableDimension(setTableCols, tableCols, 2, 8)} className="table-dimension-input w-full bg-[#0d0d0d] border border-[#333] px-3 py-2 text-white text-[14px] outline-none focus:border-[#FFD2D7]" />
                   </label>
                 </div>
                 <div className="flex justify-between items-center">
@@ -196,13 +235,13 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
                 </div>
               </form>
             ) : (
-              <div className="grid grid-cols-3 gap-2">
-                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-row-add"))} className="bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2">Row +</button>
-                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-row-delete"))} className="bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2">Row -</button>
-                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-after"))} className="bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2">Below</button>
-                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-col-add"))} className="bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2">Col +</button>
-                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-col-delete"))} className="bg-[#242424] text-white text-[12px] font-extrabold px-2 py-2">Col -</button>
-                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-delete"))} className="bg-[#2a1212] text-red-200 text-[12px] font-extrabold px-2 py-2">Delete</button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-row-add"))} className="table-menu-action">Row +</button>
+                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-col-add"))} className="table-menu-action">Col +</button>
+                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-row-delete"))} className="table-menu-action">Row -</button>
+                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-col-delete"))} className="table-menu-action">Col -</button>
+                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-autofit"))} className="table-menu-action table-menu-accent">Auto</button>
+                <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-delete"))} className="table-menu-action table-menu-danger">Delete table</button>
               </div>
             )}
           </div>

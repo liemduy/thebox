@@ -146,9 +146,13 @@ function createNoteEditorSchema() {
     group: "block",
     content: "table_row+",
     isolating: true,
-    parseDOM: [{ tag: "table" }],
-    toDOM() {
-      return ["table", ["tbody", 0]];
+    attrs: { layout: { default: "fixed" } },
+    parseDOM: [{
+      tag: "table",
+      getAttrs: dom => ({ layout: dom?.getAttribute?.("data-layout") === "auto" ? "auto" : "fixed" })
+    }],
+    toDOM(node) {
+      return ["table", { "data-layout": node.attrs.layout === "auto" ? "auto" : "fixed" }, ["tbody", 0]];
     }
   });
 
@@ -311,6 +315,47 @@ function noteEditorChecklistPlugin(schema) {
   });
 }
 
+function placeSelectionAfterTable(view, schema, rawPos) {
+  const pm = noteEditorPM();
+  if (!view || !pm) return false;
+  const pos = Math.max(0, Math.min(view.state.doc.content.size, Number(rawPos) || 0));
+  let tr = view.state.tr;
+  const nodeAfter = tr.doc.nodeAt(pos);
+  if (!nodeAfter || !nodeAfter.isTextblock) tr = tr.insert(pos, schema.nodes.paragraph.create());
+  tr = selectNearPosition(pm, tr, pos + 1).scrollIntoView();
+  view.dispatch(tr);
+  view.focus();
+  return true;
+}
+
+function noteEditorTableExitPlugin(schema) {
+  const pm = noteEditorPM();
+  return new pm.Plugin({
+    props: {
+      decorations(state) {
+        const decorations = [];
+        state.doc.descendants((node, pos) => {
+          if (node.type !== schema.nodes.table) return true;
+          decorations.push(pm.Decoration.widget(pos + node.nodeSize, (view, getPos) => {
+            const zone = document.createElement("div");
+            zone.className = "note-table-exit-zone";
+            zone.setAttribute("contenteditable", "false");
+            zone.setAttribute("aria-hidden", "true");
+            zone.addEventListener("pointerdown", event => {
+              event.preventDefault();
+              event.stopPropagation();
+              placeSelectionAfterTable(view, schema, getPos());
+            });
+            return zone;
+          }, { side: 1 }));
+          return false;
+        });
+        return decorations.length ? pm.DecorationSet.create(state.doc, decorations) : null;
+      }
+    }
+  });
+}
+
 function createNoteEditorState(schema, html) {
   const pm = noteEditorPM();
   const doc = parseNoteEditorDoc(schema, html);
@@ -321,6 +366,7 @@ function createNoteEditorState(schema, html) {
       pm.history({ depth: 120 }),
       noteEditorHashtagPlugin(),
       noteEditorChecklistPlugin(schema),
+      noteEditorTableExitPlugin(schema),
       noteEditorPlaceholderPlugin(schema),
       pm.keymap(commands),
       pm.keymap(pm.baseKeymap)
@@ -733,6 +779,17 @@ function deleteTableColumnCommand(schema) {
   };
 }
 
+function autoFitTableCommand() {
+  return (state, dispatch) => {
+    const info = currentTableInfo(state);
+    if (!info) return false;
+    if (dispatch) {
+      dispatch(state.tr.setNodeMarkup(info.tablePos, undefined, { ...info.table.attrs, layout: "auto" }).scrollIntoView());
+    }
+    return true;
+  };
+}
+
 function insertTableCommand(schema, options = {}) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
@@ -800,6 +857,7 @@ function runNoteEditorCommand(view, commandName, options = {}) {
     "table-col-add": addTableColumnCommand(schema),
     "table-col-delete": deleteTableColumnCommand(schema),
     "table-delete": deleteTableCommand(schema),
+    "table-autofit": autoFitTableCommand(),
     "table-after": ensureParagraphAfterTableCommand(schema, pm),
     quote: toggleQuoteCommand(schema),
     "indent-in": indentCommand(schema, 1),
