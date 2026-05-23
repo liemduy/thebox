@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v63-range-calendar-placement';
+const CACHE_NAME = 'idea-box-v64-calendar-progress-fill';
 const APP_SHELL = [
   './',
   './index.html',

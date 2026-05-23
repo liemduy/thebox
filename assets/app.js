@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-range-calendar-placement";
-const APP_CACHE_NAME = "idea-box-v63-range-calendar-placement";
+const APP_BUILD_ID = "2026-05-23-calendar-progress-fill";
+const APP_CACHE_NAME = "idea-box-v64-calendar-progress-fill";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -3181,6 +3181,17 @@ function DateTextInput({
 function actionDayHasEntries(day) {
   return (day.nodes || []).some(node => entriesFor(node).length > 0);
 }
+function actionDayCalendarMeta(day) {
+  const entries = (day?.nodes || []).flatMap(node => entriesFor(node));
+  const actions = entries.filter(entry => entry.type === "action");
+  const done = actions.filter(entry => entry.done).length;
+  return {
+    hasEntries: entries.length > 0,
+    total: actions.length,
+    done,
+    progress: actions.length ? Math.round(done / actions.length * 100) : 0
+  };
+}
 function ActionDatePickerPanel({
   selectedDate,
   actionDays,
@@ -3197,7 +3208,7 @@ function ActionDatePickerPanel({
   const firstDay = new Date(year, monthNumber - 1, 1);
   const startOffset = (firstDay.getDay() + 6) % 7;
   const selectedMonth = new Date(year, monthNumber - 1, 1);
-  const daysWithEntries = new Set((actionDays || []).filter(actionDayHasEntries).map(day => day.date));
+  const dayMeta = new Map((actionDays || []).filter(actionDayHasEntries).map(day => [day.date, actionDayCalendarMeta(day)]));
   const cells = Array.from({
     length: 42
   }, (_, index) => {
@@ -3245,19 +3256,29 @@ function ActionDatePickerPanel({
     className: "grid grid-cols-7 gap-1"
   }, cells.map(date => {
     const inMonth = date.slice(0, 7) === month;
-    const hasEntries = daysWithEntries.has(date);
+    const meta = dayMeta.get(date);
+    const hasEntries = Boolean(meta?.hasEntries);
+    const progress = meta?.progress || 0;
     const selected = date === selectedDate;
     const today = date === todayYMD();
     const dayNumber = Number(date.slice(-2));
-    const className = selected ? "bg-[#FFD2D7] border-[#FFD2D7] text-black shadow-[0_0_18px_rgba(255,210,215,0.18)]" : hasEntries ? "bg-[#FFD2D7]/[0.16] border-[#FFD2D7] text-[#FFD2D7]" : today ? "bg-transparent border-[#555555] text-white" : "bg-transparent border-transparent text-[#A7A7A7] hover:border-[#555555] hover:text-white";
+    const className = selected ? "bg-transparent border-[#FFD2D7] text-white shadow-[0_0_18px_rgba(255,210,215,0.18)] [text-shadow:0_1px_4px_rgba(0,0,0,0.75)]" : hasEntries ? "bg-transparent border-[#FFD2D7] text-[#FFD2D7] [text-shadow:0_1px_4px_rgba(0,0,0,0.75)]" : today ? "bg-transparent border-[#555555] text-white" : "bg-transparent border-transparent text-[#A7A7A7] hover:border-[#555555] hover:text-white";
     return React.createElement("button", {
       key: date,
       type: "button",
       onClick: () => onSelect(date),
-      className: `h-8 rounded-[9px] border text-[12px] font-extrabold transition-all ${className} ${inMonth ? "" : "opacity-35"}`,
+      className: `relative h-8 overflow-hidden rounded-[9px] border text-[12px] font-extrabold transition-all ${className} ${inMonth ? "" : "opacity-35"}`,
       "aria-label": displayDate(date),
-      title: hasEntries ? "Has actions/notes" : displayDate(date)
-    }, dayNumber);
+      title: hasEntries ? meta.total ? `${meta.done}/${meta.total} actions done` : "Has notes" : displayDate(date)
+    }, progress > 0 && React.createElement("span", {
+      "aria-hidden": "true",
+      className: "absolute bottom-0 left-0 right-0 bg-[#FFD2D7]",
+      style: {
+        height: `${progress}%`
+      }
+    }), React.createElement("span", {
+      className: "relative z-10"
+    }, dayNumber));
   })));
 }
 function RichNoteModal({
