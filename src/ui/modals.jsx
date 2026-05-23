@@ -1,7 +1,8 @@
-function RichNoteModal({ modal, state, onClose, onSave, onDelete, onConfirmDelete }) {
+function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel = "", onSyncNow = () => {} }) {
   const editorRef = useRef(null);
   const titleRef = useRef(null);
-  const [toolbarFrame, setToolbarFrame] = useState({ bottom: 0, keyboardOpen: false, mobile: false });
+  const [historyTick, setHistoryTick] = useState(0);
+  const historyRef = useRef({ undo: [], redo: [], last: null });
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
@@ -11,65 +12,67 @@ function RichNoteModal({ modal, state, onClose, onSave, onDelete, onConfirmDelet
   const entry = actionNode && modal.entryId ? entriesFor(actionNode).find(e => e.id === modal.entryId) : null;
   const initialHtml = isCentralNote ? (centralNote?.bodyHtml || "") : isBoxNote ? (box?.boxNoteHtml || "") : (entry?.bodyHtml || "");
   const initialTitle = isCentralNote ? (centralNote?.title || "") : isBoxNote ? (box?.boxNoteTitle || "") : (entry?.title || "");
-  const canDelete = Boolean(onDelete && (isCentralNote ? centralNote : isBoxNote ? boxHasNote(box) : entry));
 
   useEffect(() => {
+    const html = sanitizeHtml(initialHtml);
     if (editorRef.current) {
-      editorRef.current.innerHTML = sanitizeHtml(initialHtml);
+      editorRef.current.innerHTML = html;
       window.requestAnimationFrame(() => highlightEditableHashtags(editorRef.current));
     }
     if (titleRef.current) titleRef.current.value = initialTitle;
+    historyRef.current = { undo: [], redo: [], last: { title: initialTitle, bodyHtml: html } };
+    setHistoryTick(tick => tick + 1);
     setTimeout(() => (titleRef.current || editorRef.current)?.focus(), 40);
   }, [modal]);
 
-  useEffect(() => {
-    let frameId = 0;
-    const isMobileViewport = () => {
-      const narrow = window.matchMedia?.("(max-width: 640px)")?.matches;
-      const coarse = window.matchMedia?.("(pointer: coarse)")?.matches && window.innerWidth <= 768;
-      return Boolean(narrow || coarse);
+  function noteSnapshot() {
+    return {
+      title: titleRef.current?.value || "",
+      bodyHtml: editorRef.current?.innerHTML || ""
     };
-    const updateToolbarFrame = () => {
-      window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(() => {
-        const viewport = window.visualViewport;
-        const mobile = isMobileViewport();
-        const layoutHeight = Math.max(window.innerHeight, document.documentElement?.clientHeight || 0);
-        const viewportHeight = viewport?.height || window.innerHeight;
-        const viewportOffsetTop = viewport?.offsetTop || 0;
-        const keyboardInset = Math.max(0, layoutHeight - viewportHeight - viewportOffsetTop);
-        const keyboardOpen = mobile && keyboardInset > 80;
-        const next = {
-          bottom: keyboardOpen ? Math.round(keyboardInset) : 0,
-          keyboardOpen,
-          mobile
-        };
-        setToolbarFrame(prev => (
-          prev.bottom === next.bottom &&
-          prev.keyboardOpen === next.keyboardOpen &&
-          prev.mobile === next.mobile
-        ) ? prev : next);
-      });
-    };
-    const viewport = window.visualViewport;
-    updateToolbarFrame();
-    const timers = [
-      window.setTimeout(updateToolbarFrame, 120),
-      window.setTimeout(updateToolbarFrame, 420)
-    ];
-    viewport?.addEventListener("resize", updateToolbarFrame);
-    viewport?.addEventListener("scroll", updateToolbarFrame);
-    window.addEventListener("resize", updateToolbarFrame);
-    window.addEventListener("orientationchange", updateToolbarFrame);
-    return () => {
-      timers.forEach(timer => window.clearTimeout(timer));
-      window.cancelAnimationFrame(frameId);
-      viewport?.removeEventListener("resize", updateToolbarFrame);
-      viewport?.removeEventListener("scroll", updateToolbarFrame);
-      window.removeEventListener("resize", updateToolbarFrame);
-      window.removeEventListener("orientationchange", updateToolbarFrame);
-    };
-  }, [modal]);
+  }
+
+  function sameSnapshot(a, b) {
+    return Boolean(a && b && a.title === b.title && a.bodyHtml === b.bodyHtml);
+  }
+
+  function rememberHistory() {
+    const current = noteSnapshot();
+    const history = historyRef.current;
+    if (sameSnapshot(history.last, current)) return;
+    if (history.last) history.undo.push(history.last);
+    if (history.undo.length > 80) history.undo.shift();
+    history.last = current;
+    history.redo = [];
+    setHistoryTick(tick => tick + 1);
+  }
+
+  function restoreSnapshot(snapshot) {
+    if (!snapshot) return;
+    if (titleRef.current) titleRef.current.value = snapshot.title || "";
+    if (editorRef.current) {
+      editorRef.current.innerHTML = sanitizeHtml(snapshot.bodyHtml || "");
+      window.requestAnimationFrame(() => highlightEditableHashtags(editorRef.current));
+    }
+    historyRef.current.last = noteSnapshot();
+    setHistoryTick(tick => tick + 1);
+  }
+
+  function undoNoteEdit() {
+    const history = historyRef.current;
+    const previous = history.undo.pop();
+    if (!previous) return;
+    history.redo.push(noteSnapshot());
+    restoreSnapshot(previous);
+  }
+
+  function redoNoteEdit() {
+    const history = historyRef.current;
+    const next = history.redo.pop();
+    if (!next) return;
+    history.undo.push(noteSnapshot());
+    restoreSnapshot(next);
+  }
 
   function editorRange() {
     const editor = editorRef.current;
@@ -151,12 +154,13 @@ function RichNoteModal({ modal, state, onClose, onSave, onDelete, onConfirmDelet
   }
 
   function applyFormat(format) {
-    if (format === "bold") return wrapInline("strong");
-    if (format === "italic") return wrapInline("em");
-    if (format === "underline") return wrapInline("u");
-    if (format === "indent") return wrapBlock("blockquote");
-    if (format === "list") return insertList();
-    if (format === "heading") return wrapBlock("h3");
+    if (format === "bold") wrapInline("strong");
+    if (format === "italic") wrapInline("em");
+    if (format === "underline") wrapInline("u");
+    if (format === "indent") wrapBlock("blockquote");
+    if (format === "list") insertList();
+    if (format === "heading") wrapBlock("h3");
+    window.requestAnimationFrame(rememberHistory);
   }
 
   function save() {
@@ -166,69 +170,66 @@ function RichNoteModal({ modal, state, onClose, onSave, onDelete, onConfirmDelet
     else onSave({ dayId: modal.dayId, nodeId: modal.nodeId, entryId: modal.entryId || null, title: titleRef.current?.value || "Note", bodyHtml: html });
   }
 
-  function deleteNote() {
-    if (!canDelete) return;
-    const runDelete = () => {
-      if (isCentralNote) onDelete({ noteId: modal.noteId });
-      else if (isBoxNote) onDelete({ boxId: modal.boxId });
-      else onDelete({ dayId: modal.dayId, nodeId: modal.nodeId, entryId: modal.entryId });
-    };
-    if (onConfirmDelete) {
-      onConfirmDelete(runDelete);
-      return;
-    }
-    runDelete();
-  }
-
   const editorScreenStyle = {
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 8px)",
-    paddingBottom: toolbarFrame.keyboardOpen ? `${toolbarFrame.bottom + 58}px` : "calc(78px + env(safe-area-inset-bottom, 0px))"
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 52px)"
   };
-  const editorClassName = "rich-editor flex-1 min-h-0 overflow-auto thin-scroll w-full bg-transparent border-none outline-none px-5 pt-2 pb-6 text-[#E0E0E0] text-[17px] leading-relaxed";
-  const toolbarClassName = toolbarFrame.mobile
-    ? `fixed left-0 right-0 w-full max-w-none translate-x-0 bg-[#232323] border-t border-[#3E3E3E] border-x-0 border-b-0 rounded-none px-5 ${toolbarFrame.keyboardOpen ? "py-3" : "pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"} flex items-center justify-between shadow-[0_-12px_30px_rgba(0,0,0,0.32)] z-[60]`
-    : "fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-[340px] bg-[#232323] border border-[#3E3E3E] rounded-[14px] px-5 py-3.5 flex items-center justify-between shadow-2xl z-[60]";
-  const toolbarStyle = toolbarFrame.mobile ? { bottom: `${toolbarFrame.bottom}px` } : undefined;
+  const headerStyle = { paddingTop: "env(safe-area-inset-top, 0px)" };
+  const editorClassName = "rich-editor min-h-[calc(100dvh-180px)] w-full bg-transparent border-none outline-none px-0 pt-3 pb-16 text-[#E0E0E0] text-[17px] leading-relaxed";
+  const topButtonClassName = "h-10 w-8 shrink-0 grid place-items-center text-[#A7A7A7] hover:text-[#FFD2D7] disabled:opacity-35 disabled:hover:text-[#A7A7A7] transition-colors";
+  const canUndoNote = historyTick >= 0 && historyRef.current.undo.length > 0;
+  const canRedoNote = historyTick >= 0 && historyRef.current.redo.length > 0;
+  const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
+  const syncColor = syncStatus === "saved"
+    ? "#FFD2D7"
+    : syncStatus === "error"
+      ? "#fb7185"
+      : syncStatus === "saving"
+        ? "#FFD2D7"
+        : "#666666";
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden">
-      <div className="w-full max-w-md min-h-[100dvh] bg-[#0a0a0a] flex flex-col" style={editorScreenStyle}>
-        <div className="shrink-0 h-[48px] px-3 flex items-center justify-between">
-          <button type="button" onClick={save} className="h-10 min-w-[44px] grid place-items-center text-[#FFD2D7] hover:text-white transition-colors text-[30px] font-light leading-none" aria-label="Back">
+      <div className="fixed left-0 right-0 top-0 z-[60] bg-[#0a0a0a]/95 border-b border-white/[0.04]" style={headerStyle}>
+        <div className="mx-auto w-full max-w-md h-[52px] px-2 flex items-center gap-1">
+          <button type="button" onClick={save} className="h-10 min-w-[38px] grid place-items-center text-[#FFD2D7] hover:text-white transition-colors text-[30px] font-light leading-none" aria-label="Back">
             &lt;
           </button>
-          <div className="flex items-center gap-1.5">
-            {canDelete && (
-              <button type="button" onClick={deleteNote} className="h-10 w-10 grid place-items-center text-[#666] hover:text-red-300 transition-colors" aria-label="Delete note"><Trash2 size={18} /></button>
-            )}
-            <button type="button" onClick={save} className="h-10 px-3 text-[#FFD2D7] hover:text-white transition-colors text-[16px] font-extrabold" aria-label="Done">
-              Done
-            </button>
+          <div className="flex-1 min-w-0 overflow-x-auto thin-scroll flex items-center gap-1">
+            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => applyFormat("heading")} className="h-10 w-9 shrink-0 text-[#A7A7A7] hover:text-[#FFD2D7] transition-colors font-serif font-bold text-[16px] leading-none tracking-tight" aria-label="Heading">Aa</button>
+            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => applyFormat("bold")} className={topButtonClassName} aria-label="Bold"><Bold size={17} /></button>
+            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => applyFormat("italic")} className={topButtonClassName} aria-label="Italic"><Italic size={17} /></button>
+            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => applyFormat("underline")} className={topButtonClassName} aria-label="Underline"><Underline size={17} /></button>
+            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => applyFormat("indent")} className={topButtonClassName} aria-label="Quote"><Indent size={17} /></button>
+            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => applyFormat("list")} className={topButtonClassName} aria-label="List"><List size={17} /></button>
+            <div className="h-5 w-px bg-[#333333] mx-1 shrink-0" />
+            <button type="button" disabled={!canUndoNote} onMouseDown={e => e.preventDefault()} onClick={undoNoteEdit} className={topButtonClassName} aria-label="Undo note edit"><Undo2 size={17} /></button>
+            <button type="button" disabled={!canRedoNote} onMouseDown={e => e.preventDefault()} onClick={redoNoteEdit} className={topButtonClassName} aria-label="Redo note edit"><Redo2 size={17} /></button>
           </div>
+          <button type="button" onClick={(e) => { e.stopPropagation(); onSyncNow(); }} title={syncLabel || syncText} aria-label={syncLabel || syncText} className="h-10 min-w-[38px] grid place-items-center transition-transform hover:scale-110 active:scale-95" style={{ color: syncColor }}>
+            {syncStatus === "saving" ? <MoreHorizontal size={20} className="animate-pulse" /> : <Check size={20} />}
+          </button>
         </div>
-        <input ref={titleRef} type="text" placeholder="Title" defaultValue={initialTitle} className="w-full bg-transparent border-none outline-none px-5 pt-2 pb-1 text-white text-[24px] font-extrabold leading-tight placeholder:text-[#555555] tracking-normal" />
-        <div
-          ref={editorRef}
-          contentEditable
-          suppressContentEditableWarning
-          spellCheck="true"
-          data-placeholder="Write your note here..."
-          onInput={(e) => {
-            if (!e.nativeEvent?.isComposing) highlightEditableHashtags(e.currentTarget);
-          }}
-          onCompositionEnd={(e) => highlightEditableHashtags(e.currentTarget)}
-          className={editorClassName}
-        />
       </div>
-      <div onClick={e => e.stopPropagation()} onMouseDown={e => e.preventDefault()} className={toolbarClassName} style={toolbarStyle}>
-        <div className="flex gap-4 text-[#A7A7A7]">
-          <button type="button" onClick={() => applyFormat("bold")} className="hover:text-[#FFD2D7] transition-colors"><Bold size={18} /></button>
-          <button type="button" onClick={() => applyFormat("italic")} className="hover:text-[#FFD2D7] transition-colors"><Italic size={18} /></button>
-          <button type="button" onClick={() => applyFormat("underline")} className="hover:text-[#FFD2D7] transition-colors"><Underline size={18} /></button>
-          <button type="button" onClick={() => applyFormat("indent")} className="hover:text-[#FFD2D7] transition-colors"><Indent size={18} /></button>
-          <button type="button" onClick={() => applyFormat("list")} className="hover:text-[#FFD2D7] transition-colors"><List size={18} /></button>
+      <div className="w-full max-w-md h-[100dvh] bg-[#0a0a0a] flex flex-col" style={editorScreenStyle}>
+        <div className="flex-1 min-h-0 overflow-y-auto thin-scroll px-5 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]">
+          <input ref={titleRef} type="text" placeholder="Title" defaultValue={initialTitle} onInput={rememberHistory} className="w-full bg-transparent border-none outline-none px-0 pt-2 pb-1 text-white text-[24px] font-extrabold leading-tight placeholder:text-[#555555] tracking-normal" />
+          <div
+            ref={editorRef}
+            contentEditable
+            suppressContentEditableWarning
+            spellCheck="true"
+            data-placeholder="Write your note here..."
+            onInput={(e) => {
+              if (!e.nativeEvent?.isComposing) highlightEditableHashtags(e.currentTarget);
+              rememberHistory();
+            }}
+            onCompositionEnd={(e) => {
+              highlightEditableHashtags(e.currentTarget);
+              rememberHistory();
+            }}
+            className={editorClassName}
+          />
         </div>
-        <button type="button" onClick={() => applyFormat("heading")} className="text-[#A7A7A7] hover:text-[#FFD2D7] transition-colors font-serif font-bold text-[16px] leading-none tracking-tight">Aa</button>
       </div>
     </div>
   );

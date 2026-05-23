@@ -1567,9 +1567,9 @@ function App() {
           )}
         </main>
 
-        {modal?.type === "boxNote" && <RichNoteModal modal={modal} state={db} onClose={() => setModal(null)} onSave={saveBoxNote} onDelete={deleteBoxNote} onConfirmDelete={confirmDeleteNote} />}
-        {modal?.type === "actionNote" && <RichNoteModal modal={modal} state={db} onClose={() => setModal(null)} onSave={saveActionNote} onDelete={deleteActionNote} onConfirmDelete={confirmDeleteNote} />}
-        {modal?.type === "centralNote" && <RichNoteModal modal={modal} state={db} onClose={() => setModal(null)} onSave={saveCentralNote} onDelete={deleteCentralNote} onConfirmDelete={confirmDeleteNote} />}
+        {modal?.type === "boxNote" && <RichNoteModal modal={modal} state={db} onSave={saveBoxNote} syncStatus={syncStatus} syncLabel={syncLabel} onSyncNow={syncNow} />}
+        {modal?.type === "actionNote" && <RichNoteModal modal={modal} state={db} onSave={saveActionNote} syncStatus={syncStatus} syncLabel={syncLabel} onSyncNow={syncNow} />}
+        {modal?.type === "centralNote" && <RichNoteModal modal={modal} state={db} onSave={saveCentralNote} syncStatus={syncStatus} syncLabel={syncLabel} onSyncNow={syncNow} />}
         {modal?.type === "notesExport" && <ExportNotesModal tags={noteTags} onClose={() => setModal(null)} onExport={exportAiNotes} />}
         {modal?.type === "importPreview" && <ImportPreviewModal modal={modal} onClose={() => setModal(null)} onImport={applyImportedState} />}
         {modal?.type === "debug" && <DebugPanel info={modal.info || makeDebugInfo()} onClose={() => setModal(null)} />}
