@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v68-prosemirror-note-editor';
+const CACHE_NAME = 'idea-box-v69-note-editor-hierarchy';
 const APP_SHELL = [
   './',
   './index.html',

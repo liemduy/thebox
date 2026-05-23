@@ -14,9 +14,12 @@
     .slide-in-from-right-4 { animation-name: fadeInRight; }
     .slide-in-from-left-4 { animation-name: fadeInLeft; }
     .slide-in-from-bottom-4 { animation-name: fadeInBottom; }
-    .rich-editor.ProseMirror { white-space: pre-wrap; word-break: break-word; }
-    .rich-editor.ProseMirror:focus { outline: none; }
+    .rich-editor .ProseMirror { min-height: inherit; white-space: pre-wrap; word-break: break-word; outline: none !important; }
+    .rich-editor .ProseMirror:focus,
+    .rich-editor .ProseMirror *:focus,
+    .rich-editor .ProseMirror-selectednode { outline: none !important; box-shadow: none !important; }
     .rich-editor p { min-height: 1.45em; margin: .18rem 0; }
+    .rich-editor p[data-size="small"] { font-size: .92rem; line-height: 1.45; color: #bdbdbd; }
     .rich-editor .is-editor-empty:first-child::before { content: attr(data-placeholder); color: #555; float: left; height: 0; pointer-events: none; }
     .rich-editor [data-indent="1"] { margin-left: 1.25rem; }
     .rich-editor [data-indent="2"] { margin-left: 2.5rem; }
@@ -25,12 +28,22 @@
     .rich-editor b, .rich-editor strong { font-weight: 800; }
     .rich-editor i, .rich-editor em { font-style: italic; }
     .rich-editor u { text-decoration: underline; }
-    .rich-editor h2 { font-size: 1.35rem; line-height: 1.18; font-weight: 900; color: #fff; margin: .45rem 0 .35rem; }
-    .rich-editor h3 { font-size: 1.12rem; line-height: 1.25; font-weight: 850; color: #fff; margin: .4rem 0 .25rem; }
+    .rich-editor h1 { font-size: 1.72rem; line-height: 1.08; font-weight: 900; color: #fff; margin: .55rem 0 .35rem; }
+    .rich-editor h2 { font-size: 1.36rem; line-height: 1.16; font-weight: 900; color: #fff; margin: .45rem 0 .3rem; }
+    .rich-editor h3 { font-size: 1.13rem; line-height: 1.22; font-weight: 850; color: #fff; margin: .38rem 0 .22rem; }
     .rich-editor ul { list-style: disc; padding-left: 1.25rem; margin: .25rem 0; }
     .rich-editor ol { list-style: decimal; padding-left: 1.35rem; margin: .25rem 0; }
     .rich-editor li { padding-left: .15rem; margin: .1rem 0; }
-    .rich-editor blockquote { border-left: 2px solid #FFD2D7; margin: .35rem 0; padding-left: .75rem; color: #ccc; }
+    .rich-editor ul[data-type="task-list"] { list-style: none; padding-left: 0; margin: .28rem 0; }
+    .rich-editor li[data-type="task-item"] { position: relative; list-style: none; padding-left: 1.75rem; margin: .16rem 0; }
+    .rich-editor li[data-type="task-item"]::before { content: ""; position: absolute; left: .08rem; top: .38rem; width: 1rem; height: 1rem; border: 1.5px solid #7a7a7a; border-radius: .32rem; background: transparent; }
+    .rich-editor li[data-type="task-item"][data-checked="true"]::before { border-color: #FFD2D7; background: #FFD2D7; }
+    .rich-editor li[data-type="task-item"][data-checked="true"]::after { content: ""; position: absolute; left: .39rem; top: .55rem; width: .36rem; height: .6rem; border: solid #0a0a0a; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+    .rich-editor li[data-type="task-item"][data-checked="true"] { color: #858585; }
+    .rich-editor blockquote { border-left: 1.5px solid #8b8b8b; margin: .38rem 0; padding-left: .8rem; color: #ccc; }
+    .note-title-input { font-size: 32px !important; }
+    .note-toolbar-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+    .note-toolbar-scroll::-webkit-scrollbar { display: none; }
     .thin-scroll::-webkit-scrollbar { width: 8px; }
     .thin-scroll::-webkit-scrollbar-track { background: transparent; }
     .thin-scroll::-webkit-scrollbar-thumb { background: #2d2d2d; border-radius: 999px; }

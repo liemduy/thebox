@@ -44,6 +44,8 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
       : syncStatus === "saving"
         ? "#FFD2D7"
         : "#666666";
+  const textLevelLabels = { body: "Body", title: "Title", heading: "Heading", subheading: "Subheading", small: "Small" };
+  const textLevelLabel = textLevelLabels[toolbarState.textLevel] || "Body";
   const keepToolbarFocus = (event) => event.preventDefault();
   const toolbarButtonProps = (action) => ({
     onPointerDown: (event) => {
@@ -64,8 +66,8 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
           <button type="button" onClick={save} className="h-10 min-w-8 grid place-items-center text-[#FFD2D7] hover:text-white transition-colors text-[30px] font-light leading-none" aria-label="Back">
             &lt;
           </button>
-          <div className="flex-1 min-w-0 overflow-x-auto thin-scroll flex items-center gap-0.5">
-            <button type="button" {...toolbarButtonProps(() => runEditorCommand("heading"))} className={`${topButtonClassName(toolbarState.heading)} w-8 font-serif font-bold text-[16px] leading-none tracking-tight`} aria-label={toolbarState.heading ? "Body text" : "Heading"}>Aa</button>
+          <div className="note-toolbar-scroll flex-1 min-w-0 overflow-x-auto flex items-center gap-0.5">
+            <button type="button" {...toolbarButtonProps(() => runEditorCommand("heading"))} className={`${topButtonClassName(toolbarState.heading)} w-9 font-serif font-bold text-[16px] leading-none tracking-tight`} title={`Text style: ${textLevelLabel}`} aria-label={`Text style: ${textLevelLabel}`}>Aa</button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("bold"))} className={topButtonClassName(toolbarState.bold)} aria-label="Bold"><Bold size={17} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("italic"))} className={topButtonClassName(toolbarState.italic)} aria-label="Italic"><Italic size={17} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("underline"))} className={topButtonClassName(toolbarState.underline)} aria-label="Underline"><Underline size={17} /></button>
@@ -73,6 +75,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("indent-out"))} className={topButtonClassName(false)} aria-label="Outdent"><Indent size={17} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("indent-in"))} className={topButtonClassName(false)} aria-label="Indent"><IndentIncrease size={17} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("quote"))} className={topButtonClassName(toolbarState.quote)} aria-label="Quote"><Quote size={16} /></button>
+            <button type="button" {...toolbarButtonProps(() => runEditorCommand("checklist"))} className={topButtonClassName(toolbarState.checklist)} aria-label="Checklist"><CheckSquare size={16} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("list"))} className={topButtonClassName(toolbarState.bullet || toolbarState.ordered)} aria-label={toolbarState.ordered ? "Turn list off" : toolbarState.bullet ? "Numbered list" : "Bullet list"}>
               <span className="text-[15px] font-extrabold leading-none">{toolbarState.ordered ? "1." : "\u2022"}</span>
             </button>
@@ -87,7 +90,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
       </div>
       <div className="w-full max-w-md h-[100dvh] bg-[#0a0a0a] flex flex-col" style={editorScreenStyle}>
         <div className="flex-1 min-h-0 overflow-y-auto thin-scroll px-5 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]">
-          <input ref={titleRef} type="text" placeholder="Title" defaultValue={initialTitle} className="w-full bg-transparent border-none outline-none px-0 pt-2 pb-1 text-white text-[24px] font-extrabold leading-tight placeholder:text-[#555555] tracking-normal" />
+          <input ref={titleRef} type="text" placeholder="Title" defaultValue={initialTitle} className="note-title-input w-full bg-transparent border-none outline-none px-0 pt-3 pb-2 text-white font-black leading-[1.04] placeholder:text-[#555555] tracking-normal" />
           <ProseMirrorNoteEditor
             key={editorKey}
             initialHtml={initialHtml}

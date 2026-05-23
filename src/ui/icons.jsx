@@ -20,12 +20,13 @@ const iconPaths = {
   X: (<path d="M18 6 6 18M6 6l12 12"/>),
   CalendarDays: (<><path d="M8 2v4M16 2v4M3 10h18"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></>),
   ClipboardList: (<><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/></>),
+  CheckSquare: (<><path d="M8 12.5 10.5 15 16 9"/><rect x="3.5" y="3.5" width="17" height="17" rx="3"/></>),
   Bold: (<><path d="M6 4h8a4 4 0 0 1 0 8H6z"/><path d="M6 12h9a4 4 0 0 1 0 8H6z"/></>),
   Italic: (<><line x1="19" x2="10" y1="4" y2="4"/><line x1="14" x2="5" y1="20" y2="20"/><line x1="15" x2="9" y1="4" y2="20"/></>),
   Underline: (<><path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" x2="20" y1="22" y2="22"/></>),
   Indent: (<><path d="M21 6H11M21 12H11M21 18H11M7 8l-4 4 4 4"/></>),
   IndentIncrease: (<><path d="M21 6H11M21 12H11M21 18H11M3 8l4 4-4 4"/></>),
-  Quote: (<><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.75-2-2-2H5c-1.25 0-2 .75-2 2v6c0 1.25.75 2 2 2h1c0 2-1 4-3 4z"/><path d="M14 21c3 0 7-1 7-8V5c0-1.25-.75-2-2-2h-3c-1.25 0-2 .75-2 2v6c0 1.25.75 2 2 2h1c0 2-1 4-3 4z"/></>),
+  Quote: (<><path d="M6 5v14"/><path d="M11 8h8"/><path d="M11 12h6"/><path d="M11 16h8"/></>),
   List: (<><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></>),
   Download: (<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></>),
   Upload: (<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></>),
@@ -63,6 +64,7 @@ const Trash2 = makeIcon("Trash2");
 const X = makeIcon("X");
 const CalendarDays = makeIcon("CalendarDays");
 const ClipboardList = makeIcon("ClipboardList");
+const CheckSquare = makeIcon("CheckSquare");
 const Bold = makeIcon("Bold");
 const Italic = makeIcon("Italic");
 const Underline = makeIcon("Underline");

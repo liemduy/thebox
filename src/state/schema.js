@@ -30,8 +30,8 @@ function uid(prefix = "id") {
 }
 
 function sanitizeHtml(input) {
-  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H2", "H3", "BLOCKQUOTE"]);
-  const indentable = new Set(["DIV", "P", "H2", "H3"]);
+  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H1", "H2", "H3", "BLOCKQUOTE"]);
+  const indentable = new Set(["DIV", "P", "H1", "H2", "H3"]);
   const template = document.createElement("template");
   template.innerHTML = String(input || "");
   function clean(node) {
@@ -46,6 +46,26 @@ function sanitizeHtml(input) {
             const level = Math.max(0, Math.min(4, Number(attr.value) || 0));
             if (level > 0) child.setAttribute("data-indent", String(level));
             else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-size" && child.tagName === "P") {
+            const size = String(attr.value || "").toLowerCase();
+            if (size === "small") child.setAttribute("data-size", "small");
+            else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-type" && child.tagName === "UL") {
+            if (String(attr.value || "") === "task-list") child.setAttribute("data-type", "task-list");
+            else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-type" && child.tagName === "LI") {
+            if (String(attr.value || "") === "task-item") child.setAttribute("data-type", "task-item");
+            else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-checked" && child.tagName === "LI") {
+            child.setAttribute("data-checked", String(attr.value || "") === "true" ? "true" : "false");
             return;
           }
           child.removeAttribute(attr.name);
@@ -63,7 +83,7 @@ function sanitizeHtml(input) {
 function htmlToText(html) {
   const div = document.createElement("div");
   div.innerHTML = sanitizeHtml(html || "");
-  const blockTags = new Set(["DIV", "P", "LI", "H2", "H3", "BLOCKQUOTE"]);
+  const blockTags = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"]);
   const chunks = [];
   function walk(node) {
     [...node.childNodes].forEach(child => {

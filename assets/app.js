@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-prosemirror-note-editor";
-const APP_CACHE_NAME = "idea-box-v68-prosemirror-note-editor";
+const APP_BUILD_ID = "2026-05-23-note-editor-hierarchy";
+const APP_CACHE_NAME = "idea-box-v69-note-editor-hierarchy";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -736,6 +736,15 @@ const iconPaths = {
   }), React.createElement("path", {
     d: "M12 11h4M12 16h4M8 11h.01M8 16h.01"
   })),
+  CheckSquare: React.createElement(React.Fragment, null, React.createElement("path", {
+    d: "M8 12.5 10.5 15 16 9"
+  }), React.createElement("rect", {
+    x: "3.5",
+    y: "3.5",
+    width: "17",
+    height: "17",
+    rx: "3"
+  })),
   Bold: React.createElement(React.Fragment, null, React.createElement("path", {
     d: "M6 4h8a4 4 0 0 1 0 8H6z"
   }), React.createElement("path", {
@@ -772,9 +781,13 @@ const iconPaths = {
     d: "M21 6H11M21 12H11M21 18H11M3 8l4 4-4 4"
   })),
   Quote: React.createElement(React.Fragment, null, React.createElement("path", {
-    d: "M3 21c3 0 7-1 7-8V5c0-1.25-.75-2-2-2H5c-1.25 0-2 .75-2 2v6c0 1.25.75 2 2 2h1c0 2-1 4-3 4z"
+    d: "M6 5v14"
   }), React.createElement("path", {
-    d: "M14 21c3 0 7-1 7-8V5c0-1.25-.75-2-2-2h-3c-1.25 0-2 .75-2 2v6c0 1.25.75 2 2 2h1c0 2-1 4-3 4z"
+    d: "M11 8h8"
+  }), React.createElement("path", {
+    d: "M11 12h6"
+  }), React.createElement("path", {
+    d: "M11 16h8"
   })),
   List: React.createElement(React.Fragment, null, React.createElement("line", {
     x1: "8",
@@ -880,6 +893,7 @@ const Trash2 = makeIcon("Trash2");
 const X = makeIcon("X");
 const CalendarDays = makeIcon("CalendarDays");
 const ClipboardList = makeIcon("ClipboardList");
+const CheckSquare = makeIcon("CheckSquare");
 const Bold = makeIcon("Bold");
 const Italic = makeIcon("Italic");
 const Underline = makeIcon("Underline");
@@ -1040,8 +1054,8 @@ function uid(prefix = "id") {
   return id;
 }
 function sanitizeHtml(input) {
-  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H2", "H3", "BLOCKQUOTE"]);
-  const indentable = new Set(["DIV", "P", "H2", "H3"]);
+  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H1", "H2", "H3", "BLOCKQUOTE"]);
+  const indentable = new Set(["DIV", "P", "H1", "H2", "H3"]);
   const template = document.createElement("template");
   template.innerHTML = String(input || "");
   function clean(node) {
@@ -1055,6 +1069,23 @@ function sanitizeHtml(input) {
           if (attr.name === "data-indent" && indentable.has(child.tagName)) {
             const level = Math.max(0, Math.min(4, Number(attr.value) || 0));
             if (level > 0) child.setAttribute("data-indent", String(level));else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-size" && child.tagName === "P") {
+            const size = String(attr.value || "").toLowerCase();
+            if (size === "small") child.setAttribute("data-size", "small");else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-type" && child.tagName === "UL") {
+            if (String(attr.value || "") === "task-list") child.setAttribute("data-type", "task-list");else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-type" && child.tagName === "LI") {
+            if (String(attr.value || "") === "task-item") child.setAttribute("data-type", "task-item");else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-checked" && child.tagName === "LI") {
+            child.setAttribute("data-checked", String(attr.value || "") === "true" ? "true" : "false");
             return;
           }
           child.removeAttribute(attr.name);
@@ -1071,7 +1102,7 @@ function sanitizeHtml(input) {
 function htmlToText(html) {
   const div = document.createElement("div");
   div.innerHTML = sanitizeHtml(html || "");
-  const blockTags = new Set(["DIV", "P", "LI", "H2", "H3", "BLOCKQUOTE"]);
+  const blockTags = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"]);
   const chunks = [];
   function walk(node) {
     [...node.childNodes].forEach(child => {
@@ -3306,12 +3337,15 @@ const NOTE_EDITOR_EMPTY_TOOLBAR = {
   heading: false,
   bullet: false,
   ordered: false,
+  checklist: false,
   quote: false,
   canUndo: false,
   canRedo: false,
-  indentLevel: 0
+  indentLevel: 0,
+  textLevel: "body"
 };
 let noteEditorSchemaCache = null;
+const NOTE_TEXT_LEVELS = ["body", "title", "heading", "subheading", "small"];
 function noteEditorPM() {
   return window.ProseMirrorBundle || null;
 }
@@ -3324,8 +3358,19 @@ function noteIndentAttrs(value) {
     "data-indent": String(indent)
   } : {};
 }
+function noteParagraphAttrs(indent, size) {
+  const attrs = noteIndentAttrs(indent);
+  if (size === "small") attrs["data-size"] = "small";
+  return attrs;
+}
 function parseNoteIndent(dom) {
   return clampNoteIndent(dom?.getAttribute?.("data-indent"));
+}
+function parseNoteParagraphSize(dom) {
+  return String(dom?.getAttribute?.("data-size") || "") === "small" ? "small" : "body";
+}
+function normalizeNoteTextLevel(value) {
+  return NOTE_TEXT_LEVELS.includes(value) ? value : "body";
 }
 function createNoteEditorSchema() {
   const pm = noteEditorPM();
@@ -3339,16 +3384,20 @@ function createNoteEditorSchema() {
     attrs: {
       indent: {
         default: 0
+      },
+      size: {
+        default: "body"
       }
     },
     parseDOM: [{
       tag: "p",
       getAttrs: dom => ({
-        indent: parseNoteIndent(dom)
+        indent: parseNoteIndent(dom),
+        size: parseNoteParagraphSize(dom)
       })
     }],
     toDOM(node) {
-      return ["p", noteIndentAttrs(node.attrs.indent), 0];
+      return ["p", noteParagraphAttrs(node.attrs.indent, node.attrs.size), 0];
     }
   });
   nodes = nodes.update("heading", {
@@ -3370,6 +3419,39 @@ function createNoteEditorSchema() {
     })),
     toDOM(node) {
       return [`h${node.attrs.level}`, noteIndentAttrs(node.attrs.indent), 0];
+    }
+  });
+  nodes = nodes.addToEnd("task_list", {
+    group: "block",
+    content: "task_item+",
+    parseDOM: [{
+      tag: "ul[data-type='task-list']"
+    }],
+    toDOM() {
+      return ["ul", {
+        "data-type": "task-list"
+      }, 0];
+    }
+  });
+  nodes = nodes.addToEnd("task_item", {
+    content: "paragraph block*",
+    defining: true,
+    attrs: {
+      checked: {
+        default: false
+      }
+    },
+    parseDOM: [{
+      tag: "li[data-type='task-item']",
+      getAttrs: dom => ({
+        checked: String(dom?.getAttribute?.("data-checked") || "") === "true"
+      })
+    }],
+    toDOM(node) {
+      return ["li", {
+        "data-type": "task-item",
+        "data-checked": node.attrs.checked ? "true" : "false"
+      }, 0];
     }
   });
   const marks = pm.basicSchema.spec.marks.addToEnd("underline", {
@@ -3395,10 +3477,11 @@ function normalizeHtmlForNoteEditor(html) {
   wrapper.querySelectorAll("div").forEach(div => {
     const p = document.createElement("p");
     if (div.hasAttribute("data-indent")) p.setAttribute("data-indent", div.getAttribute("data-indent"));
+    if (div.getAttribute("data-size") === "small") p.setAttribute("data-size", "small");
     p.innerHTML = div.innerHTML || "<br>";
     div.replaceWith(p);
   });
-  if (!wrapper.textContent.trim() && !wrapper.querySelector("br, ul, ol, blockquote, h2, h3")) {
+  if (!wrapper.textContent.trim() && !wrapper.querySelector("br, ul, ol, blockquote, h1, h2, h3")) {
     wrapper.innerHTML = "<p></p>";
   }
   return wrapper.innerHTML;
@@ -3459,6 +3542,28 @@ function noteEditorHashtagPlugin() {
     }
   });
 }
+function noteEditorChecklistPlugin(schema) {
+  const pm = noteEditorPM();
+  return new pm.Plugin({
+    props: {
+      handleClick(view, pos, event) {
+        const itemEl = event.target?.closest?.("li[data-type='task-item']");
+        if (!itemEl || !view.dom.contains(itemEl)) return false;
+        const rect = itemEl.getBoundingClientRect();
+        if (event.clientX > rect.left + 30) return false;
+        const itemPos = view.posAtDOM(itemEl, 0);
+        const item = view.state.doc.nodeAt(itemPos);
+        if (!item || item.type !== schema.nodes.task_item) return false;
+        view.dispatch(view.state.tr.setNodeMarkup(itemPos, undefined, {
+          ...item.attrs,
+          checked: !item.attrs.checked
+        }).scrollIntoView());
+        view.focus();
+        return true;
+      }
+    }
+  });
+}
 function createNoteEditorState(schema, html) {
   const pm = noteEditorPM();
   const doc = parseNoteEditorDoc(schema, html);
@@ -3467,7 +3572,7 @@ function createNoteEditorState(schema, html) {
     doc,
     plugins: [pm.history({
       depth: 120
-    }), noteEditorHashtagPlugin(), noteEditorPlaceholderPlugin(schema), pm.keymap(commands), pm.keymap(pm.baseKeymap)]
+    }), noteEditorHashtagPlugin(), noteEditorChecklistPlugin(schema), noteEditorPlaceholderPlugin(schema), pm.keymap(commands), pm.keymap(pm.baseKeymap)]
   });
 }
 function noteEditorKeymapCommands(schema) {
@@ -3479,9 +3584,9 @@ function noteEditorKeymapCommands(schema) {
     "Mod-z": pm.undo,
     "Shift-Mod-z": pm.redo,
     "Mod-y": pm.redo,
-    "Enter": pm.splitListItem(schema.nodes.list_item),
-    "Tab": pm.sinkListItem(schema.nodes.list_item),
-    "Shift-Tab": pm.liftListItem(schema.nodes.list_item)
+    "Enter": splitActiveListItemCommand(schema),
+    "Tab": indentCommand(schema, 1),
+    "Shift-Tab": indentCommand(schema, -1)
   };
 }
 function markIsActive(state, markType) {
@@ -3524,9 +3629,30 @@ function findParentNodeOfType(state, type) {
 }
 function currentListKind(state) {
   const schema = state.schema;
+  if (findParentNodeOfType(state, schema.nodes.task_list)) return "checklist";
   if (findParentNodeOfType(state, schema.nodes.bullet_list)) return "bullet";
   if (findParentNodeOfType(state, schema.nodes.ordered_list)) return "ordered";
   return "none";
+}
+function activeListItemType(state) {
+  const schema = state.schema;
+  if (findParentNodeOfType(state, schema.nodes.task_item)) return schema.nodes.task_item;
+  if (findParentNodeOfType(state, schema.nodes.list_item)) return schema.nodes.list_item;
+  return null;
+}
+function textLevelForBlock(node, schema) {
+  if (!node) return "body";
+  if (node.type === schema.nodes.heading) {
+    if (Number(node.attrs.level) === 1) return "title";
+    if (Number(node.attrs.level) === 2) return "heading";
+    return "subheading";
+  }
+  if (node.type === schema.nodes.paragraph && node.attrs.size === "small") return "small";
+  return "body";
+}
+function nextNoteTextLevel(current) {
+  const index = NOTE_TEXT_LEVELS.indexOf(normalizeNoteTextLevel(current));
+  return NOTE_TEXT_LEVELS[(index + 1) % NOTE_TEXT_LEVELS.length];
 }
 function readNoteEditorToolbarState(view) {
   if (!view) return NOTE_EDITOR_EMPTY_TOOLBAR;
@@ -3535,17 +3661,20 @@ function readNoteEditorToolbarState(view) {
   const schema = state.schema;
   const textblock = currentTextblockWithPos(state);
   const listKind = currentListKind(state);
+  const textLevel = textLevelForBlock(textblock?.node, schema);
   return {
     bold: markIsActive(state, schema.marks.strong),
     italic: markIsActive(state, schema.marks.em),
     underline: markIsActive(state, schema.marks.underline),
-    heading: textblock?.node.type === schema.nodes.heading,
+    heading: textLevel !== "body",
     bullet: listKind === "bullet",
     ordered: listKind === "ordered",
+    checklist: listKind === "checklist",
     quote: Boolean(findParentNodeOfType(state, schema.nodes.blockquote)),
     canUndo: pm.undo(state),
     canRedo: pm.redo(state),
-    indentLevel: clampNoteIndent(textblock?.node.attrs.indent)
+    indentLevel: clampNoteIndent(textblock?.node.attrs.indent),
+    textLevel
   };
 }
 function selectedTextblockPositions(state) {
@@ -3596,20 +3725,41 @@ function updateSelectedBlockIndent(schema, delta) {
     return changed;
   };
 }
-function toggleHeadingCommand(schema) {
+function cycleTextLevelCommand(schema) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
     const block = currentTextblockWithPos(state);
     const indent = clampNoteIndent(block?.node.attrs.indent);
-    if (block?.node.type === schema.nodes.heading) {
-      return pm.setBlockType(schema.nodes.paragraph, {
+    const nextLevel = nextNoteTextLevel(textLevelForBlock(block?.node, schema));
+    if (nextLevel === "title") {
+      return pm.setBlockType(schema.nodes.heading, {
+        level: 1,
         indent
       })(state, dispatch);
     }
-    return pm.setBlockType(schema.nodes.heading, {
-      level: 3,
-      indent
+    if (nextLevel === "heading") {
+      return pm.setBlockType(schema.nodes.heading, {
+        level: 2,
+        indent
+      })(state, dispatch);
+    }
+    if (nextLevel === "subheading") {
+      return pm.setBlockType(schema.nodes.heading, {
+        level: 3,
+        indent
+      })(state, dispatch);
+    }
+    return pm.setBlockType(schema.nodes.paragraph, {
+      indent,
+      size: nextLevel === "small" ? "small" : "body"
     })(state, dispatch);
+  };
+}
+function splitActiveListItemCommand(schema) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    const itemType = activeListItemType(state);
+    return itemType ? pm.splitListItem(itemType)(state, dispatch) : false;
   };
 }
 function cycleListCommand(schema) {
@@ -3617,6 +3767,7 @@ function cycleListCommand(schema) {
   return (state, dispatch) => {
     const bulletList = findParentNodeOfType(state, schema.nodes.bullet_list);
     const orderedList = findParentNodeOfType(state, schema.nodes.ordered_list);
+    if (findParentNodeOfType(state, schema.nodes.task_list)) return pm.liftListItem(schema.nodes.task_item)(state, dispatch);
     if (bulletList) {
       if (dispatch) dispatch(state.tr.setNodeMarkup(bulletList.pos, schema.nodes.ordered_list, {
         order: 1
@@ -3625,6 +3776,18 @@ function cycleListCommand(schema) {
     }
     if (orderedList) return pm.liftListItem(schema.nodes.list_item)(state, dispatch);
     return pm.wrapInList(schema.nodes.bullet_list)(state, dispatch);
+  };
+}
+function toggleChecklistCommand(schema) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    if (findParentNodeOfType(state, schema.nodes.task_list)) {
+      return pm.liftListItem(schema.nodes.task_item)(state, dispatch);
+    }
+    if (findParentNodeOfType(state, schema.nodes.bullet_list) || findParentNodeOfType(state, schema.nodes.ordered_list)) {
+      return false;
+    }
+    return pm.wrapInList(schema.nodes.task_list)(state, dispatch);
   };
 }
 function toggleQuoteCommand(schema) {
@@ -3644,7 +3807,9 @@ function indentCommand(schema, delta) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
     if (currentListKind(state) !== "none") {
-      const command = delta > 0 ? pm.sinkListItem(schema.nodes.list_item) : pm.liftListItem(schema.nodes.list_item);
+      const itemType = activeListItemType(state);
+      if (!itemType) return false;
+      const command = delta > 0 ? pm.sinkListItem(itemType) : pm.liftListItem(itemType);
       return command(state, dispatch);
     }
     return updateSelectedBlockIndent(schema, delta)(state, dispatch);
@@ -3658,8 +3823,9 @@ function runNoteEditorCommand(view, commandName) {
     bold: pm.toggleMark(schema.marks.strong),
     italic: pm.toggleMark(schema.marks.em),
     underline: pm.toggleMark(schema.marks.underline),
-    heading: toggleHeadingCommand(schema),
+    heading: cycleTextLevelCommand(schema),
     list: cycleListCommand(schema),
+    checklist: toggleChecklistCommand(schema),
     quote: toggleQuoteCommand(schema),
     "indent-in": indentCommand(schema, 1),
     "indent-out": indentCommand(schema, -1),
@@ -3792,6 +3958,14 @@ function RichNoteModal({
   const topButtonClassName = (active = false) => `relative h-10 w-7 shrink-0 grid place-items-center disabled:opacity-35 disabled:hover:text-[#606060] transition-colors after:absolute after:left-2 after:right-2 after:bottom-1 after:h-px after:rounded-full after:transition-opacity ${active ? "text-[#FFD2D7] after:bg-[#FFD2D7] after:opacity-100" : "text-[#A7A7A7] hover:text-white after:opacity-0"}`;
   const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
   const syncColor = syncStatus === "saved" ? "#FFD2D7" : syncStatus === "error" ? "#fb7185" : syncStatus === "saving" ? "#FFD2D7" : "#666666";
+  const textLevelLabels = {
+    body: "Body",
+    title: "Title",
+    heading: "Heading",
+    subheading: "Subheading",
+    small: "Small"
+  };
+  const textLevelLabel = textLevelLabels[toolbarState.textLevel] || "Body";
   const keepToolbarFocus = event => event.preventDefault();
   const toolbarButtonProps = action => ({
     onPointerDown: event => {
@@ -3817,12 +3991,13 @@ function RichNoteModal({
     className: "h-10 min-w-8 grid place-items-center text-[#FFD2D7] hover:text-white transition-colors text-[30px] font-light leading-none",
     "aria-label": "Back"
   }, "<"), React.createElement("div", {
-    className: "flex-1 min-w-0 overflow-x-auto thin-scroll flex items-center gap-0.5"
+    className: "note-toolbar-scroll flex-1 min-w-0 overflow-x-auto flex items-center gap-0.5"
   }, React.createElement("button", _extends({
     type: "button"
   }, toolbarButtonProps(() => runEditorCommand("heading")), {
-    className: `${topButtonClassName(toolbarState.heading)} w-8 font-serif font-bold text-[16px] leading-none tracking-tight`,
-    "aria-label": toolbarState.heading ? "Body text" : "Heading"
+    className: `${topButtonClassName(toolbarState.heading)} w-9 font-serif font-bold text-[16px] leading-none tracking-tight`,
+    title: `Text style: ${textLevelLabel}`,
+    "aria-label": `Text style: ${textLevelLabel}`
   }), "Aa"), React.createElement("button", _extends({
     type: "button"
   }, toolbarButtonProps(() => runEditorCommand("bold")), {
@@ -3866,6 +4041,13 @@ function RichNoteModal({
     className: topButtonClassName(toolbarState.quote),
     "aria-label": "Quote"
   }), React.createElement(Quote, {
+    size: 16
+  })), React.createElement("button", _extends({
+    type: "button"
+  }, toolbarButtonProps(() => runEditorCommand("checklist")), {
+    className: topButtonClassName(toolbarState.checklist),
+    "aria-label": "Checklist"
+  }), React.createElement(CheckSquare, {
     size: 16
   })), React.createElement("button", _extends({
     type: "button"
@@ -3919,7 +4101,7 @@ function RichNoteModal({
     type: "text",
     placeholder: "Title",
     defaultValue: initialTitle,
-    className: "w-full bg-transparent border-none outline-none px-0 pt-2 pb-1 text-white text-[24px] font-extrabold leading-tight placeholder:text-[#555555] tracking-normal"
+    className: "note-title-input w-full bg-transparent border-none outline-none px-0 pt-3 pb-2 text-white font-black leading-[1.04] placeholder:text-[#555555] tracking-normal"
   }), React.createElement(ProseMirrorNoteEditor, {
     key: editorKey,
     initialHtml: initialHtml,

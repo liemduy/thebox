@@ -5,13 +5,16 @@ const NOTE_EDITOR_EMPTY_TOOLBAR = {
   heading: false,
   bullet: false,
   ordered: false,
+  checklist: false,
   quote: false,
   canUndo: false,
   canRedo: false,
-  indentLevel: 0
+  indentLevel: 0,
+  textLevel: "body"
 };
 
 let noteEditorSchemaCache = null;
+const NOTE_TEXT_LEVELS = ["body", "title", "heading", "subheading", "small"];
 
 function noteEditorPM() {
   return window.ProseMirrorBundle || null;
@@ -26,8 +29,22 @@ function noteIndentAttrs(value) {
   return indent > 0 ? { "data-indent": String(indent) } : {};
 }
 
+function noteParagraphAttrs(indent, size) {
+  const attrs = noteIndentAttrs(indent);
+  if (size === "small") attrs["data-size"] = "small";
+  return attrs;
+}
+
 function parseNoteIndent(dom) {
   return clampNoteIndent(dom?.getAttribute?.("data-indent"));
+}
+
+function parseNoteParagraphSize(dom) {
+  return String(dom?.getAttribute?.("data-size") || "") === "small" ? "small" : "body";
+}
+
+function normalizeNoteTextLevel(value) {
+  return NOTE_TEXT_LEVELS.includes(value) ? value : "body";
 }
 
 function createNoteEditorSchema() {
@@ -41,10 +58,10 @@ function createNoteEditorSchema() {
 
   nodes = nodes.update("paragraph", {
     ...paragraphSpec,
-    attrs: { indent: { default: 0 } },
-    parseDOM: [{ tag: "p", getAttrs: dom => ({ indent: parseNoteIndent(dom) }) }],
+    attrs: { indent: { default: 0 }, size: { default: "body" } },
+    parseDOM: [{ tag: "p", getAttrs: dom => ({ indent: parseNoteIndent(dom), size: parseNoteParagraphSize(dom) }) }],
     toDOM(node) {
-      return ["p", noteIndentAttrs(node.attrs.indent), 0];
+      return ["p", noteParagraphAttrs(node.attrs.indent, node.attrs.size), 0];
     }
   });
 
@@ -57,6 +74,28 @@ function createNoteEditorSchema() {
     })),
     toDOM(node) {
       return [`h${node.attrs.level}`, noteIndentAttrs(node.attrs.indent), 0];
+    }
+  });
+
+  nodes = nodes.addToEnd("task_list", {
+    group: "block",
+    content: "task_item+",
+    parseDOM: [{ tag: "ul[data-type='task-list']" }],
+    toDOM() {
+      return ["ul", { "data-type": "task-list" }, 0];
+    }
+  });
+
+  nodes = nodes.addToEnd("task_item", {
+    content: "paragraph block*",
+    defining: true,
+    attrs: { checked: { default: false } },
+    parseDOM: [{
+      tag: "li[data-type='task-item']",
+      getAttrs: dom => ({ checked: String(dom?.getAttribute?.("data-checked") || "") === "true" })
+    }],
+    toDOM(node) {
+      return ["li", { "data-type": "task-item", "data-checked": node.attrs.checked ? "true" : "false" }, 0];
     }
   });
 
@@ -83,10 +122,11 @@ function normalizeHtmlForNoteEditor(html) {
   wrapper.querySelectorAll("div").forEach(div => {
     const p = document.createElement("p");
     if (div.hasAttribute("data-indent")) p.setAttribute("data-indent", div.getAttribute("data-indent"));
+    if (div.getAttribute("data-size") === "small") p.setAttribute("data-size", "small");
     p.innerHTML = div.innerHTML || "<br>";
     div.replaceWith(p);
   });
-  if (!wrapper.textContent.trim() && !wrapper.querySelector("br, ul, ol, blockquote, h2, h3")) {
+  if (!wrapper.textContent.trim() && !wrapper.querySelector("br, ul, ol, blockquote, h1, h2, h3")) {
     wrapper.innerHTML = "<p></p>";
   }
   return wrapper.innerHTML;
@@ -150,6 +190,26 @@ function noteEditorHashtagPlugin() {
   });
 }
 
+function noteEditorChecklistPlugin(schema) {
+  const pm = noteEditorPM();
+  return new pm.Plugin({
+    props: {
+      handleClick(view, pos, event) {
+        const itemEl = event.target?.closest?.("li[data-type='task-item']");
+        if (!itemEl || !view.dom.contains(itemEl)) return false;
+        const rect = itemEl.getBoundingClientRect();
+        if (event.clientX > rect.left + 30) return false;
+        const itemPos = view.posAtDOM(itemEl, 0);
+        const item = view.state.doc.nodeAt(itemPos);
+        if (!item || item.type !== schema.nodes.task_item) return false;
+        view.dispatch(view.state.tr.setNodeMarkup(itemPos, undefined, { ...item.attrs, checked: !item.attrs.checked }).scrollIntoView());
+        view.focus();
+        return true;
+      }
+    }
+  });
+}
+
 function createNoteEditorState(schema, html) {
   const pm = noteEditorPM();
   const doc = parseNoteEditorDoc(schema, html);
@@ -159,6 +219,7 @@ function createNoteEditorState(schema, html) {
     plugins: [
       pm.history({ depth: 120 }),
       noteEditorHashtagPlugin(),
+      noteEditorChecklistPlugin(schema),
       noteEditorPlaceholderPlugin(schema),
       pm.keymap(commands),
       pm.keymap(pm.baseKeymap)
@@ -175,9 +236,9 @@ function noteEditorKeymapCommands(schema) {
     "Mod-z": pm.undo,
     "Shift-Mod-z": pm.redo,
     "Mod-y": pm.redo,
-    "Enter": pm.splitListItem(schema.nodes.list_item),
-    "Tab": pm.sinkListItem(schema.nodes.list_item),
-    "Shift-Tab": pm.liftListItem(schema.nodes.list_item)
+    "Enter": splitActiveListItemCommand(schema),
+    "Tab": indentCommand(schema, 1),
+    "Shift-Tab": indentCommand(schema, -1)
   };
 }
 
@@ -207,9 +268,33 @@ function findParentNodeOfType(state, type) {
 
 function currentListKind(state) {
   const schema = state.schema;
+  if (findParentNodeOfType(state, schema.nodes.task_list)) return "checklist";
   if (findParentNodeOfType(state, schema.nodes.bullet_list)) return "bullet";
   if (findParentNodeOfType(state, schema.nodes.ordered_list)) return "ordered";
   return "none";
+}
+
+function activeListItemType(state) {
+  const schema = state.schema;
+  if (findParentNodeOfType(state, schema.nodes.task_item)) return schema.nodes.task_item;
+  if (findParentNodeOfType(state, schema.nodes.list_item)) return schema.nodes.list_item;
+  return null;
+}
+
+function textLevelForBlock(node, schema) {
+  if (!node) return "body";
+  if (node.type === schema.nodes.heading) {
+    if (Number(node.attrs.level) === 1) return "title";
+    if (Number(node.attrs.level) === 2) return "heading";
+    return "subheading";
+  }
+  if (node.type === schema.nodes.paragraph && node.attrs.size === "small") return "small";
+  return "body";
+}
+
+function nextNoteTextLevel(current) {
+  const index = NOTE_TEXT_LEVELS.indexOf(normalizeNoteTextLevel(current));
+  return NOTE_TEXT_LEVELS[(index + 1) % NOTE_TEXT_LEVELS.length];
 }
 
 function readNoteEditorToolbarState(view) {
@@ -219,17 +304,20 @@ function readNoteEditorToolbarState(view) {
   const schema = state.schema;
   const textblock = currentTextblockWithPos(state);
   const listKind = currentListKind(state);
+  const textLevel = textLevelForBlock(textblock?.node, schema);
   return {
     bold: markIsActive(state, schema.marks.strong),
     italic: markIsActive(state, schema.marks.em),
     underline: markIsActive(state, schema.marks.underline),
-    heading: textblock?.node.type === schema.nodes.heading,
+    heading: textLevel !== "body",
     bullet: listKind === "bullet",
     ordered: listKind === "ordered",
+    checklist: listKind === "checklist",
     quote: Boolean(findParentNodeOfType(state, schema.nodes.blockquote)),
     canUndo: pm.undo(state),
     canRedo: pm.redo(state),
-    indentLevel: clampNoteIndent(textblock?.node.attrs.indent)
+    indentLevel: clampNoteIndent(textblock?.node.attrs.indent),
+    textLevel
   };
 }
 
@@ -271,15 +359,30 @@ function updateSelectedBlockIndent(schema, delta) {
   };
 }
 
-function toggleHeadingCommand(schema) {
+function cycleTextLevelCommand(schema) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
     const block = currentTextblockWithPos(state);
     const indent = clampNoteIndent(block?.node.attrs.indent);
-    if (block?.node.type === schema.nodes.heading) {
-      return pm.setBlockType(schema.nodes.paragraph, { indent })(state, dispatch);
+    const nextLevel = nextNoteTextLevel(textLevelForBlock(block?.node, schema));
+    if (nextLevel === "title") {
+      return pm.setBlockType(schema.nodes.heading, { level: 1, indent })(state, dispatch);
     }
-    return pm.setBlockType(schema.nodes.heading, { level: 3, indent })(state, dispatch);
+    if (nextLevel === "heading") {
+      return pm.setBlockType(schema.nodes.heading, { level: 2, indent })(state, dispatch);
+    }
+    if (nextLevel === "subheading") {
+      return pm.setBlockType(schema.nodes.heading, { level: 3, indent })(state, dispatch);
+    }
+    return pm.setBlockType(schema.nodes.paragraph, { indent, size: nextLevel === "small" ? "small" : "body" })(state, dispatch);
+  };
+}
+
+function splitActiveListItemCommand(schema) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    const itemType = activeListItemType(state);
+    return itemType ? pm.splitListItem(itemType)(state, dispatch) : false;
   };
 }
 
@@ -288,12 +391,26 @@ function cycleListCommand(schema) {
   return (state, dispatch) => {
     const bulletList = findParentNodeOfType(state, schema.nodes.bullet_list);
     const orderedList = findParentNodeOfType(state, schema.nodes.ordered_list);
+    if (findParentNodeOfType(state, schema.nodes.task_list)) return pm.liftListItem(schema.nodes.task_item)(state, dispatch);
     if (bulletList) {
       if (dispatch) dispatch(state.tr.setNodeMarkup(bulletList.pos, schema.nodes.ordered_list, { order: 1 }).scrollIntoView());
       return true;
     }
     if (orderedList) return pm.liftListItem(schema.nodes.list_item)(state, dispatch);
     return pm.wrapInList(schema.nodes.bullet_list)(state, dispatch);
+  };
+}
+
+function toggleChecklistCommand(schema) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    if (findParentNodeOfType(state, schema.nodes.task_list)) {
+      return pm.liftListItem(schema.nodes.task_item)(state, dispatch);
+    }
+    if (findParentNodeOfType(state, schema.nodes.bullet_list) || findParentNodeOfType(state, schema.nodes.ordered_list)) {
+      return false;
+    }
+    return pm.wrapInList(schema.nodes.task_list)(state, dispatch);
   };
 }
 
@@ -315,7 +432,9 @@ function indentCommand(schema, delta) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
     if (currentListKind(state) !== "none") {
-      const command = delta > 0 ? pm.sinkListItem(schema.nodes.list_item) : pm.liftListItem(schema.nodes.list_item);
+      const itemType = activeListItemType(state);
+      if (!itemType) return false;
+      const command = delta > 0 ? pm.sinkListItem(itemType) : pm.liftListItem(itemType);
       return command(state, dispatch);
     }
     return updateSelectedBlockIndent(schema, delta)(state, dispatch);
@@ -330,8 +449,9 @@ function runNoteEditorCommand(view, commandName) {
     bold: pm.toggleMark(schema.marks.strong),
     italic: pm.toggleMark(schema.marks.em),
     underline: pm.toggleMark(schema.marks.underline),
-    heading: toggleHeadingCommand(schema),
+    heading: cycleTextLevelCommand(schema),
     list: cycleListCommand(schema),
+    checklist: toggleChecklistCommand(schema),
     quote: toggleQuoteCommand(schema),
     "indent-in": indentCommand(schema, 1),
     "indent-out": indentCommand(schema, -1),
