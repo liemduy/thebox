@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v64-calendar-progress-fill';
+const CACHE_NAME = 'idea-box-v65-fullscreen-note-editor';
 const APP_SHELL = [
   './',
   './index.html',

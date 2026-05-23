@@ -6,8 +6,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-calendar-progress-fill";
-const APP_CACHE_NAME = "idea-box-v64-calendar-progress-fill";
+const APP_BUILD_ID = "2026-05-23-fullscreen-note-editor";
+const APP_CACHE_NAME = "idea-box-v65-fullscreen-note-editor";
 const LEGACY_KEYS = [
   "idea-box-html-v12-stable-ids",
   "idea-box-html-v10-action-days-db",

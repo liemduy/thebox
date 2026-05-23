@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-calendar-progress-fill";
-const APP_CACHE_NAME = "idea-box-v64-calendar-progress-fill";
+const APP_BUILD_ID = "2026-05-23-fullscreen-note-editor";
+const APP_CACHE_NAME = "idea-box-v65-fullscreen-note-editor";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -3488,51 +3488,47 @@ function RichNoteModal({
     }
     runDelete();
   }
-  const mobileToolbarRoom = toolbarFrame.keyboardOpen ? toolbarFrame.bottom + 66 : 92;
-  const modalShellStyle = toolbarFrame.mobile ? {
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 14px)",
-    paddingBottom: toolbarFrame.keyboardOpen ? `${mobileToolbarRoom}px` : "calc(92px + env(safe-area-inset-bottom, 0px))"
-  } : undefined;
-  const modalShellClassName = toolbarFrame.mobile ? "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" : "fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 pb-28 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200";
-  const modalCardClassName = toolbarFrame.mobile ? "bg-[#1A1A1A] border border-[#323232] rounded-[20px] w-full max-w-[380px] p-4 shadow-2xl animate-in zoom-in-95 duration-200 relative z-10 max-h-[calc(100dvh-150px)] overflow-auto thin-scroll" : "bg-[#1A1A1A] border border-[#323232] rounded-[24px] w-full max-w-[340px] p-5 shadow-2xl animate-in zoom-in-95 duration-200 relative z-10";
-  const editorClassName = toolbarFrame.mobile ? "rich-editor min-h-[185px] max-h-[40dvh] overflow-auto thin-scroll w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-[#E0E0E0] text-[14px] leading-relaxed outline-none focus:border-[#FFD2D7] transition-colors mb-4" : "rich-editor min-h-[150px] max-h-[260px] overflow-auto thin-scroll w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-[#E0E0E0] text-[14px] leading-relaxed outline-none focus:border-[#FFD2D7] transition-colors mb-5";
-  const toolbarClassName = toolbarFrame.mobile ? `fixed left-0 right-0 w-full max-w-none translate-x-0 bg-[#232323] border-t border-[#3E3E3E] border-x-0 border-b-0 rounded-none px-5 ${toolbarFrame.keyboardOpen ? "py-3" : "pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"} flex items-center justify-between shadow-[0_-12px_30px_rgba(0,0,0,0.32)] z-50` : "fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-[340px] bg-[#232323] border border-[#3E3E3E] rounded-[14px] px-5 py-3.5 flex items-center justify-between shadow-2xl z-50";
+  const editorScreenStyle = {
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 8px)",
+    paddingBottom: toolbarFrame.keyboardOpen ? `${toolbarFrame.bottom + 58}px` : "calc(78px + env(safe-area-inset-bottom, 0px))"
+  };
+  const editorClassName = "rich-editor flex-1 min-h-0 overflow-auto thin-scroll w-full bg-transparent border-none outline-none px-5 pt-2 pb-6 text-[#E0E0E0] text-[17px] leading-relaxed";
+  const toolbarClassName = toolbarFrame.mobile ? `fixed left-0 right-0 w-full max-w-none translate-x-0 bg-[#232323] border-t border-[#3E3E3E] border-x-0 border-b-0 rounded-none px-5 ${toolbarFrame.keyboardOpen ? "py-3" : "pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"} flex items-center justify-between shadow-[0_-12px_30px_rgba(0,0,0,0.32)] z-[60]` : "fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-[340px] bg-[#232323] border border-[#3E3E3E] rounded-[14px] px-5 py-3.5 flex items-center justify-between shadow-2xl z-[60]";
   const toolbarStyle = toolbarFrame.mobile ? {
     bottom: `${toolbarFrame.bottom}px`
   } : undefined;
   return React.createElement("div", {
-    className: modalShellClassName,
-    style: modalShellStyle,
-    onClick: onClose
+    className: "fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden"
   }, React.createElement("div", {
-    className: modalCardClassName,
-    onClick: e => e.stopPropagation()
+    className: "w-full max-w-md min-h-[100dvh] bg-[#0a0a0a] flex flex-col",
+    style: editorScreenStyle
   }, React.createElement("div", {
-    className: "flex justify-between items-center mb-5"
-  }, React.createElement("h3", {
-    className: "font-bold text-[18px] text-white"
-  }, isCentralNote ? modal.noteId ? "Edit note" : "New note" : isBoxNote ? "Box notes" : modal.entryId ? "Edit note" : "Add note"), React.createElement("div", {
-    className: "flex items-center gap-2"
+    className: "shrink-0 h-[48px] px-3 flex items-center justify-between"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: save,
+    className: "h-10 min-w-[44px] grid place-items-center text-[#FFD2D7] hover:text-white transition-colors text-[30px] font-light leading-none",
+    "aria-label": "Back"
+  }, "<"), React.createElement("div", {
+    className: "flex items-center gap-1.5"
   }, canDelete && React.createElement("button", {
     type: "button",
     onClick: deleteNote,
-    className: "text-[#666] hover:text-red-300 transition-colors p-1.5 bg-[#2D2D2D] hover:bg-[#3E3E3E] rounded-full",
+    className: "h-10 w-10 grid place-items-center text-[#666] hover:text-red-300 transition-colors",
     "aria-label": "Delete note"
   }, React.createElement(Trash2, {
     size: 18
   })), React.createElement("button", {
     type: "button",
-    onClick: onClose,
-    className: "text-[#A7A7A7] hover:text-white transition-colors p-1.5 bg-[#2D2D2D] hover:bg-[#3E3E3E] rounded-full",
-    "aria-label": "Close"
-  }, React.createElement(X, {
-    size: 18
-  })))), React.createElement("input", {
+    onClick: save,
+    className: "h-10 px-3 text-[#FFD2D7] hover:text-white transition-colors text-[16px] font-extrabold",
+    "aria-label": "Done"
+  }, "Done"))), React.createElement("input", {
     ref: titleRef,
     type: "text",
-    placeholder: "Note title",
+    placeholder: "Title",
     defaultValue: initialTitle,
-    className: "w-full bg-[#111111] border border-[#323232] rounded-[12px] p-3 text-white text-[15px] font-bold outline-none focus:border-[#FFD2D7] placeholder:text-[#555555] transition-colors mb-3"
+    className: "w-full bg-transparent border-none outline-none px-5 pt-2 pb-1 text-white text-[24px] font-extrabold leading-tight placeholder:text-[#555555] tracking-normal"
   }), React.createElement("div", {
     ref: editorRef,
     contentEditable: true,
@@ -3544,17 +3540,7 @@ function RichNoteModal({
     },
     onCompositionEnd: e => highlightEditableHashtags(e.currentTarget),
     className: editorClassName
-  }), React.createElement("div", {
-    className: "flex gap-3"
-  }, React.createElement("button", {
-    type: "button",
-    onClick: onClose,
-    className: "flex-1 bg-[#2D2D2D] hover:bg-[#3E3E3E] text-white font-bold py-3.5 rounded-[12px] transition-colors"
-  }, "Cancel"), React.createElement("button", {
-    type: "button",
-    onClick: save,
-    className: "flex-1 bg-[#FFD2D7] hover:scale-[1.02] active:scale-95 text-black font-bold py-3.5 rounded-[12px] transition-transform"
-  }, "Done"))), React.createElement("div", {
+  })), React.createElement("div", {
     onClick: e => e.stopPropagation(),
     onMouseDown: e => e.preventDefault(),
     className: toolbarClassName,
