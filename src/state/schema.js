@@ -30,8 +30,10 @@ function uid(prefix = "id") {
 }
 
 function sanitizeHtml(input) {
-  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H1", "H2", "H3", "BLOCKQUOTE"]);
+  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H1", "H2", "H3", "BLOCKQUOTE", "TABLE", "TBODY", "THEAD", "TR", "TH", "TD"]);
   const indentable = new Set(["DIV", "P", "H1", "H2", "H3"]);
+  const bulletStyles = new Set(["disc", "circle", "square"]);
+  const orderedStyles = new Set(["decimal", "lower-alpha", "lower-roman"]);
   const template = document.createElement("template");
   template.innerHTML = String(input || "");
   function clean(node) {
@@ -59,6 +61,24 @@ function sanitizeHtml(input) {
             else child.removeAttribute(attr.name);
             return;
           }
+          if (attr.name === "data-list-style" && child.tagName === "UL") {
+            const style = String(attr.value || "").toLowerCase();
+            if (bulletStyles.has(style)) child.setAttribute("data-list-style", style);
+            else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-list-style" && child.tagName === "OL") {
+            const style = String(attr.value || "").toLowerCase();
+            if (orderedStyles.has(style)) child.setAttribute("data-list-style", style);
+            else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "start" && child.tagName === "OL") {
+            const start = Math.max(1, Math.min(999, Number(attr.value) || 1));
+            if (start > 1) child.setAttribute("start", String(start));
+            else child.removeAttribute(attr.name);
+            return;
+          }
           if (attr.name === "data-type" && child.tagName === "LI") {
             if (String(attr.value || "") === "task-item") child.setAttribute("data-type", "task-item");
             else child.removeAttribute(attr.name);
@@ -83,7 +103,7 @@ function sanitizeHtml(input) {
 function htmlToText(html) {
   const div = document.createElement("div");
   div.innerHTML = sanitizeHtml(html || "");
-  const blockTags = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"]);
+  const blockTags = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE", "TABLE", "TR", "TH", "TD"]);
   const chunks = [];
   function walk(node) {
     [...node.childNodes].forEach(child => {

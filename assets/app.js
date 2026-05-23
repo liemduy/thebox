@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-note-editor-hierarchy";
-const APP_CACHE_NAME = "idea-box-v69-note-editor-hierarchy";
+const APP_BUILD_ID = "2026-05-23-note-editor-lists-tables";
+const APP_CACHE_NAME = "idea-box-v70-note-editor-lists-tables";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -745,6 +745,15 @@ const iconPaths = {
     height: "17",
     rx: "3"
   })),
+  Table2: React.createElement(React.Fragment, null, React.createElement("rect", {
+    x: "3.5",
+    y: "4.5",
+    width: "17",
+    height: "15",
+    rx: "1.5"
+  }), React.createElement("path", {
+    d: "M3.5 9.5h17M3.5 14.5h17M10 4.5v15M16 4.5v15"
+  })),
   Bold: React.createElement(React.Fragment, null, React.createElement("path", {
     d: "M6 4h8a4 4 0 0 1 0 8H6z"
   }), React.createElement("path", {
@@ -894,6 +903,7 @@ const X = makeIcon("X");
 const CalendarDays = makeIcon("CalendarDays");
 const ClipboardList = makeIcon("ClipboardList");
 const CheckSquare = makeIcon("CheckSquare");
+const Table2 = makeIcon("Table2");
 const Bold = makeIcon("Bold");
 const Italic = makeIcon("Italic");
 const Underline = makeIcon("Underline");
@@ -1054,8 +1064,10 @@ function uid(prefix = "id") {
   return id;
 }
 function sanitizeHtml(input) {
-  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H1", "H2", "H3", "BLOCKQUOTE"]);
+  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H1", "H2", "H3", "BLOCKQUOTE", "TABLE", "TBODY", "THEAD", "TR", "TH", "TD"]);
   const indentable = new Set(["DIV", "P", "H1", "H2", "H3"]);
+  const bulletStyles = new Set(["disc", "circle", "square"]);
+  const orderedStyles = new Set(["decimal", "lower-alpha", "lower-roman"]);
   const template = document.createElement("template");
   template.innerHTML = String(input || "");
   function clean(node) {
@@ -1080,6 +1092,21 @@ function sanitizeHtml(input) {
             if (String(attr.value || "") === "task-list") child.setAttribute("data-type", "task-list");else child.removeAttribute(attr.name);
             return;
           }
+          if (attr.name === "data-list-style" && child.tagName === "UL") {
+            const style = String(attr.value || "").toLowerCase();
+            if (bulletStyles.has(style)) child.setAttribute("data-list-style", style);else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-list-style" && child.tagName === "OL") {
+            const style = String(attr.value || "").toLowerCase();
+            if (orderedStyles.has(style)) child.setAttribute("data-list-style", style);else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "start" && child.tagName === "OL") {
+            const start = Math.max(1, Math.min(999, Number(attr.value) || 1));
+            if (start > 1) child.setAttribute("start", String(start));else child.removeAttribute(attr.name);
+            return;
+          }
           if (attr.name === "data-type" && child.tagName === "LI") {
             if (String(attr.value || "") === "task-item") child.setAttribute("data-type", "task-item");else child.removeAttribute(attr.name);
             return;
@@ -1102,7 +1129,7 @@ function sanitizeHtml(input) {
 function htmlToText(html) {
   const div = document.createElement("div");
   div.innerHTML = sanitizeHtml(html || "");
-  const blockTags = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"]);
+  const blockTags = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE", "TABLE", "TR", "TH", "TD"]);
   const chunks = [];
   function walk(node) {
     [...node.childNodes].forEach(child => {
@@ -3339,13 +3366,17 @@ const NOTE_EDITOR_EMPTY_TOOLBAR = {
   ordered: false,
   checklist: false,
   quote: false,
+  table: false,
   canUndo: false,
   canRedo: false,
   indentLevel: 0,
-  textLevel: "body"
+  textLevel: "body",
+  listStyle: "none"
 };
 let noteEditorSchemaCache = null;
 const NOTE_TEXT_LEVELS = ["body", "title", "heading", "subheading", "small"];
+const NOTE_BULLET_STYLES = ["disc", "circle", "square"];
+const NOTE_ORDERED_STYLES = ["decimal", "lower-alpha", "lower-roman"];
 function noteEditorPM() {
   return window.ProseMirrorBundle || null;
 }
@@ -3372,6 +3403,25 @@ function parseNoteParagraphSize(dom) {
 function normalizeNoteTextLevel(value) {
   return NOTE_TEXT_LEVELS.includes(value) ? value : "body";
 }
+function parseBulletListStyle(dom) {
+  const value = String(dom?.getAttribute?.("data-list-style") || "").toLowerCase();
+  return NOTE_BULLET_STYLES.includes(value) ? value : "disc";
+}
+function parseOrderedListStyle(dom) {
+  const value = String(dom?.getAttribute?.("data-list-style") || "").toLowerCase();
+  return NOTE_ORDERED_STYLES.includes(value) ? value : "decimal";
+}
+function bulletListAttrs(style) {
+  return style && style !== "disc" ? {
+    "data-list-style": style
+  } : {};
+}
+function orderedListAttrs(order, style) {
+  const attrs = {};
+  if (Number(order || 1) !== 1) attrs.start = Number(order || 1);
+  if (style && style !== "decimal") attrs["data-list-style"] = style;
+  return attrs;
+}
 function createNoteEditorSchema() {
   const pm = noteEditorPM();
   if (!pm) return null;
@@ -3379,6 +3429,8 @@ function createNoteEditorSchema() {
   let nodes = pm.addListNodes(pm.basicSchema.spec.nodes, "paragraph block*", "block");
   const paragraphSpec = pm.basicSchema.spec.nodes.get("paragraph");
   const headingSpec = pm.basicSchema.spec.nodes.get("heading");
+  const bulletListSpec = nodes.get("bullet_list");
+  const orderedListSpec = nodes.get("ordered_list");
   nodes = nodes.update("paragraph", {
     ...paragraphSpec,
     attrs: {
@@ -3421,6 +3473,44 @@ function createNoteEditorSchema() {
       return [`h${node.attrs.level}`, noteIndentAttrs(node.attrs.indent), 0];
     }
   });
+  nodes = nodes.update("bullet_list", {
+    ...bulletListSpec,
+    attrs: {
+      style: {
+        default: "disc"
+      }
+    },
+    parseDOM: [{
+      tag: "ul",
+      getAttrs: dom => String(dom?.getAttribute?.("data-type") || "") === "task-list" ? false : {
+        style: parseBulletListStyle(dom)
+      }
+    }],
+    toDOM(node) {
+      return ["ul", bulletListAttrs(node.attrs.style), 0];
+    }
+  });
+  nodes = nodes.update("ordered_list", {
+    ...orderedListSpec,
+    attrs: {
+      order: {
+        default: 1
+      },
+      style: {
+        default: "decimal"
+      }
+    },
+    parseDOM: [{
+      tag: "ol",
+      getAttrs: dom => ({
+        order: dom?.hasAttribute?.("start") ? Number(dom.getAttribute("start") || 1) : 1,
+        style: parseOrderedListStyle(dom)
+      })
+    }],
+    toDOM(node) {
+      return ["ol", orderedListAttrs(node.attrs.order, node.attrs.style), 0];
+    }
+  });
   nodes = nodes.addToEnd("task_list", {
     group: "block",
     content: "task_item+",
@@ -3431,6 +3521,38 @@ function createNoteEditorSchema() {
       return ["ul", {
         "data-type": "task-list"
       }, 0];
+    }
+  });
+  nodes = nodes.addToEnd("table", {
+    group: "block",
+    content: "table_row+",
+    isolating: true,
+    parseDOM: [{
+      tag: "table"
+    }],
+    toDOM() {
+      return ["table", ["tbody", 0]];
+    }
+  });
+  nodes = nodes.addToEnd("table_row", {
+    content: "table_cell+",
+    parseDOM: [{
+      tag: "tr"
+    }],
+    toDOM() {
+      return ["tr", 0];
+    }
+  });
+  nodes = nodes.addToEnd("table_cell", {
+    content: "paragraph block*",
+    isolating: true,
+    parseDOM: [{
+      tag: "td"
+    }, {
+      tag: "th"
+    }],
+    toDOM() {
+      return ["td", 0];
     }
   });
   nodes = nodes.addToEnd("task_item", {
@@ -3481,7 +3603,7 @@ function normalizeHtmlForNoteEditor(html) {
     p.innerHTML = div.innerHTML || "<br>";
     div.replaceWith(p);
   });
-  if (!wrapper.textContent.trim() && !wrapper.querySelector("br, ul, ol, blockquote, h1, h2, h3")) {
+  if (!wrapper.textContent.trim() && !wrapper.querySelector("br, ul, ol, blockquote, table, h1, h2, h3")) {
     wrapper.innerHTML = "<p></p>";
   }
   return wrapper.innerHTML;
@@ -3542,21 +3664,45 @@ function noteEditorHashtagPlugin() {
     }
   });
 }
+function taskItemFromDom(view, itemEl, schema) {
+  const rawPositions = [];
+  try {
+    rawPositions.push(view.posAtDOM(itemEl, 0));
+  } catch {}
+  try {
+    rawPositions.push(view.posAtDOM(itemEl, itemEl.childNodes.length));
+  } catch {}
+  for (const rawPos of rawPositions) {
+    const pos = Math.max(0, Math.min(view.state.doc.content.size, Number(rawPos) || 0));
+    const $pos = view.state.doc.resolve(pos);
+    for (let depth = $pos.depth; depth > 0; depth -= 1) {
+      const node = $pos.node(depth);
+      if (node.type === schema.nodes.task_item) {
+        return {
+          node,
+          pos: $pos.before(depth)
+        };
+      }
+    }
+  }
+  return null;
+}
 function noteEditorChecklistPlugin(schema) {
   const pm = noteEditorPM();
   return new pm.Plugin({
     props: {
       handleClick(view, pos, event) {
-        const itemEl = event.target?.closest?.("li[data-type='task-item']");
+        const targetEl = event.target?.closest?.("li[data-type='task-item']");
+        const pointEl = document.elementFromPoint(event.clientX, event.clientY)?.closest?.("li[data-type='task-item']");
+        const itemEl = targetEl || pointEl;
         if (!itemEl || !view.dom.contains(itemEl)) return false;
         const rect = itemEl.getBoundingClientRect();
-        if (event.clientX > rect.left + 30) return false;
-        const itemPos = view.posAtDOM(itemEl, 0);
-        const item = view.state.doc.nodeAt(itemPos);
-        if (!item || item.type !== schema.nodes.task_item) return false;
-        view.dispatch(view.state.tr.setNodeMarkup(itemPos, undefined, {
-          ...item.attrs,
-          checked: !item.attrs.checked
+        if (event.clientX > rect.left + 34) return false;
+        const item = taskItemFromDom(view, itemEl, schema);
+        if (!item) return false;
+        view.dispatch(view.state.tr.setNodeMarkup(item.pos, undefined, {
+          ...item.node.attrs,
+          checked: !item.node.attrs.checked
         }).scrollIntoView());
         view.focus();
         return true;
@@ -3634,11 +3780,44 @@ function currentListKind(state) {
   if (findParentNodeOfType(state, schema.nodes.ordered_list)) return "ordered";
   return "none";
 }
+function currentListInfo(state) {
+  const schema = state.schema;
+  const task = findParentNodeOfType(state, schema.nodes.task_list);
+  if (task) return {
+    kind: "checklist",
+    node: task.node,
+    pos: task.pos,
+    style: "checklist"
+  };
+  const bullet = findParentNodeOfType(state, schema.nodes.bullet_list);
+  if (bullet) return {
+    kind: "bullet",
+    node: bullet.node,
+    pos: bullet.pos,
+    style: bullet.node.attrs.style || "disc"
+  };
+  const ordered = findParentNodeOfType(state, schema.nodes.ordered_list);
+  if (ordered) return {
+    kind: "ordered",
+    node: ordered.node,
+    pos: ordered.pos,
+    style: ordered.node.attrs.style || "decimal"
+  };
+  return {
+    kind: "none",
+    node: null,
+    pos: null,
+    style: "none"
+  };
+}
 function activeListItemType(state) {
   const schema = state.schema;
   if (findParentNodeOfType(state, schema.nodes.task_item)) return schema.nodes.task_item;
   if (findParentNodeOfType(state, schema.nodes.list_item)) return schema.nodes.list_item;
   return null;
+}
+function insideTable(state) {
+  return Boolean(findParentNodeOfType(state, state.schema.nodes.table));
 }
 function textLevelForBlock(node, schema) {
   if (!node) return "body";
@@ -3660,21 +3839,23 @@ function readNoteEditorToolbarState(view) {
   const state = view.state;
   const schema = state.schema;
   const textblock = currentTextblockWithPos(state);
-  const listKind = currentListKind(state);
+  const listInfo = currentListInfo(state);
   const textLevel = textLevelForBlock(textblock?.node, schema);
   return {
     bold: markIsActive(state, schema.marks.strong),
     italic: markIsActive(state, schema.marks.em),
     underline: markIsActive(state, schema.marks.underline),
     heading: textLevel !== "body",
-    bullet: listKind === "bullet",
-    ordered: listKind === "ordered",
-    checklist: listKind === "checklist",
+    bullet: listInfo.kind === "bullet",
+    ordered: listInfo.kind === "ordered",
+    checklist: listInfo.kind === "checklist",
     quote: Boolean(findParentNodeOfType(state, schema.nodes.blockquote)),
+    table: insideTable(state),
     canUndo: pm.undo(state),
     canRedo: pm.redo(state),
     indentLevel: clampNoteIndent(textblock?.node.attrs.indent),
-    textLevel
+    textLevel,
+    listStyle: listInfo.style
   };
 }
 function selectedTextblockPositions(state) {
@@ -3762,32 +3943,99 @@ function splitActiveListItemCommand(schema) {
     return itemType ? pm.splitListItem(itemType)(state, dispatch) : false;
   };
 }
+function setListMarkup(state, dispatch, listInfo, type, attrs = {}) {
+  if (!listInfo.node || listInfo.pos == null) return false;
+  if (dispatch) dispatch(state.tr.setNodeMarkup(listInfo.pos, type, attrs).scrollIntoView());
+  return true;
+}
 function cycleListCommand(schema) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
-    const bulletList = findParentNodeOfType(state, schema.nodes.bullet_list);
-    const orderedList = findParentNodeOfType(state, schema.nodes.ordered_list);
-    if (findParentNodeOfType(state, schema.nodes.task_list)) return pm.liftListItem(schema.nodes.task_item)(state, dispatch);
-    if (bulletList) {
-      if (dispatch) dispatch(state.tr.setNodeMarkup(bulletList.pos, schema.nodes.ordered_list, {
-        order: 1
-      }).scrollIntoView());
-      return true;
+    const listInfo = currentListInfo(state);
+    if (listInfo.kind === "checklist") return pm.liftListItem(schema.nodes.task_item)(state, dispatch);
+    if (listInfo.kind === "bullet") {
+      const index = NOTE_BULLET_STYLES.indexOf(listInfo.style);
+      if (index >= 0 && index < NOTE_BULLET_STYLES.length - 1) {
+        return setListMarkup(state, dispatch, listInfo, schema.nodes.bullet_list, {
+          style: NOTE_BULLET_STYLES[index + 1]
+        });
+      }
+      return setListMarkup(state, dispatch, listInfo, schema.nodes.ordered_list, {
+        order: 1,
+        style: "decimal"
+      });
     }
-    if (orderedList) return pm.liftListItem(schema.nodes.list_item)(state, dispatch);
-    return pm.wrapInList(schema.nodes.bullet_list)(state, dispatch);
+    if (listInfo.kind === "ordered") {
+      const index = NOTE_ORDERED_STYLES.indexOf(listInfo.style);
+      if (index >= 0 && index < NOTE_ORDERED_STYLES.length - 1) {
+        return setListMarkup(state, dispatch, listInfo, schema.nodes.ordered_list, {
+          order: listInfo.node.attrs.order || 1,
+          style: NOTE_ORDERED_STYLES[index + 1]
+        });
+      }
+      return pm.liftListItem(schema.nodes.list_item)(state, dispatch);
+    }
+    return pm.wrapInList(schema.nodes.bullet_list, {
+      style: "disc"
+    })(state, dispatch);
   };
+}
+function taskListFromListNode(schema, listNode) {
+  const items = [];
+  listNode.forEach(child => {
+    const content = child.content;
+    items.push(schema.nodes.task_item.create({
+      checked: false
+    }, content));
+  });
+  return schema.nodes.task_list.create(null, items);
+}
+function insertEmptyChecklist(schema, state, dispatch) {
+  const item = schema.nodes.task_item.create({
+    checked: false
+  }, schema.nodes.paragraph.create());
+  const list = schema.nodes.task_list.create(null, [item]);
+  if (dispatch) dispatch(state.tr.replaceSelectionWith(list).scrollIntoView());
+  return true;
 }
 function toggleChecklistCommand(schema) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
-    if (findParentNodeOfType(state, schema.nodes.task_list)) {
+    const listInfo = currentListInfo(state);
+    if (listInfo.kind === "checklist") {
       return pm.liftListItem(schema.nodes.task_item)(state, dispatch);
     }
-    if (findParentNodeOfType(state, schema.nodes.bullet_list) || findParentNodeOfType(state, schema.nodes.ordered_list)) {
-      return false;
+    if ((listInfo.kind === "bullet" || listInfo.kind === "ordered") && listInfo.node) {
+      const taskList = taskListFromListNode(schema, listInfo.node);
+      if (dispatch) dispatch(state.tr.replaceWith(listInfo.pos, listInfo.pos + listInfo.node.nodeSize, taskList).scrollIntoView());
+      return true;
     }
-    return pm.wrapInList(schema.nodes.task_list)(state, dispatch);
+    return pm.wrapInList(schema.nodes.task_list)(state, dispatch) || insertEmptyChecklist(schema, state, dispatch);
+  };
+}
+function createEmptyTable(schema, rows = 2, cols = 2) {
+  const tableRows = [];
+  for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
+    const cells = [];
+    for (let colIndex = 0; colIndex < cols; colIndex += 1) {
+      cells.push(schema.nodes.table_cell.create(null, schema.nodes.paragraph.create()));
+    }
+    tableRows.push(schema.nodes.table_row.create(null, cells));
+  }
+  return schema.nodes.table.create(null, tableRows);
+}
+function insertTableCommand(schema) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    const table = createEmptyTable(schema, 2, 2);
+    if (dispatch) {
+      const from = state.selection.from;
+      let tr = state.tr.replaceSelectionWith(table).scrollIntoView();
+      const focusPos = Math.min(tr.doc.content.size - 1, from + 4);
+      if (focusPos > 0) tr = tr.setSelection(pm.TextSelection.near(tr.doc.resolve(focusPos)));
+      dispatch(tr);
+    }
+    return true;
   };
 }
 function toggleQuoteCommand(schema) {
@@ -3826,6 +4074,7 @@ function runNoteEditorCommand(view, commandName) {
     heading: cycleTextLevelCommand(schema),
     list: cycleListCommand(schema),
     checklist: toggleChecklistCommand(schema),
+    table: insertTableCommand(schema),
     quote: toggleQuoteCommand(schema),
     "indent-in": indentCommand(schema, 1),
     "indent-out": indentCommand(schema, -1),
@@ -3966,6 +4215,26 @@ function RichNoteModal({
     small: "Small"
   };
   const textLevelLabel = textLevelLabels[toolbarState.textLevel] || "Body";
+  const listStyleLabels = {
+    none: "Bullet list",
+    disc: "Disc bullets",
+    circle: "Circle bullets",
+    square: "Square bullets",
+    decimal: "Numbered list",
+    "lower-alpha": "Lettered list",
+    "lower-roman": "Roman list",
+    checklist: "Checklist"
+  };
+  const listButtonText = toolbarState.ordered ? {
+    decimal: "1.",
+    "lower-alpha": "a.",
+    "lower-roman": "i."
+  }[toolbarState.listStyle] || "1." : {
+    disc: "\u2022",
+    circle: "\u25e6",
+    square: "\u25aa"
+  }[toolbarState.listStyle] || "\u2022";
+  const listLabel = listStyleLabels[toolbarState.listStyle] || "Bullet list";
   const keepToolbarFocus = event => event.preventDefault();
   const toolbarButtonProps = action => ({
     onPointerDown: event => {
@@ -4051,12 +4320,19 @@ function RichNoteModal({
     size: 16
   })), React.createElement("button", _extends({
     type: "button"
+  }, toolbarButtonProps(() => runEditorCommand("table")), {
+    className: topButtonClassName(toolbarState.table),
+    "aria-label": "Insert table"
+  }), React.createElement(Table2, {
+    size: 16
+  })), React.createElement("button", _extends({
+    type: "button"
   }, toolbarButtonProps(() => runEditorCommand("list")), {
     className: topButtonClassName(toolbarState.bullet || toolbarState.ordered),
-    "aria-label": toolbarState.ordered ? "Turn list off" : toolbarState.bullet ? "Numbered list" : "Bullet list"
+    "aria-label": listLabel
   }), React.createElement("span", {
     className: "text-[15px] font-extrabold leading-none"
-  }, toolbarState.ordered ? "1." : "\u2022")), React.createElement("div", {
+  }, listButtonText)), React.createElement("div", {
     className: "h-5 w-px bg-white/[0.08] mx-1 shrink-0"
   }), React.createElement("button", _extends({
     type: "button",

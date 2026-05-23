@@ -32,7 +32,11 @@
     .rich-editor h2 { font-size: 1.36rem; line-height: 1.16; font-weight: 900; color: #fff; margin: .45rem 0 .3rem; }
     .rich-editor h3 { font-size: 1.13rem; line-height: 1.22; font-weight: 850; color: #fff; margin: .38rem 0 .22rem; }
     .rich-editor ul { list-style: disc; padding-left: 1.25rem; margin: .25rem 0; }
+    .rich-editor ul[data-list-style="circle"] { list-style-type: circle; }
+    .rich-editor ul[data-list-style="square"] { list-style-type: square; }
     .rich-editor ol { list-style: decimal; padding-left: 1.35rem; margin: .25rem 0; }
+    .rich-editor ol[data-list-style="lower-alpha"] { list-style-type: lower-alpha; }
+    .rich-editor ol[data-list-style="lower-roman"] { list-style-type: lower-roman; }
     .rich-editor li { padding-left: .15rem; margin: .1rem 0; }
     .rich-editor ul[data-type="task-list"] { list-style: none; padding-left: 0; margin: .28rem 0; }
     .rich-editor li[data-type="task-item"] { position: relative; list-style: none; padding-left: 1.75rem; margin: .16rem 0; }
@@ -40,6 +44,9 @@
     .rich-editor li[data-type="task-item"][data-checked="true"]::before { border-color: #FFD2D7; background: #FFD2D7; }
     .rich-editor li[data-type="task-item"][data-checked="true"]::after { content: ""; position: absolute; left: .39rem; top: .55rem; width: .36rem; height: .6rem; border: solid #0a0a0a; border-width: 0 2px 2px 0; transform: rotate(45deg); }
     .rich-editor li[data-type="task-item"][data-checked="true"] { color: #858585; }
+    .rich-editor table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: .65rem 0; border: 1px solid #353535; }
+    .rich-editor td, .rich-editor th { min-width: 4rem; border: 1px solid #353535; padding: .55rem .6rem; vertical-align: top; }
+    .rich-editor td p, .rich-editor th p { margin: 0; min-height: 1.35em; }
     .rich-editor blockquote { border-left: 1.5px solid #8b8b8b; margin: .38rem 0; padding-left: .8rem; color: #ccc; }
     .note-title-input { font-size: 32px !important; }
     .note-toolbar-scroll { scrollbar-width: none; -ms-overflow-style: none; }

@@ -7,14 +7,18 @@ const NOTE_EDITOR_EMPTY_TOOLBAR = {
   ordered: false,
   checklist: false,
   quote: false,
+  table: false,
   canUndo: false,
   canRedo: false,
   indentLevel: 0,
-  textLevel: "body"
+  textLevel: "body",
+  listStyle: "none"
 };
 
 let noteEditorSchemaCache = null;
 const NOTE_TEXT_LEVELS = ["body", "title", "heading", "subheading", "small"];
+const NOTE_BULLET_STYLES = ["disc", "circle", "square"];
+const NOTE_ORDERED_STYLES = ["decimal", "lower-alpha", "lower-roman"];
 
 function noteEditorPM() {
   return window.ProseMirrorBundle || null;
@@ -47,6 +51,27 @@ function normalizeNoteTextLevel(value) {
   return NOTE_TEXT_LEVELS.includes(value) ? value : "body";
 }
 
+function parseBulletListStyle(dom) {
+  const value = String(dom?.getAttribute?.("data-list-style") || "").toLowerCase();
+  return NOTE_BULLET_STYLES.includes(value) ? value : "disc";
+}
+
+function parseOrderedListStyle(dom) {
+  const value = String(dom?.getAttribute?.("data-list-style") || "").toLowerCase();
+  return NOTE_ORDERED_STYLES.includes(value) ? value : "decimal";
+}
+
+function bulletListAttrs(style) {
+  return style && style !== "disc" ? { "data-list-style": style } : {};
+}
+
+function orderedListAttrs(order, style) {
+  const attrs = {};
+  if (Number(order || 1) !== 1) attrs.start = Number(order || 1);
+  if (style && style !== "decimal") attrs["data-list-style"] = style;
+  return attrs;
+}
+
 function createNoteEditorSchema() {
   const pm = noteEditorPM();
   if (!pm) return null;
@@ -55,6 +80,8 @@ function createNoteEditorSchema() {
   let nodes = pm.addListNodes(pm.basicSchema.spec.nodes, "paragraph block*", "block");
   const paragraphSpec = pm.basicSchema.spec.nodes.get("paragraph");
   const headingSpec = pm.basicSchema.spec.nodes.get("heading");
+  const bulletListSpec = nodes.get("bullet_list");
+  const orderedListSpec = nodes.get("ordered_list");
 
   nodes = nodes.update("paragraph", {
     ...paragraphSpec,
@@ -77,12 +104,68 @@ function createNoteEditorSchema() {
     }
   });
 
+  nodes = nodes.update("bullet_list", {
+    ...bulletListSpec,
+    attrs: { style: { default: "disc" } },
+    parseDOM: [{
+      tag: "ul",
+      getAttrs: dom => String(dom?.getAttribute?.("data-type") || "") === "task-list"
+        ? false
+        : { style: parseBulletListStyle(dom) }
+    }],
+    toDOM(node) {
+      return ["ul", bulletListAttrs(node.attrs.style), 0];
+    }
+  });
+
+  nodes = nodes.update("ordered_list", {
+    ...orderedListSpec,
+    attrs: { order: { default: 1 }, style: { default: "decimal" } },
+    parseDOM: [{
+      tag: "ol",
+      getAttrs: dom => ({
+        order: dom?.hasAttribute?.("start") ? Number(dom.getAttribute("start") || 1) : 1,
+        style: parseOrderedListStyle(dom)
+      })
+    }],
+    toDOM(node) {
+      return ["ol", orderedListAttrs(node.attrs.order, node.attrs.style), 0];
+    }
+  });
+
   nodes = nodes.addToEnd("task_list", {
     group: "block",
     content: "task_item+",
     parseDOM: [{ tag: "ul[data-type='task-list']" }],
     toDOM() {
       return ["ul", { "data-type": "task-list" }, 0];
+    }
+  });
+
+  nodes = nodes.addToEnd("table", {
+    group: "block",
+    content: "table_row+",
+    isolating: true,
+    parseDOM: [{ tag: "table" }],
+    toDOM() {
+      return ["table", ["tbody", 0]];
+    }
+  });
+
+  nodes = nodes.addToEnd("table_row", {
+    content: "table_cell+",
+    parseDOM: [{ tag: "tr" }],
+    toDOM() {
+      return ["tr", 0];
+    }
+  });
+
+  nodes = nodes.addToEnd("table_cell", {
+    content: "paragraph block*",
+    isolating: true,
+    parseDOM: [{ tag: "td" }, { tag: "th" }],
+    toDOM() {
+      return ["td", 0];
     }
   });
 
@@ -126,7 +209,7 @@ function normalizeHtmlForNoteEditor(html) {
     p.innerHTML = div.innerHTML || "<br>";
     div.replaceWith(p);
   });
-  if (!wrapper.textContent.trim() && !wrapper.querySelector("br, ul, ol, blockquote, h1, h2, h3")) {
+  if (!wrapper.textContent.trim() && !wrapper.querySelector("br, ul, ol, blockquote, table, h1, h2, h3")) {
     wrapper.innerHTML = "<p></p>";
   }
   return wrapper.innerHTML;
@@ -190,19 +273,37 @@ function noteEditorHashtagPlugin() {
   });
 }
 
+function taskItemFromDom(view, itemEl, schema) {
+  const rawPositions = [];
+  try { rawPositions.push(view.posAtDOM(itemEl, 0)); } catch {}
+  try { rawPositions.push(view.posAtDOM(itemEl, itemEl.childNodes.length)); } catch {}
+  for (const rawPos of rawPositions) {
+    const pos = Math.max(0, Math.min(view.state.doc.content.size, Number(rawPos) || 0));
+    const $pos = view.state.doc.resolve(pos);
+    for (let depth = $pos.depth; depth > 0; depth -= 1) {
+      const node = $pos.node(depth);
+      if (node.type === schema.nodes.task_item) {
+        return { node, pos: $pos.before(depth) };
+      }
+    }
+  }
+  return null;
+}
+
 function noteEditorChecklistPlugin(schema) {
   const pm = noteEditorPM();
   return new pm.Plugin({
     props: {
       handleClick(view, pos, event) {
-        const itemEl = event.target?.closest?.("li[data-type='task-item']");
+        const targetEl = event.target?.closest?.("li[data-type='task-item']");
+        const pointEl = document.elementFromPoint(event.clientX, event.clientY)?.closest?.("li[data-type='task-item']");
+        const itemEl = targetEl || pointEl;
         if (!itemEl || !view.dom.contains(itemEl)) return false;
         const rect = itemEl.getBoundingClientRect();
-        if (event.clientX > rect.left + 30) return false;
-        const itemPos = view.posAtDOM(itemEl, 0);
-        const item = view.state.doc.nodeAt(itemPos);
-        if (!item || item.type !== schema.nodes.task_item) return false;
-        view.dispatch(view.state.tr.setNodeMarkup(itemPos, undefined, { ...item.attrs, checked: !item.attrs.checked }).scrollIntoView());
+        if (event.clientX > rect.left + 34) return false;
+        const item = taskItemFromDom(view, itemEl, schema);
+        if (!item) return false;
+        view.dispatch(view.state.tr.setNodeMarkup(item.pos, undefined, { ...item.node.attrs, checked: !item.node.attrs.checked }).scrollIntoView());
         view.focus();
         return true;
       }
@@ -274,11 +375,26 @@ function currentListKind(state) {
   return "none";
 }
 
+function currentListInfo(state) {
+  const schema = state.schema;
+  const task = findParentNodeOfType(state, schema.nodes.task_list);
+  if (task) return { kind: "checklist", node: task.node, pos: task.pos, style: "checklist" };
+  const bullet = findParentNodeOfType(state, schema.nodes.bullet_list);
+  if (bullet) return { kind: "bullet", node: bullet.node, pos: bullet.pos, style: bullet.node.attrs.style || "disc" };
+  const ordered = findParentNodeOfType(state, schema.nodes.ordered_list);
+  if (ordered) return { kind: "ordered", node: ordered.node, pos: ordered.pos, style: ordered.node.attrs.style || "decimal" };
+  return { kind: "none", node: null, pos: null, style: "none" };
+}
+
 function activeListItemType(state) {
   const schema = state.schema;
   if (findParentNodeOfType(state, schema.nodes.task_item)) return schema.nodes.task_item;
   if (findParentNodeOfType(state, schema.nodes.list_item)) return schema.nodes.list_item;
   return null;
+}
+
+function insideTable(state) {
+  return Boolean(findParentNodeOfType(state, state.schema.nodes.table));
 }
 
 function textLevelForBlock(node, schema) {
@@ -303,21 +419,23 @@ function readNoteEditorToolbarState(view) {
   const state = view.state;
   const schema = state.schema;
   const textblock = currentTextblockWithPos(state);
-  const listKind = currentListKind(state);
+  const listInfo = currentListInfo(state);
   const textLevel = textLevelForBlock(textblock?.node, schema);
   return {
     bold: markIsActive(state, schema.marks.strong),
     italic: markIsActive(state, schema.marks.em),
     underline: markIsActive(state, schema.marks.underline),
     heading: textLevel !== "body",
-    bullet: listKind === "bullet",
-    ordered: listKind === "ordered",
-    checklist: listKind === "checklist",
+    bullet: listInfo.kind === "bullet",
+    ordered: listInfo.kind === "ordered",
+    checklist: listInfo.kind === "checklist",
     quote: Boolean(findParentNodeOfType(state, schema.nodes.blockquote)),
+    table: insideTable(state),
     canUndo: pm.undo(state),
     canRedo: pm.redo(state),
     indentLevel: clampNoteIndent(textblock?.node.attrs.indent),
-    textLevel
+    textLevel,
+    listStyle: listInfo.style
   };
 }
 
@@ -386,31 +504,91 @@ function splitActiveListItemCommand(schema) {
   };
 }
 
+function setListMarkup(state, dispatch, listInfo, type, attrs = {}) {
+  if (!listInfo.node || listInfo.pos == null) return false;
+  if (dispatch) dispatch(state.tr.setNodeMarkup(listInfo.pos, type, attrs).scrollIntoView());
+  return true;
+}
+
 function cycleListCommand(schema) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
-    const bulletList = findParentNodeOfType(state, schema.nodes.bullet_list);
-    const orderedList = findParentNodeOfType(state, schema.nodes.ordered_list);
-    if (findParentNodeOfType(state, schema.nodes.task_list)) return pm.liftListItem(schema.nodes.task_item)(state, dispatch);
-    if (bulletList) {
-      if (dispatch) dispatch(state.tr.setNodeMarkup(bulletList.pos, schema.nodes.ordered_list, { order: 1 }).scrollIntoView());
-      return true;
+    const listInfo = currentListInfo(state);
+    if (listInfo.kind === "checklist") return pm.liftListItem(schema.nodes.task_item)(state, dispatch);
+    if (listInfo.kind === "bullet") {
+      const index = NOTE_BULLET_STYLES.indexOf(listInfo.style);
+      if (index >= 0 && index < NOTE_BULLET_STYLES.length - 1) {
+        return setListMarkup(state, dispatch, listInfo, schema.nodes.bullet_list, { style: NOTE_BULLET_STYLES[index + 1] });
+      }
+      return setListMarkup(state, dispatch, listInfo, schema.nodes.ordered_list, { order: 1, style: "decimal" });
     }
-    if (orderedList) return pm.liftListItem(schema.nodes.list_item)(state, dispatch);
-    return pm.wrapInList(schema.nodes.bullet_list)(state, dispatch);
+    if (listInfo.kind === "ordered") {
+      const index = NOTE_ORDERED_STYLES.indexOf(listInfo.style);
+      if (index >= 0 && index < NOTE_ORDERED_STYLES.length - 1) {
+        return setListMarkup(state, dispatch, listInfo, schema.nodes.ordered_list, { order: listInfo.node.attrs.order || 1, style: NOTE_ORDERED_STYLES[index + 1] });
+      }
+      return pm.liftListItem(schema.nodes.list_item)(state, dispatch);
+    }
+    return pm.wrapInList(schema.nodes.bullet_list, { style: "disc" })(state, dispatch);
   };
+}
+
+function taskListFromListNode(schema, listNode) {
+  const items = [];
+  listNode.forEach(child => {
+    const content = child.content;
+    items.push(schema.nodes.task_item.create({ checked: false }, content));
+  });
+  return schema.nodes.task_list.create(null, items);
+}
+
+function insertEmptyChecklist(schema, state, dispatch) {
+  const item = schema.nodes.task_item.create({ checked: false }, schema.nodes.paragraph.create());
+  const list = schema.nodes.task_list.create(null, [item]);
+  if (dispatch) dispatch(state.tr.replaceSelectionWith(list).scrollIntoView());
+  return true;
 }
 
 function toggleChecklistCommand(schema) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
-    if (findParentNodeOfType(state, schema.nodes.task_list)) {
+    const listInfo = currentListInfo(state);
+    if (listInfo.kind === "checklist") {
       return pm.liftListItem(schema.nodes.task_item)(state, dispatch);
     }
-    if (findParentNodeOfType(state, schema.nodes.bullet_list) || findParentNodeOfType(state, schema.nodes.ordered_list)) {
-      return false;
+    if ((listInfo.kind === "bullet" || listInfo.kind === "ordered") && listInfo.node) {
+      const taskList = taskListFromListNode(schema, listInfo.node);
+      if (dispatch) dispatch(state.tr.replaceWith(listInfo.pos, listInfo.pos + listInfo.node.nodeSize, taskList).scrollIntoView());
+      return true;
     }
-    return pm.wrapInList(schema.nodes.task_list)(state, dispatch);
+    return pm.wrapInList(schema.nodes.task_list)(state, dispatch) || insertEmptyChecklist(schema, state, dispatch);
+  };
+}
+
+function createEmptyTable(schema, rows = 2, cols = 2) {
+  const tableRows = [];
+  for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
+    const cells = [];
+    for (let colIndex = 0; colIndex < cols; colIndex += 1) {
+      cells.push(schema.nodes.table_cell.create(null, schema.nodes.paragraph.create()));
+    }
+    tableRows.push(schema.nodes.table_row.create(null, cells));
+  }
+  return schema.nodes.table.create(null, tableRows);
+}
+
+function insertTableCommand(schema) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    const table = createEmptyTable(schema, 2, 2);
+    if (dispatch) {
+      const from = state.selection.from;
+      let tr = state.tr.replaceSelectionWith(table).scrollIntoView();
+      const focusPos = Math.min(tr.doc.content.size - 1, from + 4);
+      if (focusPos > 0) tr = tr.setSelection(pm.TextSelection.near(tr.doc.resolve(focusPos)));
+      dispatch(tr);
+    }
+    return true;
   };
 }
 
@@ -452,6 +630,7 @@ function runNoteEditorCommand(view, commandName) {
     heading: cycleTextLevelCommand(schema),
     list: cycleListCommand(schema),
     checklist: toggleChecklistCommand(schema),
+    table: insertTableCommand(schema),
     quote: toggleQuoteCommand(schema),
     "indent-in": indentCommand(schema, 1),
     "indent-out": indentCommand(schema, -1),

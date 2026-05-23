@@ -21,6 +21,7 @@ const iconPaths = {
   CalendarDays: (<><path d="M8 2v4M16 2v4M3 10h18"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></>),
   ClipboardList: (<><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/></>),
   CheckSquare: (<><path d="M8 12.5 10.5 15 16 9"/><rect x="3.5" y="3.5" width="17" height="17" rx="3"/></>),
+  Table2: (<><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 9.5h17M3.5 14.5h17M10 4.5v15M16 4.5v15"/></>),
   Bold: (<><path d="M6 4h8a4 4 0 0 1 0 8H6z"/><path d="M6 12h9a4 4 0 0 1 0 8H6z"/></>),
   Italic: (<><line x1="19" x2="10" y1="4" y2="4"/><line x1="14" x2="5" y1="20" y2="20"/><line x1="15" x2="9" y1="4" y2="20"/></>),
   Underline: (<><path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" x2="20" y1="22" y2="22"/></>),
@@ -65,6 +66,7 @@ const X = makeIcon("X");
 const CalendarDays = makeIcon("CalendarDays");
 const ClipboardList = makeIcon("ClipboardList");
 const CheckSquare = makeIcon("CheckSquare");
+const Table2 = makeIcon("Table2");
 const Bold = makeIcon("Bold");
 const Italic = makeIcon("Italic");
 const Underline = makeIcon("Underline");

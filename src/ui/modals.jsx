@@ -46,6 +46,20 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
         : "#666666";
   const textLevelLabels = { body: "Body", title: "Title", heading: "Heading", subheading: "Subheading", small: "Small" };
   const textLevelLabel = textLevelLabels[toolbarState.textLevel] || "Body";
+  const listStyleLabels = {
+    none: "Bullet list",
+    disc: "Disc bullets",
+    circle: "Circle bullets",
+    square: "Square bullets",
+    decimal: "Numbered list",
+    "lower-alpha": "Lettered list",
+    "lower-roman": "Roman list",
+    checklist: "Checklist"
+  };
+  const listButtonText = toolbarState.ordered
+    ? ({ decimal: "1.", "lower-alpha": "a.", "lower-roman": "i." }[toolbarState.listStyle] || "1.")
+    : ({ disc: "\u2022", circle: "\u25e6", square: "\u25aa" }[toolbarState.listStyle] || "\u2022");
+  const listLabel = listStyleLabels[toolbarState.listStyle] || "Bullet list";
   const keepToolbarFocus = (event) => event.preventDefault();
   const toolbarButtonProps = (action) => ({
     onPointerDown: (event) => {
@@ -76,8 +90,9 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("indent-in"))} className={topButtonClassName(false)} aria-label="Indent"><IndentIncrease size={17} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("quote"))} className={topButtonClassName(toolbarState.quote)} aria-label="Quote"><Quote size={16} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("checklist"))} className={topButtonClassName(toolbarState.checklist)} aria-label="Checklist"><CheckSquare size={16} /></button>
-            <button type="button" {...toolbarButtonProps(() => runEditorCommand("list"))} className={topButtonClassName(toolbarState.bullet || toolbarState.ordered)} aria-label={toolbarState.ordered ? "Turn list off" : toolbarState.bullet ? "Numbered list" : "Bullet list"}>
-              <span className="text-[15px] font-extrabold leading-none">{toolbarState.ordered ? "1." : "\u2022"}</span>
+            <button type="button" {...toolbarButtonProps(() => runEditorCommand("table"))} className={topButtonClassName(toolbarState.table)} aria-label="Insert table"><Table2 size={16} /></button>
+            <button type="button" {...toolbarButtonProps(() => runEditorCommand("list"))} className={topButtonClassName(toolbarState.bullet || toolbarState.ordered)} aria-label={listLabel}>
+              <span className="text-[15px] font-extrabold leading-none">{listButtonText}</span>
             </button>
             <div className="h-5 w-px bg-white/[0.08] mx-1 shrink-0" />
             <button type="button" disabled={!toolbarState.canUndo} {...toolbarButtonProps(() => runEditorCommand("undo"))} className={topButtonClassName(false)} aria-label="Undo note edit"><Undo2 size={17} /></button>
