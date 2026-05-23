@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v66-note-editor-top-toolbar';
+const CACHE_NAME = 'idea-box-v67-note-format-controls';
 const APP_SHELL = [
   './',
   './index.html',

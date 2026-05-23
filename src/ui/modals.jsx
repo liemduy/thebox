@@ -2,6 +2,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
   const editorRef = useRef(null);
   const titleRef = useRef(null);
   const [historyTick, setHistoryTick] = useState(0);
+  const [toolbarState, setToolbarState] = useState({ bold: false, italic: false, underline: false, heading: false, bullet: false, ordered: false });
   const historyRef = useRef({ undo: [], redo: [], last: null });
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
@@ -74,12 +75,18 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
     restoreSnapshot(next);
   }
 
-  function editorRange() {
+  function selectionInEditor() {
     const editor = editorRef.current;
-    if (!editor) return null;
+    const selection = window.getSelection();
+    return Boolean(editor && selection?.rangeCount && editor.contains(selection.anchorNode));
+  }
+
+  function focusEditorSelection() {
+    const editor = editorRef.current;
+    if (!editor) return false;
     editor.focus();
     const selection = window.getSelection();
-    if (!selection) return null;
+    if (!selection) return false;
     if (!selection.rangeCount || !editor.contains(selection.anchorNode)) {
       const range = document.createRange();
       range.selectNodeContents(editor);
@@ -87,11 +94,31 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
       selection.removeAllRanges();
       selection.addRange(range);
     }
-    const range = selection.getRangeAt(0);
-    return editor.contains(range.commonAncestorContainer) ? { editor, selection, range } : null;
+    return true;
   }
 
-  function selectInserted(selection, node) {
+  function closestInEditor(tags) {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection?.rangeCount) return null;
+    let node = selection.anchorNode;
+    if (node?.nodeType === Node.TEXT_NODE) node = node.parentNode;
+    const wanted = new Set(tags);
+    while (node && node !== editor) {
+      if (node.nodeType === Node.ELEMENT_NODE && wanted.has(node.tagName)) return node;
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  function selectionRange() {
+    const selection = window.getSelection();
+    return selection?.rangeCount ? selection.getRangeAt(0) : null;
+  }
+
+  function setCaretAtEnd(node) {
+    const selection = window.getSelection();
+    if (!selection || !node) return;
     const range = document.createRange();
     range.selectNodeContents(node);
     range.collapse(false);
@@ -99,71 +126,462 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
     selection.addRange(range);
   }
 
-  function replaceSelectionWith(node) {
-    const context = editorRange();
-    if (!context) return;
-    const { editor, selection, range } = context;
-    range.deleteContents();
-    range.insertNode(node);
-    editor.normalize();
-    selectInserted(selection, node);
+  function currentBlock() {
+    return closestInEditor(["LI", "DIV", "P", "H2", "H3", "BLOCKQUOTE"]);
   }
 
-  function wrapInline(tagName) {
-    const context = editorRange();
-    if (!context) return;
-    const { editor, selection, range } = context;
-    const el = document.createElement(tagName);
-    if (range.collapsed) {
-      el.appendChild(document.createTextNode("text"));
-      range.insertNode(el);
-    } else {
-      try {
-        range.surroundContents(el);
-      } catch {
-        el.appendChild(range.extractContents());
-        range.insertNode(el);
-      }
+  function textToHtml(value) {
+    const span = document.createElement("span");
+    span.textContent = value || "";
+    return span.innerHTML;
+  }
+
+  function visibleText(value) {
+    return String(value || "").replace(/\u200B/g, "").trim();
+  }
+
+  function cloneInlineHtml(element) {
+    const html = sanitizeHtml(element?.innerHTML || "");
+    return html || textToHtml(element?.textContent || "");
+  }
+
+  function makePlainBlockFrom(element) {
+    const div = document.createElement("div");
+    div.innerHTML = cloneInlineHtml(element);
+    if (!String(div.textContent || "").trim()) div.appendChild(document.createElement("br"));
+    return div;
+  }
+
+  function makeHeadingFrom(element) {
+    const h3 = document.createElement("h3");
+    h3.innerHTML = cloneInlineHtml(element);
+    if (!String(h3.textContent || "").trim()) h3.textContent = "Heading";
+    return h3;
+  }
+
+  function pendingOrActiveInlineState() {
+    return {
+      bold: commandState("bold") || Boolean(closestInEditor(["B", "STRONG"])),
+      italic: commandState("italic") || Boolean(closestInEditor(["I", "EM"])),
+      underline: commandState("underline") || Boolean(closestInEditor(["U"]))
+    };
+  }
+
+  function commandState(command) {
+    try { return Boolean(document.queryCommandState(command)); } catch { return false; }
+  }
+
+  function inlineConfig(format) {
+    if (format === "bold") return { tagName: "strong", tags: ["B", "STRONG"] };
+    if (format === "italic") return { tagName: "em", tags: ["I", "EM"] };
+    return { tagName: "u", tags: ["U"] };
+  }
+
+  function insertInlineTypingShell(tagName, range) {
+    const wrapper = document.createElement(tagName);
+    const marker = document.createTextNode("\u200B");
+    wrapper.appendChild(marker);
+    range.insertNode(wrapper);
+    setCaretAtEnd(marker);
+    return wrapper;
+  }
+
+  function placeCaretInEditableBlock(element) {
+    if (!element) return;
+    if (!visibleText(element.textContent)) {
+      element.innerHTML = "";
+      const marker = document.createTextNode("\u200B");
+      element.appendChild(marker);
+      setCaretAtEnd(marker);
+      return;
     }
-    editor.normalize();
-    selectInserted(selection, el);
+    setCaretAtEnd(element);
   }
 
-  function wrapBlock(tagName) {
-    const context = editorRange();
-    if (!context) return;
-    const { range } = context;
-    const el = document.createElement(tagName);
-    if (range.collapsed) el.textContent = tagName === "h3" ? "Heading" : "Quote";
-    else el.appendChild(range.extractContents());
-    replaceSelectionWith(el);
+  function moveCaretPastInline(element) {
+    if (!element?.parentNode) return;
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.setStartAfter(element);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
 
-  function insertList() {
-    const context = editorRange();
-    if (!context) return;
-    const text = context.range.toString().trim();
-    const lines = (text ? text.split(/\n+/) : ["List item"]).map(line => cleanTitle(line || "List item"));
-    const ul = document.createElement("ul");
-    lines.forEach(line => {
+  function selectedRange() {
+    if (!focusEditorSelection()) return null;
+    const selection = window.getSelection();
+    return selection?.rangeCount ? selection.getRangeAt(0) : null;
+  }
+
+  function textLines(value) {
+    return String(value || "").split(/\n+/).map(line => line.trim()).filter(Boolean);
+  }
+
+  function rangeLines(range) {
+    if (!range) return [];
+    const wrapper = document.createElement("div");
+    wrapper.appendChild(range.cloneContents());
+    return htmlLines(wrapper).length ? htmlLines(wrapper) : textLines(range.toString());
+  }
+
+  function htmlLines(node) {
+    if (!node) return [];
+    const html = String(node.innerHTML || "")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(div|p|li|h2|h3|blockquote)>/gi, "\n");
+    const div = document.createElement("div");
+    div.innerHTML = sanitizeHtml(html);
+    return textLines(div.textContent || node.textContent || "");
+  }
+
+  function lineBlocks(lines) {
+    const fragment = document.createDocumentFragment();
+    (lines.length ? lines : [""]).forEach(line => {
+      const div = document.createElement("div");
+      div.textContent = line;
+      fragment.appendChild(div);
+    });
+    return fragment;
+  }
+
+  function makeList(tagName, lines) {
+    const list = document.createElement(tagName);
+    (lines.length ? lines : [""]).forEach(line => {
       const li = document.createElement("li");
       li.textContent = line;
-      ul.appendChild(li);
+      list.appendChild(li);
     });
-    replaceSelectionWith(ul);
+    return list;
+  }
+
+  function listItems(list) {
+    return [...(list?.children || [])].filter(child => child.tagName === "LI");
+  }
+
+  function listLines(list) {
+    return listItems(list).map(li => visibleText(htmlLines(li).join(" "))).filter(Boolean);
+  }
+
+  function makeListFromBlock(tagName, block) {
+    const list = document.createElement(tagName);
+    const li = document.createElement("li");
+    li.innerHTML = cloneInlineHtml(block);
+    if (!String(li.textContent || "").trim()) li.appendChild(document.createElement("br"));
+    list.appendChild(li);
+    return { list, li };
+  }
+
+  function makeEmptyListAtRange(tagName, range) {
+    const list = document.createElement(tagName);
+    const li = document.createElement("li");
+    li.appendChild(document.createElement("br"));
+    list.appendChild(li);
+    range.insertNode(list);
+    return { list, li };
+  }
+
+  function restoreAfterNode(node) {
+    const selection = window.getSelection();
+    if (!selection || !node?.parentNode) return;
+    const range = document.createRange();
+    range.setStartAfter(node);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function replaceRangeWith(nodeOrFragment) {
+    const range = selectedRange();
+    if (!range) return null;
+    const last = nodeOrFragment.nodeType === Node.DOCUMENT_FRAGMENT_NODE ? nodeOrFragment.lastChild : nodeOrFragment;
+    range.deleteContents();
+    range.insertNode(nodeOrFragment);
+    if (last) restoreAfterNode(last);
+    return last;
+  }
+
+  function unwrapElement(element) {
+    if (!element?.parentNode) return;
+    const fragment = document.createDocumentFragment();
+    let last = null;
+    while (element.firstChild) {
+      last = element.firstChild;
+      fragment.appendChild(element.firstChild);
+    }
+    element.replaceWith(fragment);
+    restoreAfterNode(last || element.parentNode?.lastChild);
+  }
+
+  function cleanupEditorDom() {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    textNodes.forEach(node => {
+      if (node.nodeValue?.includes("\u200B")) node.nodeValue = node.nodeValue.replace(/\u200B/g, "");
+    });
+    editor.querySelectorAll("b,strong,i,em,u,h2,h3,blockquote,ul,ol,li").forEach(node => {
+      if (!visibleText(node.textContent) && !node.querySelector("br")) node.remove();
+    });
+    editor.querySelectorAll("[style]").forEach(node => node.removeAttribute("style"));
+    editor.normalize();
+  }
+
+  function updateToolbarState() {
+    if (!selectionInEditor()) return;
+    const block = closestInEditor(["H2", "H3"]);
+    const list = closestInEditor(["UL", "OL"]);
+    const inline = pendingOrActiveInlineState();
+    setToolbarState({
+      bold: inline.bold,
+      italic: inline.italic,
+      underline: inline.underline,
+      heading: Boolean(block),
+      bullet: list?.tagName === "UL",
+      ordered: list?.tagName === "OL"
+    });
+  }
+
+  useEffect(() => {
+    const update = () => window.requestAnimationFrame(updateToolbarState);
+    document.addEventListener("selectionchange", update);
+    return () => document.removeEventListener("selectionchange", update);
+  }, []);
+
+  function afterFormat() {
+    window.requestAnimationFrame(() => {
+      cleanupEditorDom();
+      if (editorRef.current) highlightEditableHashtags(editorRef.current);
+      updateToolbarState();
+      rememberHistory();
+    });
+  }
+
+  function toggleInline(format) {
+    const config = inlineConfig(format);
+    if (!focusEditorSelection()) return;
+    if (editorRef.current) unwrapLiveHashtagSpans(editorRef.current);
+    const range = selectionRange();
+    const active = closestInEditor(config.tags);
+    if (!range) return;
+    if (range.collapsed) {
+      if (active) {
+        if (!visibleText(active.textContent) && (active.textContent || "").includes("\u200B")) {
+          const parent = active.parentNode;
+          active.remove();
+          setCaretAtEnd(parent || editorRef.current);
+        } else {
+          moveCaretPastInline(active);
+        }
+      } else {
+        insertInlineTypingShell(config.tagName, range);
+      }
+      updateToolbarState();
+      return;
+    }
+    if (active) {
+      unwrapElement(active);
+      return afterFormat();
+    }
+    if (!range.toString().trim()) return;
+    const wrapper = document.createElement(config.tagName);
+    wrapper.appendChild(range.extractContents());
+    range.insertNode(wrapper);
+    restoreAfterNode(wrapper);
+    afterFormat();
+  }
+
+  function toggleHeading() {
+    if (!focusEditorSelection()) return;
+    if (editorRef.current) unwrapLiveHashtagSpans(editorRef.current);
+    const heading = closestInEditor(["H2", "H3"]);
+    if (heading) {
+      const div = makePlainBlockFrom(heading);
+      heading.replaceWith(div);
+      setCaretAtEnd(div);
+      return afterFormat();
+    }
+    const range = selectionRange();
+    if (!range) return;
+    if (range.collapsed) {
+      const block = currentBlock();
+      if (block && block !== editorRef.current && block.tagName !== "LI" && block.tagName !== "BLOCKQUOTE") {
+        const h3 = makeHeadingFrom(block);
+        block.replaceWith(h3);
+        setCaretAtEnd(h3);
+      } else {
+        const h3 = document.createElement("h3");
+        h3.textContent = "Heading";
+        range.insertNode(h3);
+        setCaretAtEnd(h3);
+      }
+      return afterFormat();
+    }
+    const lines = rangeLines(range);
+    const h3 = document.createElement("h3");
+    h3.textContent = lines.join(" ") || "Heading";
+    replaceRangeWith(h3);
+    afterFormat();
+  }
+
+  function cycleListStyle() {
+    if (!focusEditorSelection()) return;
+    if (editorRef.current) unwrapLiveHashtagSpans(editorRef.current);
+    const list = closestInEditor(["UL", "OL"]);
+    if (list?.tagName === "UL") {
+      const activeLi = closestInEditor(["LI"]);
+      const activeIndex = Math.max(0, listItems(list).indexOf(activeLi));
+      const ol = makeList("ol", listLines(list));
+      list.replaceWith(ol);
+      const targetLi = listItems(ol)[activeIndex] || ol;
+      placeCaretInEditableBlock(targetLi);
+      if (!visibleText(targetLi?.textContent) && (targetLi?.textContent || "").includes("\u200B")) {
+        updateToolbarState();
+        return;
+      }
+      return afterFormat();
+    }
+    if (list?.tagName === "OL") {
+      const activeLi = closestInEditor(["LI"]);
+      const activeIndex = Math.max(0, listItems(list).indexOf(activeLi));
+      const blocks = listItems(list).map(li => {
+        const div = document.createElement("div");
+        div.innerHTML = cloneInlineHtml(li);
+        if (!visibleText(div.textContent)) div.appendChild(document.createElement("br"));
+        return div;
+      });
+      const fallback = document.createElement("div");
+      fallback.appendChild(document.createElement("br"));
+      const nextBlocks = blocks.length ? blocks : [fallback];
+      list.replaceWith(...nextBlocks);
+      placeCaretInEditableBlock(nextBlocks[activeIndex] || nextBlocks[nextBlocks.length - 1]);
+      return afterFormat();
+    }
+    const range = selectionRange();
+    if (!range) return;
+    if (range.collapsed) {
+      const block = currentBlock();
+      let targetLi = null;
+      if (block && block !== editorRef.current && block.tagName !== "LI") {
+        const { list: ul, li } = makeListFromBlock("ul", block);
+        block.replaceWith(ul);
+        targetLi = li;
+      } else {
+        const { li } = makeEmptyListAtRange("ul", range);
+        targetLi = li;
+      }
+      placeCaretInEditableBlock(targetLi);
+      if (!visibleText(targetLi?.textContent) && (targetLi?.textContent || "").includes("\u200B")) {
+        updateToolbarState();
+        return;
+      }
+      return afterFormat();
+    }
+    const ul = makeList("ul", rangeLines(range));
+    replaceRangeWith(ul);
+    const items = listItems(ul);
+    placeCaretInEditableBlock(items[items.length - 1] || ul);
+    afterFormat();
+  }
+
+  function indentListItemIn() {
+    const li = closestInEditor(["LI"]);
+    const list = li?.parentElement;
+    const previous = li?.previousElementSibling;
+    if (!li || !list || previous?.tagName !== "LI") return false;
+    let nested = [...previous.children].find(child => child.tagName === list.tagName);
+    if (!nested) {
+      nested = document.createElement(list.tagName.toLowerCase());
+      previous.appendChild(nested);
+    }
+    nested.appendChild(li);
+    setCaretAtEnd(li);
+    return true;
+  }
+
+  function indentListItemOut() {
+    const li = closestInEditor(["LI"]);
+    const list = li?.parentElement;
+    const parentLi = list?.parentElement?.tagName === "LI" ? list.parentElement : null;
+    const parentList = parentLi?.parentElement;
+    if (!li || !list || !parentLi || !parentList) return false;
+    parentList.insertBefore(li, parentLi.nextSibling);
+    if (!list.children.length) list.remove();
+    setCaretAtEnd(li);
+    return true;
+  }
+
+  function indentIn() {
+    if (!focusEditorSelection()) return;
+    if (indentListItemIn()) return afterFormat();
+    const block = closestInEditor(["DIV", "P", "H2", "H3", "UL", "OL", "BLOCKQUOTE"]);
+    const quote = document.createElement("blockquote");
+    if (block && block !== editorRef.current) {
+      block.replaceWith(quote);
+      quote.appendChild(block);
+      restoreAfterNode(quote);
+    } else {
+      const range = selectedRange();
+      if (!range) return;
+      quote.appendChild(lineBlocks(rangeLines(range)));
+      replaceRangeWith(quote);
+    }
+    afterFormat();
+  }
+
+  function indentOut() {
+    if (!focusEditorSelection()) return;
+    if (indentListItemOut()) return afterFormat();
+    const quote = closestInEditor(["BLOCKQUOTE"]);
+    if (!quote) return;
+    const fragment = document.createDocumentFragment();
+    while (quote.firstChild) fragment.appendChild(quote.firstChild);
+    const parent = quote.parentNode;
+    quote.replaceWith(fragment);
+    restoreAfterNode(parent?.lastChild);
+    afterFormat();
+  }
+
+  function clearFormat() {
+    const range = selectedRange();
+    if (!range) return;
+    if (editorRef.current) unwrapLiveHashtagSpans(editorRef.current);
+    const block = closestInEditor(["B", "STRONG", "I", "EM", "U", "H2", "H3", "LI", "DIV", "P", "BLOCKQUOTE"]);
+    const selected = rangeLines(range);
+    if (selected.length && !range.collapsed) {
+      const last = replaceRangeWith(lineBlocks(selected));
+      restoreAfterNode(last);
+    } else if (block && block !== editorRef.current) {
+      const fragment = lineBlocks(htmlLines(block));
+      const parent = block.parentNode;
+      block.replaceWith(fragment);
+      restoreAfterNode(parent?.lastChild);
+    } else {
+      const end = document.createTextNode("");
+      editorRef.current.appendChild(end);
+      const selection = window.getSelection();
+      const clearRange = document.createRange();
+      clearRange.setStart(end, 0);
+      clearRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(clearRange);
+    }
+    afterFormat();
   }
 
   function applyFormat(format) {
-    if (format === "bold") wrapInline("strong");
-    if (format === "italic") wrapInline("em");
-    if (format === "underline") wrapInline("u");
-    if (format === "indent") wrapBlock("blockquote");
-    if (format === "list") insertList();
-    if (format === "heading") wrapBlock("h3");
-    window.requestAnimationFrame(rememberHistory);
+    if (format === "bold" || format === "italic" || format === "underline") return toggleInline(format);
+    if (format === "indent-in") return indentIn();
+    if (format === "indent-out") return indentOut();
+    if (format === "list") return cycleListStyle();
+    if (format === "heading") return toggleHeading();
+    if (format === "clear") return clearFormat();
   }
 
   function save() {
+    cleanupEditorDom();
     const html = sanitizeHtml(editorRef.current?.innerHTML || "");
     if (isCentralNote) onSave({ noteId: modal.noteId || null, title: titleRef.current?.value || "", bodyHtml: html, noteDate: modal.noteDate || centralNote?.noteDate || todayYMD(), link: modal.link || null });
     else if (isBoxNote) onSave({ boxId: modal.boxId, title: titleRef.current?.value || "", bodyHtml: html });
@@ -175,7 +593,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
   };
   const headerStyle = { paddingTop: "env(safe-area-inset-top, 0px)" };
   const editorClassName = "rich-editor min-h-[calc(100dvh-180px)] w-full bg-transparent border-none outline-none px-0 pt-3 pb-16 text-[#E0E0E0] text-[17px] leading-relaxed";
-  const topButtonClassName = "h-10 w-8 shrink-0 grid place-items-center text-[#A7A7A7] hover:text-[#FFD2D7] disabled:opacity-35 disabled:hover:text-[#A7A7A7] transition-colors";
+  const topButtonClassName = (active = false) => `relative h-10 w-7 shrink-0 grid place-items-center disabled:opacity-35 disabled:hover:text-[#606060] transition-colors after:absolute after:left-2 after:right-2 after:bottom-1 after:h-px after:rounded-full after:transition-opacity ${active ? "text-[#FFD2D7] after:bg-[#FFD2D7] after:opacity-100" : "text-[#A7A7A7] hover:text-white after:opacity-0"}`;
   const canUndoNote = historyTick >= 0 && historyRef.current.undo.length > 0;
   const canRedoNote = historyTick >= 0 && historyRef.current.redo.length > 0;
   const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
@@ -186,26 +604,45 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
       : syncStatus === "saving"
         ? "#FFD2D7"
         : "#666666";
+  const keepToolbarFocus = (event) => event.preventDefault();
+  const toolbarButtonProps = (action) => ({
+    onPointerDown: (event) => {
+      event.preventDefault();
+      action();
+    },
+    onMouseDown: keepToolbarFocus,
+    onClick: (event) => {
+      if (event.detail === 0) action();
+    },
+    tabIndex: -1
+  });
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden">
-      <div className="fixed left-0 right-0 top-0 z-[60] bg-[#0a0a0a]/95 border-b border-white/[0.04]" style={headerStyle}>
-        <div className="mx-auto w-full max-w-md h-[52px] px-2 flex items-center gap-1">
-          <button type="button" onClick={save} className="h-10 min-w-[38px] grid place-items-center text-[#FFD2D7] hover:text-white transition-colors text-[30px] font-light leading-none" aria-label="Back">
+      <div className="fixed left-0 right-0 top-0 z-[60] bg-[#0a0a0a]/95 border-b border-white/[0.035]" style={headerStyle}>
+        <div className="mx-auto w-full max-w-md h-[52px] px-1.5 flex items-center gap-0.5">
+          <button type="button" onClick={save} className="h-10 min-w-8 grid place-items-center text-[#FFD2D7] hover:text-white transition-colors text-[30px] font-light leading-none" aria-label="Back">
             &lt;
           </button>
-          <div className="flex-1 min-w-0 overflow-x-auto thin-scroll flex items-center gap-1">
-            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => applyFormat("heading")} className="h-10 w-9 shrink-0 text-[#A7A7A7] hover:text-[#FFD2D7] transition-colors font-serif font-bold text-[16px] leading-none tracking-tight" aria-label="Heading">Aa</button>
-            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => applyFormat("bold")} className={topButtonClassName} aria-label="Bold"><Bold size={17} /></button>
-            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => applyFormat("italic")} className={topButtonClassName} aria-label="Italic"><Italic size={17} /></button>
-            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => applyFormat("underline")} className={topButtonClassName} aria-label="Underline"><Underline size={17} /></button>
-            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => applyFormat("indent")} className={topButtonClassName} aria-label="Quote"><Indent size={17} /></button>
-            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => applyFormat("list")} className={topButtonClassName} aria-label="List"><List size={17} /></button>
-            <div className="h-5 w-px bg-[#333333] mx-1 shrink-0" />
-            <button type="button" disabled={!canUndoNote} onMouseDown={e => e.preventDefault()} onClick={undoNoteEdit} className={topButtonClassName} aria-label="Undo note edit"><Undo2 size={17} /></button>
-            <button type="button" disabled={!canRedoNote} onMouseDown={e => e.preventDefault()} onClick={redoNoteEdit} className={topButtonClassName} aria-label="Redo note edit"><Redo2 size={17} /></button>
+          <div className="flex-1 min-w-0 overflow-x-auto thin-scroll flex items-center gap-0.5">
+            <button type="button" {...toolbarButtonProps(() => applyFormat("heading"))} className={`${topButtonClassName(toolbarState.heading)} w-8 font-serif font-bold text-[16px] leading-none tracking-tight`} aria-label={toolbarState.heading ? "Body text" : "Heading"}>Aa</button>
+            <button type="button" {...toolbarButtonProps(() => applyFormat("bold"))} className={topButtonClassName(toolbarState.bold)} aria-label="Bold"><Bold size={17} /></button>
+            <button type="button" {...toolbarButtonProps(() => applyFormat("italic"))} className={topButtonClassName(toolbarState.italic)} aria-label="Italic"><Italic size={17} /></button>
+            <button type="button" {...toolbarButtonProps(() => applyFormat("underline"))} className={topButtonClassName(toolbarState.underline)} aria-label="Underline"><Underline size={17} /></button>
+            <div className="h-5 w-px bg-white/[0.08] mx-1 shrink-0" />
+            <button type="button" {...toolbarButtonProps(() => applyFormat("indent-out"))} className={topButtonClassName(false)} aria-label="Outdent"><Indent size={17} /></button>
+            <button type="button" {...toolbarButtonProps(() => applyFormat("indent-in"))} className={topButtonClassName(false)} aria-label="Indent"><IndentIncrease size={17} /></button>
+            <button type="button" {...toolbarButtonProps(() => applyFormat("list"))} className={topButtonClassName(toolbarState.bullet || toolbarState.ordered)} aria-label={toolbarState.ordered ? "Turn list off" : toolbarState.bullet ? "Numbered list" : "Bullet list"}>
+              <span className="text-[15px] font-extrabold leading-none">{toolbarState.ordered ? "1." : "•"}</span>
+            </button>
+            <button type="button" {...toolbarButtonProps(() => applyFormat("clear"))} className={`${topButtonClassName(false)} w-8 font-serif font-bold text-[15px] leading-none`} aria-label="Clear formatting">
+              <span>A<span className="font-sans text-[11px] align-super">x</span></span>
+            </button>
+            <div className="h-5 w-px bg-white/[0.08] mx-1 shrink-0" />
+            <button type="button" disabled={!canUndoNote} {...toolbarButtonProps(undoNoteEdit)} className={topButtonClassName(false)} aria-label="Undo note edit"><Undo2 size={17} /></button>
+            <button type="button" disabled={!canRedoNote} {...toolbarButtonProps(redoNoteEdit)} className={topButtonClassName(false)} aria-label="Redo note edit"><Redo2 size={17} /></button>
           </div>
-          <button type="button" onClick={(e) => { e.stopPropagation(); onSyncNow(); }} title={syncLabel || syncText} aria-label={syncLabel || syncText} className="h-10 min-w-[38px] grid place-items-center transition-transform hover:scale-110 active:scale-95" style={{ color: syncColor }}>
+          <button type="button" onClick={(e) => { e.stopPropagation(); onSyncNow(); }} title={syncLabel || syncText} aria-label={syncLabel || syncText} className="h-10 min-w-8 grid place-items-center transition-transform hover:scale-110 active:scale-95" style={{ color: syncColor }}>
             {syncStatus === "saving" ? <MoreHorizontal size={20} className="animate-pulse" /> : <Check size={20} />}
           </button>
         </div>
