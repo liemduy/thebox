@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v88-runtime-hardening';
+const CACHE_NAME = 'idea-box-v89-table-autofit-persistence';
 const APP_SHELL = [
   './',
   './index.html',

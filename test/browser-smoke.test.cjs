@@ -80,3 +80,34 @@ test("app loads in local mode and primary tabs respond", async ({ page }) => {
 
   expect(runtimeErrors).toEqual([]);
 });
+
+test("note table auto fit persists after save and reopen", async ({ page }) => {
+  const runtimeErrors = [];
+  page.on("pageerror", error => runtimeErrors.push(error.message));
+  page.on("console", message => {
+    if (message.type() === "error") runtimeErrors.push(message.text());
+  });
+
+  await page.goto(`${baseURL}/?local=1#/notes`, { waitUntil: "networkidle" });
+  await page.getByLabel("Create note").click();
+  await page.getByPlaceholder("Title").fill("Auto fit smoke");
+
+  await page.getByRole("button", { name: "Insert table" }).click();
+  await page.locator(".table-panel-form").getByRole("button", { name: "Insert", exact: true }).click();
+  await expect(page.locator(".ProseMirror table")).toBeVisible();
+
+  await page.waitForTimeout(600);
+  await page.getByRole("button", { name: "Table options" }).click();
+  await page.waitForTimeout(600);
+  await page.getByRole("button", { name: "Auto fit" }).click();
+  await expect(page.locator(".ProseMirror table[data-layout='auto']")).toBeVisible();
+
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByText("Auto fit smoke")).toBeVisible();
+
+  await page.getByText("Auto fit smoke").click();
+  await expect(page.getByPlaceholder("Title")).toBeVisible();
+  await expect(page.locator(".ProseMirror table[data-layout='auto']")).toBeVisible();
+
+  expect(runtimeErrors).toEqual([]);
+});

@@ -88,6 +88,10 @@ function sanitizeHtml(input) {
             child.setAttribute("data-checked", String(attr.value || "") === "true" ? "true" : "false");
             return;
           }
+          if (attr.name === "data-layout" && child.tagName === "TABLE") {
+            child.setAttribute("data-layout", String(attr.value || "") === "auto" ? "auto" : "fixed");
+            return;
+          }
           child.removeAttribute(attr.name);
         });
         clean(child);

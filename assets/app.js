@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-runtime-hardening-2";
-const APP_CACHE_NAME = "idea-box-v88-runtime-hardening";
+const APP_BUILD_ID = "2026-05-23-table-autofit-persistence-1";
+const APP_CACHE_NAME = "idea-box-v89-table-autofit-persistence";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -1299,6 +1299,10 @@ function sanitizeHtml(input) {
           }
           if (attr.name === "data-checked" && child.tagName === "LI") {
             child.setAttribute("data-checked", String(attr.value || "") === "true" ? "true" : "false");
+            return;
+          }
+          if (attr.name === "data-layout" && child.tagName === "TABLE") {
+            child.setAttribute("data-layout", String(attr.value || "") === "auto" ? "auto" : "fixed");
             return;
           }
           child.removeAttribute(attr.name);
