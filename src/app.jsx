@@ -1,8 +1,3 @@
-function boxRangeDateLabel(value) {
-  if (!value) return "dd/mm/yyyy";
-  return displayDate(value).replace(" (today)", "");
-}
-
 function App() {
   const initialRouteRef = useRef(null);
   if (!initialRouteRef.current) initialRouteRef.current = parseRouteHash();
@@ -21,6 +16,7 @@ function App() {
   const [menuPlacements, setMenuPlacements] = useState({});
   const [isActiveMenuOpen, setIsActiveMenuOpen] = useState(false);
   const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
+  const [boxDateCalendarTarget, setBoxDateCalendarTarget] = useState(null);
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
   const [isActionCalendarOpen, setIsActionCalendarOpen] = useState(false);
   const [isNotesViewMenuOpen, setIsNotesViewMenuOpen] = useState(false);
@@ -79,6 +75,7 @@ function App() {
     setMenuPlacements({});
     setIsActiveMenuOpen(false);
     setIsDateMenuOpen(false);
+    setBoxDateCalendarTarget(null);
     setIsActionsMenuOpen(false);
     setIsActionCalendarOpen(false);
     setIsNotesViewMenuOpen(false);
@@ -107,6 +104,7 @@ function App() {
     setMenuPlacements({});
     setIsActiveMenuOpen(false);
     setIsDateMenuOpen(false);
+    setBoxDateCalendarTarget(null);
     setIsActionsMenuOpen(false);
     setIsActionCalendarOpen(false);
     setIsNotesViewMenuOpen(false);
@@ -1369,7 +1367,7 @@ function App() {
             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
               <div className="filter-row flex flex-wrap items-center gap-2.5 mb-7 relative z-20">
                 <div className="relative">
-                  <button type="button" onClick={(e) => { e.stopPropagation(); setIsActiveMenuOpen(!isActiveMenuOpen); setIsDateMenuOpen(false); }} className="flex items-center gap-1.5 px-6 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform">
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setIsActiveMenuOpen(!isActiveMenuOpen); setIsDateMenuOpen(false); setBoxDateCalendarTarget(null); }} className="flex items-center gap-1.5 px-6 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform">
                     {boxView === "archived" ? "Archived" : boxView === "done" ? "Done" : "Active"}
                   </button>
                   {isActiveMenuOpen && (
@@ -1382,13 +1380,13 @@ function App() {
                 </div>
 
                 <div className="relative">
-                  <button type="button" onClick={(e) => { e.stopPropagation(); setIsDateMenuOpen(!isDateMenuOpen); setIsActiveMenuOpen(false); }} className="flex items-center gap-1.5 px-6 py-2 bg-transparent hover:border-white active:scale-95 text-white text-[13px] font-bold rounded-full border border-[#878787] transition-all">
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setIsDateMenuOpen(!isDateMenuOpen); setBoxDateCalendarTarget(null); setIsActiveMenuOpen(false); }} className="flex items-center gap-1.5 px-6 py-2 bg-transparent hover:border-white active:scale-95 text-white text-[13px] font-bold rounded-full border border-[#878787] transition-all">
                     {db.ui.boxFilter === "today" ? "Today" : db.ui.boxFilter === "7" ? "7 days" : db.ui.boxFilter === "15" ? "15 days" : db.ui.boxFilter === "30" ? "30 days" : db.ui.boxFilter === "all" ? "All" : "Custom"}
                   </button>
                   {isDateMenuOpen && (
                     <div onClick={e => e.stopPropagation()} className="absolute top-full left-0 mt-2 w-[280px] max-w-[calc(100vw-2rem)] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] py-1.5 flex flex-col origin-top-left animate-in fade-in zoom-in-95 duration-100">
                       {[["today", "Today"], ["7", "7 days"], ["15", "15 days"], ["30", "30 days"], ["all", "All"]].map(([value, label]) => (
-                        <button key={value} type="button" onClick={() => { setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: value } })); setIsDateMenuOpen(false); }} className="px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors">{label}</button>
+                        <button key={value} type="button" onClick={() => { setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: value } })); setBoxDateCalendarTarget(null); setIsDateMenuOpen(false); }} className="px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors">{label}</button>
                       ))}
                       <label className="border-t border-[#3E3E3E] mt-1 flex items-center gap-2.5 px-4 py-2.5 text-[14px] font-bold text-white hover:bg-[#3E3E3E] transition-colors cursor-pointer select-none">
                         <input
@@ -1400,21 +1398,57 @@ function App() {
                         Show days
                       </label>
                       <div className="border-t border-[#3E3E3E] mt-1 px-4 py-3 grid grid-cols-1 gap-2">
-                        <label className="relative block w-full cursor-pointer">
-                          <span className="flex h-[46px] w-full items-center justify-between gap-3 bg-[#111111] border border-[#333333] rounded-[10px] px-3 text-[14px] text-white">
-                            <span className={`min-w-0 truncate whitespace-nowrap ${db.ui.boxFilterFrom ? "" : "text-[#A7A7A7]"}`}>{boxRangeDateLabel(db.ui.boxFilterFrom)}</span>
-                            <CalendarDays size={15} className="shrink-0 text-[#A7A7A7]" />
-                          </span>
-                          <input type="date" aria-label="Start date" value={db.ui.boxFilterFrom || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterFrom: e.target.value } }))} className="absolute inset-0 h-full w-full cursor-pointer opacity-0 [color-scheme:dark]" />
-                        </label>
-                        <label className="relative block w-full cursor-pointer">
-                          <span className="flex h-[46px] w-full items-center justify-between gap-3 bg-[#111111] border border-[#333333] rounded-[10px] px-3 text-[14px] text-white">
-                            <span className={`min-w-0 truncate whitespace-nowrap ${db.ui.boxFilterTo ? "" : "text-[#A7A7A7]"}`}>{boxRangeDateLabel(db.ui.boxFilterTo)}</span>
-                            <CalendarDays size={15} className="shrink-0 text-[#A7A7A7]" />
-                          </span>
-                          <input type="date" aria-label="End date" value={db.ui.boxFilterTo || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterTo: e.target.value } }))} className="absolute inset-0 h-full w-full cursor-pointer opacity-0 [color-scheme:dark]" />
-                        </label>
-                        <button type="button" onClick={() => { setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom" } })); setIsDateMenuOpen(false); }} className="justify-self-start text-[#FFD2D7] hover:text-white active:scale-95 text-[14px] font-bold underline underline-offset-4 decoration-[#FFD2D7] transition-all">
+                        <div className="relative">
+                          <div className={`flex h-[46px] w-full items-center gap-2 bg-[#111111] border rounded-[10px] px-3 text-[14px] text-white transition-colors ${boxDateCalendarTarget === "from" ? "border-[#FFD2D7]" : "border-[#333333]"}`}>
+                            <DateTextInput
+                              value={db.ui.boxFilterFrom || ""}
+                              allowEmpty
+                              ariaLabel="Start date"
+                              onCommit={(date) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterFrom: date } }))}
+                              inputClassName="flex-1 text-[16px] font-medium leading-none"
+                            />
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setBoxDateCalendarTarget(prev => prev === "from" ? null : "from"); }} className="h-8 w-8 shrink-0 grid place-items-center rounded-full text-[#A7A7A7] hover:text-[#FFD2D7] hover:bg-[#333333] transition-colors" aria-label="Open start date calendar">
+                              <CalendarDays size={15} />
+                            </button>
+                          </div>
+                          {boxDateCalendarTarget === "from" && (
+                            <ActionDatePickerPanel
+                              selectedDate={db.ui.boxFilterFrom || todayYMD()}
+                              actionDays={db.actionDays}
+                              align="left"
+                              onSelect={(date) => {
+                                setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterFrom: date } }));
+                                setBoxDateCalendarTarget(null);
+                              }}
+                            />
+                          )}
+                        </div>
+                        <div className="relative">
+                          <div className={`flex h-[46px] w-full items-center gap-2 bg-[#111111] border rounded-[10px] px-3 text-[14px] text-white transition-colors ${boxDateCalendarTarget === "to" ? "border-[#FFD2D7]" : "border-[#333333]"}`}>
+                            <DateTextInput
+                              value={db.ui.boxFilterTo || ""}
+                              allowEmpty
+                              ariaLabel="End date"
+                              onCommit={(date) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterTo: date } }))}
+                              inputClassName="flex-1 text-[16px] font-medium leading-none"
+                            />
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setBoxDateCalendarTarget(prev => prev === "to" ? null : "to"); }} className="h-8 w-8 shrink-0 grid place-items-center rounded-full text-[#A7A7A7] hover:text-[#FFD2D7] hover:bg-[#333333] transition-colors" aria-label="Open end date calendar">
+                              <CalendarDays size={15} />
+                            </button>
+                          </div>
+                          {boxDateCalendarTarget === "to" && (
+                            <ActionDatePickerPanel
+                              selectedDate={db.ui.boxFilterTo || db.ui.boxFilterFrom || todayYMD()}
+                              actionDays={db.actionDays}
+                              align="left"
+                              onSelect={(date) => {
+                                setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterTo: date } }));
+                                setBoxDateCalendarTarget(null);
+                              }}
+                            />
+                          )}
+                        </div>
+                        <button type="button" onClick={() => { setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom" } })); setBoxDateCalendarTarget(null); setIsDateMenuOpen(false); }} className="justify-self-start text-[#FFD2D7] hover:text-white active:scale-95 text-[14px] font-bold underline underline-offset-4 decoration-[#FFD2D7] transition-all">
                           Apply
                         </button>
                       </div>
@@ -1461,9 +1495,18 @@ function App() {
 
                 <div className="relative flex items-center justify-between bg-transparent border border-[#555555] rounded-full px-4 py-1.5 hover:border-white transition-colors group flex-1">
                   <button type="button" onClick={() => selectActionDate(addDaysYMD(selectedDate, -1))} className="text-[#A7A7A7] group-hover:text-white transition-colors"><ChevronLeft size={16} /></button>
-                  <button type="button" aria-label="Select action date" onClick={(e) => { e.stopPropagation(); setIsActionCalendarOpen(!isActionCalendarOpen); setIsActionsMenuOpen(false); }} className="flex items-center gap-2 text-white font-bold text-[13px] min-w-0">
-                    {displayDate(selectedDate, true)} {actionProgress ? <span className="text-[#A7A7A7] font-semibold">{actionProgress.done}/{actionProgress.total}</span> : null} <CalendarDays size={14} className="text-[#FFD2D7]" />
-                  </button>
+                  <div className="flex items-center justify-center gap-1.5 min-w-0">
+                    <DateTextInput
+                      value={selectedDate}
+                      ariaLabel="Action date"
+                      onCommit={(date) => { selectActionDate(date); setIsActionCalendarOpen(false); }}
+                      inputClassName="w-[92px] text-center text-[16px] font-bold leading-none"
+                    />
+                    {actionProgress ? <span className="text-[#A7A7A7] font-semibold text-[12px] whitespace-nowrap">{actionProgress.done}/{actionProgress.total}</span> : null}
+                    <button type="button" aria-label="Open action date calendar" onClick={(e) => { e.stopPropagation(); setIsActionCalendarOpen(!isActionCalendarOpen); setIsActionsMenuOpen(false); }} className="h-8 w-8 shrink-0 grid place-items-center rounded-full text-[#FFD2D7] hover:text-white hover:bg-[#333333] transition-colors">
+                      <CalendarDays size={14} />
+                    </button>
+                  </div>
                   <button type="button" onClick={() => selectActionDate(addDaysYMD(selectedDate, 1))} className="text-[#A7A7A7] group-hover:text-white transition-colors"><ChevronRight size={16} /></button>
                   {isActionCalendarOpen && (
                     <ActionDatePickerPanel

@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-22-stability-hardening";
-const APP_CACHE_NAME = "idea-box-v57-stability-hardening";
+const APP_BUILD_ID = "2026-05-23-inline-date-calendar";
+const APP_CACHE_NAME = "idea-box-v60-inline-date-calendar";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -3105,10 +3105,87 @@ function ActionTreeItem({
     flashTarget: flashTarget
   })))));
 }
+function compactDateLabel(value) {
+  if (!value) return "";
+  return displayDate(value).replace(" (today)", "");
+}
+function DateTextInput({
+  value,
+  onCommit,
+  allowEmpty = false,
+  ariaLabel = "Date",
+  inputClassName = ""
+}) {
+  const [draft, setDraft] = useState(compactDateLabel(value));
+  const [invalid, setInvalid] = useState(false);
+  const isFocusedRef = useRef(false);
+  useEffect(() => {
+    if (!isFocusedRef.current) {
+      setDraft(compactDateLabel(value));
+      setInvalid(false);
+    }
+  }, [value]);
+  function commit(nextDraft = draft) {
+    const raw = String(nextDraft || "").trim();
+    if (!raw && allowEmpty) {
+      setDraft("");
+      setInvalid(false);
+      onCommit("");
+      return true;
+    }
+    const parsed = parseUserDate(raw);
+    if (!parsed) {
+      setInvalid(Boolean(raw));
+      if (!raw) setDraft(compactDateLabel(value));
+      return false;
+    }
+    setDraft(compactDateLabel(parsed));
+    setInvalid(false);
+    onCommit(parsed);
+    return true;
+  }
+  return React.createElement("input", {
+    type: "text",
+    inputMode: "numeric",
+    "aria-label": ariaLabel,
+    value: draft,
+    placeholder: "dd/mm/yyyy",
+    onFocus: e => {
+      isFocusedRef.current = true;
+      window.setTimeout(() => e.currentTarget.select(), 0);
+    },
+    onClick: e => e.stopPropagation(),
+    onChange: e => {
+      setDraft(e.target.value);
+      setInvalid(false);
+    },
+    onBlur: () => {
+      isFocusedRef.current = false;
+      commit();
+    },
+    onKeyDown: e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (commit()) e.currentTarget.blur();
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setDraft(compactDateLabel(value));
+        setInvalid(false);
+        e.currentTarget.blur();
+      }
+    },
+    className: `min-w-0 bg-transparent outline-none placeholder:text-[#555555] transition-colors ${invalid ? "text-red-200" : "text-white"} ${inputClassName}`
+  });
+}
+function actionDayHasEntries(day) {
+  return (day.nodes || []).some(node => entriesFor(node).length > 0);
+}
 function ActionDatePickerPanel({
   selectedDate,
   actionDays,
-  onSelect
+  onSelect,
+  align = "right"
 }) {
   const [month, setMonth] = useState(String(selectedDate || todayYMD()).slice(0, 7));
   useEffect(() => {
@@ -3118,7 +3195,7 @@ function ActionDatePickerPanel({
   const firstDay = new Date(year, monthNumber - 1, 1);
   const startOffset = (firstDay.getDay() + 6) % 7;
   const selectedMonth = new Date(year, monthNumber - 1, 1);
-  const daysWithActions = new Set((actionDays || []).filter(day => (day.nodes || []).some(node => actionEntriesFor(node).length > 0)).map(day => day.date));
+  const daysWithEntries = new Set((actionDays || []).filter(actionDayHasEntries).map(day => day.date));
   const cells = Array.from({
     length: 42
   }, (_, index) => {
@@ -3131,7 +3208,7 @@ function ActionDatePickerPanel({
   }
   return React.createElement("div", {
     onClick: e => e.stopPropagation(),
-    className: "absolute top-full right-0 mt-2 w-[292px] max-w-[calc(100vw-2rem)] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] p-3 origin-top-right animate-in fade-in zoom-in-95 duration-100 z-50"
+    className: `absolute top-full ${align === "left" ? "left-0 origin-top-left" : "right-0 origin-top-right"} mt-2 w-[292px] max-w-[calc(100vw-2rem)] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] p-3 animate-in fade-in zoom-in-95 duration-100 z-50`
   }, React.createElement("div", {
     className: "flex items-center justify-between mb-3"
   }, React.createElement("button", {
@@ -3162,18 +3239,18 @@ function ActionDatePickerPanel({
     className: "grid grid-cols-7 gap-1"
   }, cells.map(date => {
     const inMonth = date.slice(0, 7) === month;
-    const hasActions = daysWithActions.has(date);
+    const hasEntries = daysWithEntries.has(date);
     const selected = date === selectedDate;
     const today = date === todayYMD();
     const dayNumber = Number(date.slice(-2));
-    const className = selected ? "bg-[#FFD2D7] border-[#FFD2D7] text-black shadow-[0_0_18px_rgba(255,210,215,0.18)]" : hasActions ? "bg-[#FFD2D7]/[0.16] border-[#FFD2D7] text-[#FFD2D7]" : today ? "bg-transparent border-[#555555] text-white" : "bg-transparent border-transparent text-[#A7A7A7] hover:border-[#555555] hover:text-white";
+    const className = selected ? "bg-[#FFD2D7] border-[#FFD2D7] text-black shadow-[0_0_18px_rgba(255,210,215,0.18)]" : hasEntries ? "bg-[#FFD2D7]/[0.16] border-[#FFD2D7] text-[#FFD2D7]" : today ? "bg-transparent border-[#555555] text-white" : "bg-transparent border-transparent text-[#A7A7A7] hover:border-[#555555] hover:text-white";
     return React.createElement("button", {
       key: date,
       type: "button",
       onClick: () => onSelect(date),
       className: `h-8 rounded-[9px] border text-[12px] font-extrabold transition-all ${className} ${inMonth ? "" : "opacity-35"}`,
       "aria-label": displayDate(date),
-      title: hasActions ? "Has actions" : displayDate(date)
+      title: hasEntries ? "Has actions/notes" : displayDate(date)
     }, dayNumber);
   })));
 }
@@ -3759,10 +3836,6 @@ function AuthScreen({
     className: "mt-4 text-[12px] text-[#A7A7A7]"
   }, "Supabase script is not loaded. The app can still run locally in this browser.")))));
 }
-function boxRangeDateLabel(value) {
-  if (!value) return "dd/mm/yyyy";
-  return displayDate(value).replace(" (today)", "");
-}
 function App() {
   const initialRouteRef = useRef(null);
   if (!initialRouteRef.current) initialRouteRef.current = parseRouteHash();
@@ -3785,6 +3858,7 @@ function App() {
   const [menuPlacements, setMenuPlacements] = useState({});
   const [isActiveMenuOpen, setIsActiveMenuOpen] = useState(false);
   const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
+  const [boxDateCalendarTarget, setBoxDateCalendarTarget] = useState(null);
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
   const [isActionCalendarOpen, setIsActionCalendarOpen] = useState(false);
   const [isNotesViewMenuOpen, setIsNotesViewMenuOpen] = useState(false);
@@ -3838,6 +3912,7 @@ function App() {
     setMenuPlacements({});
     setIsActiveMenuOpen(false);
     setIsDateMenuOpen(false);
+    setBoxDateCalendarTarget(null);
     setIsActionsMenuOpen(false);
     setIsActionCalendarOpen(false);
     setIsNotesViewMenuOpen(false);
@@ -3866,6 +3941,7 @@ function App() {
     setMenuPlacements({});
     setIsActiveMenuOpen(false);
     setIsDateMenuOpen(false);
+    setBoxDateCalendarTarget(null);
     setIsActionsMenuOpen(false);
     setIsActionCalendarOpen(false);
     setIsNotesViewMenuOpen(false);
@@ -5323,6 +5399,7 @@ function App() {
       e.stopPropagation();
       setIsActiveMenuOpen(!isActiveMenuOpen);
       setIsDateMenuOpen(false);
+      setBoxDateCalendarTarget(null);
     },
     className: "flex items-center gap-1.5 px-6 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform"
   }, boxView === "archived" ? "Archived" : boxView === "done" ? "Done" : "Active"), isActiveMenuOpen && React.createElement("div", {
@@ -5349,6 +5426,7 @@ function App() {
     onClick: e => {
       e.stopPropagation();
       setIsDateMenuOpen(!isDateMenuOpen);
+      setBoxDateCalendarTarget(null);
       setIsActiveMenuOpen(false);
     },
     className: "flex items-center gap-1.5 px-6 py-2 bg-transparent hover:border-white active:scale-95 text-white text-[13px] font-bold rounded-full border border-[#878787] transition-all"
@@ -5366,6 +5444,7 @@ function App() {
           boxFilter: value
         }
       }));
+      setBoxDateCalendarTarget(null);
       setIsDateMenuOpen(false);
     },
     className: "px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors"
@@ -5384,48 +5463,86 @@ function App() {
     className: "h-4 w-4 accent-[#FFD2D7] cursor-pointer"
   }), "Show days"), React.createElement("div", {
     className: "border-t border-[#3E3E3E] mt-1 px-4 py-3 grid grid-cols-1 gap-2"
-  }, React.createElement("label", {
-    className: "relative block w-full cursor-pointer"
-  }, React.createElement("span", {
-    className: "flex h-[46px] w-full items-center justify-between gap-3 bg-[#111111] border border-[#333333] rounded-[10px] px-3 text-[14px] text-white"
-  }, React.createElement("span", {
-    className: `min-w-0 truncate whitespace-nowrap ${db.ui.boxFilterFrom ? "" : "text-[#A7A7A7]"}`
-  }, boxRangeDateLabel(db.ui.boxFilterFrom)), React.createElement(CalendarDays, {
-    size: 15,
-    className: "shrink-0 text-[#A7A7A7]"
-  })), React.createElement("input", {
-    type: "date",
-    "aria-label": "Start date",
+  }, React.createElement("div", {
+    className: "relative"
+  }, React.createElement("div", {
+    className: `flex h-[46px] w-full items-center gap-2 bg-[#111111] border rounded-[10px] px-3 text-[14px] text-white transition-colors ${boxDateCalendarTarget === "from" ? "border-[#FFD2D7]" : "border-[#333333]"}`
+  }, React.createElement(DateTextInput, {
     value: db.ui.boxFilterFrom || "",
-    onChange: e => setDb(prev => markPendingSync({
+    allowEmpty: true,
+    ariaLabel: "Start date",
+    onCommit: date => setDb(prev => markPendingSync({
       ...prev,
       ui: {
         ...prev.ui,
-        boxFilterFrom: e.target.value
+        boxFilterFrom: date
       }
     })),
-    className: "absolute inset-0 h-full w-full cursor-pointer opacity-0 [color-scheme:dark]"
-  })), React.createElement("label", {
-    className: "relative block w-full cursor-pointer"
-  }, React.createElement("span", {
-    className: "flex h-[46px] w-full items-center justify-between gap-3 bg-[#111111] border border-[#333333] rounded-[10px] px-3 text-[14px] text-white"
-  }, React.createElement("span", {
-    className: `min-w-0 truncate whitespace-nowrap ${db.ui.boxFilterTo ? "" : "text-[#A7A7A7]"}`
-  }, boxRangeDateLabel(db.ui.boxFilterTo)), React.createElement(CalendarDays, {
-    size: 15,
-    className: "shrink-0 text-[#A7A7A7]"
-  })), React.createElement("input", {
-    type: "date",
-    "aria-label": "End date",
+    inputClassName: "flex-1 text-[16px] font-medium leading-none"
+  }), React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      setBoxDateCalendarTarget(prev => prev === "from" ? null : "from");
+    },
+    className: "h-8 w-8 shrink-0 grid place-items-center rounded-full text-[#A7A7A7] hover:text-[#FFD2D7] hover:bg-[#333333] transition-colors",
+    "aria-label": "Open start date calendar"
+  }, React.createElement(CalendarDays, {
+    size: 15
+  }))), boxDateCalendarTarget === "from" && React.createElement(ActionDatePickerPanel, {
+    selectedDate: db.ui.boxFilterFrom || todayYMD(),
+    actionDays: db.actionDays,
+    align: "left",
+    onSelect: date => {
+      setDb(prev => markPendingSync({
+        ...prev,
+        ui: {
+          ...prev.ui,
+          boxFilterFrom: date
+        }
+      }));
+      setBoxDateCalendarTarget(null);
+    }
+  })), React.createElement("div", {
+    className: "relative"
+  }, React.createElement("div", {
+    className: `flex h-[46px] w-full items-center gap-2 bg-[#111111] border rounded-[10px] px-3 text-[14px] text-white transition-colors ${boxDateCalendarTarget === "to" ? "border-[#FFD2D7]" : "border-[#333333]"}`
+  }, React.createElement(DateTextInput, {
     value: db.ui.boxFilterTo || "",
-    onChange: e => setDb(prev => markPendingSync({
+    allowEmpty: true,
+    ariaLabel: "End date",
+    onCommit: date => setDb(prev => markPendingSync({
       ...prev,
       ui: {
         ...prev.ui,
-        boxFilterTo: e.target.value
+        boxFilterTo: date
       }
     })),
-    className: "absolute inset-0 h-full w-full cursor-pointer opacity-0 [color-scheme:dark]"
+    inputClassName: "flex-1 text-[16px] font-medium leading-none"
+  }), React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      setBoxDateCalendarTarget(prev => prev === "to" ? null : "to");
+    },
+    className: "h-8 w-8 shrink-0 grid place-items-center rounded-full text-[#A7A7A7] hover:text-[#FFD2D7] hover:bg-[#333333] transition-colors",
+    "aria-label": "Open end date calendar"
+  }, React.createElement(CalendarDays, {
+    size: 15
+  }))), boxDateCalendarTarget === "to" && React.createElement(ActionDatePickerPanel, {
+    selectedDate: db.ui.boxFilterTo || db.ui.boxFilterFrom || todayYMD(),
+    actionDays: db.actionDays,
+    align: "left",
+    onSelect: date => {
+      setDb(prev => markPendingSync({
+        ...prev,
+        ui: {
+          ...prev.ui,
+          boxFilterTo: date
+        }
+      }));
+      setBoxDateCalendarTarget(null);
+    }
   })), React.createElement("button", {
     type: "button",
     onClick: () => {
@@ -5436,6 +5553,7 @@ function App() {
           boxFilter: "custom"
         }
       }));
+      setBoxDateCalendarTarget(null);
       setIsDateMenuOpen(false);
     },
     className: "justify-self-start text-[#FFD2D7] hover:text-white active:scale-95 text-[14px] font-bold underline underline-offset-4 decoration-[#FFD2D7] transition-all"
@@ -5515,21 +5633,30 @@ function App() {
     className: "text-[#A7A7A7] group-hover:text-white transition-colors"
   }, React.createElement(ChevronLeft, {
     size: 16
-  })), React.createElement("button", {
+  })), React.createElement("div", {
+    className: "flex items-center justify-center gap-1.5 min-w-0"
+  }, React.createElement(DateTextInput, {
+    value: selectedDate,
+    ariaLabel: "Action date",
+    onCommit: date => {
+      selectActionDate(date);
+      setIsActionCalendarOpen(false);
+    },
+    inputClassName: "w-[92px] text-center text-[16px] font-bold leading-none"
+  }), actionProgress ? React.createElement("span", {
+    className: "text-[#A7A7A7] font-semibold text-[12px] whitespace-nowrap"
+  }, actionProgress.done, "/", actionProgress.total) : null, React.createElement("button", {
     type: "button",
-    "aria-label": "Select action date",
+    "aria-label": "Open action date calendar",
     onClick: e => {
       e.stopPropagation();
       setIsActionCalendarOpen(!isActionCalendarOpen);
       setIsActionsMenuOpen(false);
     },
-    className: "flex items-center gap-2 text-white font-bold text-[13px] min-w-0"
-  }, displayDate(selectedDate, true), " ", actionProgress ? React.createElement("span", {
-    className: "text-[#A7A7A7] font-semibold"
-  }, actionProgress.done, "/", actionProgress.total) : null, " ", React.createElement(CalendarDays, {
-    size: 14,
-    className: "text-[#FFD2D7]"
-  })), React.createElement("button", {
+    className: "h-8 w-8 shrink-0 grid place-items-center rounded-full text-[#FFD2D7] hover:text-white hover:bg-[#333333] transition-colors"
+  }, React.createElement(CalendarDays, {
+    size: 14
+  }))), React.createElement("button", {
     type: "button",
     onClick: () => selectActionDate(addDaysYMD(selectedDate, 1)),
     className: "text-[#A7A7A7] group-hover:text-white transition-colors"

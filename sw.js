@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v59-mobile-date-range';
+const CACHE_NAME = 'idea-box-v60-inline-date-calendar';
 const APP_SHELL = [
   './',
   './index.html',
