@@ -3759,6 +3759,10 @@ function AuthScreen({
     className: "mt-4 text-[12px] text-[#A7A7A7]"
   }, "Supabase script is not loaded. The app can still run locally in this browser.")))));
 }
+function boxRangeDateLabel(value) {
+  if (!value) return "dd/mm/yyyy";
+  return displayDate(value).replace(" (today)", "");
+}
 function App() {
   const initialRouteRef = useRef(null);
   if (!initialRouteRef.current) initialRouteRef.current = parseRouteHash();
@@ -5380,7 +5384,16 @@ function App() {
     className: "h-4 w-4 accent-[#FFD2D7] cursor-pointer"
   }), "Show days"), React.createElement("div", {
     className: "border-t border-[#3E3E3E] mt-1 px-4 py-3 grid grid-cols-1 gap-2"
-  }, React.createElement("input", {
+  }, React.createElement("label", {
+    className: "relative block w-full cursor-pointer"
+  }, React.createElement("span", {
+    className: "flex h-[46px] w-full items-center justify-between gap-3 bg-[#111111] border border-[#333333] rounded-[10px] px-3 text-[14px] text-white"
+  }, React.createElement("span", {
+    className: `min-w-0 truncate whitespace-nowrap ${db.ui.boxFilterFrom ? "" : "text-[#A7A7A7]"}`
+  }, boxRangeDateLabel(db.ui.boxFilterFrom)), React.createElement(CalendarDays, {
+    size: 15,
+    className: "shrink-0 text-[#A7A7A7]"
+  })), React.createElement("input", {
     type: "date",
     "aria-label": "Start date",
     value: db.ui.boxFilterFrom || "",
@@ -5391,8 +5404,17 @@ function App() {
         boxFilterFrom: e.target.value
       }
     })),
-    className: "block w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]"
-  }), React.createElement("input", {
+    className: "absolute inset-0 h-full w-full cursor-pointer opacity-0 [color-scheme:dark]"
+  })), React.createElement("label", {
+    className: "relative block w-full cursor-pointer"
+  }, React.createElement("span", {
+    className: "flex h-[46px] w-full items-center justify-between gap-3 bg-[#111111] border border-[#333333] rounded-[10px] px-3 text-[14px] text-white"
+  }, React.createElement("span", {
+    className: `min-w-0 truncate whitespace-nowrap ${db.ui.boxFilterTo ? "" : "text-[#A7A7A7]"}`
+  }, boxRangeDateLabel(db.ui.boxFilterTo)), React.createElement(CalendarDays, {
+    size: 15,
+    className: "shrink-0 text-[#A7A7A7]"
+  })), React.createElement("input", {
     type: "date",
     "aria-label": "End date",
     value: db.ui.boxFilterTo || "",
@@ -5403,8 +5425,8 @@ function App() {
         boxFilterTo: e.target.value
       }
     })),
-    className: "block w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]"
-  }), React.createElement("button", {
+    className: "absolute inset-0 h-full w-full cursor-pointer opacity-0 [color-scheme:dark]"
+  })), React.createElement("button", {
     type: "button",
     onClick: () => {
       setDb(prev => markPendingSync({

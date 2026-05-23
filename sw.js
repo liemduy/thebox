@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v58-custom-range-menu';
+const CACHE_NAME = 'idea-box-v59-mobile-date-range';
 const APP_SHELL = [
   './',
   './index.html',

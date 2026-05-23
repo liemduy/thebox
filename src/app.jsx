@@ -1,3 +1,8 @@
+function boxRangeDateLabel(value) {
+  if (!value) return "dd/mm/yyyy";
+  return displayDate(value).replace(" (today)", "");
+}
+
 function App() {
   const initialRouteRef = useRef(null);
   if (!initialRouteRef.current) initialRouteRef.current = parseRouteHash();
@@ -1395,8 +1400,20 @@ function App() {
                         Show days
                       </label>
                       <div className="border-t border-[#3E3E3E] mt-1 px-4 py-3 grid grid-cols-1 gap-2">
-                        <input type="date" aria-label="Start date" value={db.ui.boxFilterFrom || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterFrom: e.target.value } }))} className="block w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]" />
-                        <input type="date" aria-label="End date" value={db.ui.boxFilterTo || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterTo: e.target.value } }))} className="block w-full bg-[#111111] border border-[#333333] rounded-[10px] px-3 py-2.5 text-[14px] text-white outline-none [color-scheme:dark]" />
+                        <label className="relative block w-full cursor-pointer">
+                          <span className="flex h-[46px] w-full items-center justify-between gap-3 bg-[#111111] border border-[#333333] rounded-[10px] px-3 text-[14px] text-white">
+                            <span className={`min-w-0 truncate whitespace-nowrap ${db.ui.boxFilterFrom ? "" : "text-[#A7A7A7]"}`}>{boxRangeDateLabel(db.ui.boxFilterFrom)}</span>
+                            <CalendarDays size={15} className="shrink-0 text-[#A7A7A7]" />
+                          </span>
+                          <input type="date" aria-label="Start date" value={db.ui.boxFilterFrom || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterFrom: e.target.value } }))} className="absolute inset-0 h-full w-full cursor-pointer opacity-0 [color-scheme:dark]" />
+                        </label>
+                        <label className="relative block w-full cursor-pointer">
+                          <span className="flex h-[46px] w-full items-center justify-between gap-3 bg-[#111111] border border-[#333333] rounded-[10px] px-3 text-[14px] text-white">
+                            <span className={`min-w-0 truncate whitespace-nowrap ${db.ui.boxFilterTo ? "" : "text-[#A7A7A7]"}`}>{boxRangeDateLabel(db.ui.boxFilterTo)}</span>
+                            <CalendarDays size={15} className="shrink-0 text-[#A7A7A7]" />
+                          </span>
+                          <input type="date" aria-label="End date" value={db.ui.boxFilterTo || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilterTo: e.target.value } }))} className="absolute inset-0 h-full w-full cursor-pointer opacity-0 [color-scheme:dark]" />
+                        </label>
                         <button type="button" onClick={() => { setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom" } })); setIsDateMenuOpen(false); }} className="justify-self-start text-[#FFD2D7] hover:text-white active:scale-95 text-[14px] font-bold underline underline-offset-4 decoration-[#FFD2D7] transition-all">
                           Apply
                         </button>
