@@ -1135,6 +1135,7 @@ function defaultUI() {
     notesDate: "all",
     notesTagsInput: "",
     notesDatesInput: "",
+    collapsedNoteDates: [],
     collapsedBoxNodes: [],
     expandedBoxNodes: [],
     expandedBoxActionDays: [],
@@ -2277,6 +2278,7 @@ function NotesPanel({
   onDeleteNote,
   onSetView,
   onSetViewBy,
+  onToggleDate,
   onOpenExport,
   flashTarget
 }) {
@@ -2400,20 +2402,38 @@ function NotesPanel({
     className: "px-2 py-1 text-[#A7A7A7] hover:text-white transition-colors"
   }, "Clear")), groups.length ? React.createElement("div", {
     className: "space-y-5"
-  }, groups.map(group => React.createElement("section", {
-    key: group.date
-  }, React.createElement("div", {
-    className: "text-[12px] font-extrabold text-[#A7A7A7] mb-2 px-1"
-  }, displayDate(group.date)), React.createElement("div", {
-    className: "space-y-3"
-  }, group.items.map(note => React.createElement(NoteCard, {
-    key: note.id,
-    state: state,
-    note: note,
-    onOpen: onOpenNote,
-    onDelete: onDeleteNote,
-    flashTarget: flashTarget
-  })))))) : React.createElement("div", {
+  }, groups.map(group => {
+    const collapsed = (state.ui.collapsedNoteDates || []).includes(group.date);
+    return React.createElement("section", {
+      key: group.date
+    }, React.createElement("button", {
+      type: "button",
+      onClick: () => onToggleDate(group.date),
+      className: "w-full flex items-center justify-between text-left text-[12px] font-extrabold text-[#A7A7A7] mb-2 px-1 hover:text-white transition-colors",
+      "aria-label": collapsed ? "Expand notes date" : "Collapse notes date"
+    }, React.createElement("span", {
+      className: "flex items-center gap-1.5 min-w-0"
+    }, collapsed ? React.createElement(ChevronRight, {
+      size: 14,
+      className: "shrink-0"
+    }) : React.createElement(ChevronDown, {
+      size: 14,
+      className: "shrink-0"
+    }), React.createElement("span", {
+      className: "truncate"
+    }, displayDate(group.date))), React.createElement("span", {
+      className: "text-[11px] text-[#666666] shrink-0"
+    }, group.items.length)), !collapsed && React.createElement("div", {
+      className: "space-y-3"
+    }, group.items.map(note => React.createElement(NoteCard, {
+      key: note.id,
+      state: state,
+      note: note,
+      onOpen: onOpenNote,
+      onDelete: onDeleteNote,
+      flashTarget: flashTarget
+    }))));
+  })) : React.createElement("div", {
     className: "flex-1 flex flex-col items-center justify-center pb-20 text-center"
   }, React.createElement("div", {
     className: "w-20 h-20 bg-[#1E1E1E] rounded-full flex items-center justify-center mb-6"
@@ -3085,6 +3105,78 @@ function ActionTreeItem({
     flashTarget: flashTarget
   })))));
 }
+function ActionDatePickerPanel({
+  selectedDate,
+  actionDays,
+  onSelect
+}) {
+  const [month, setMonth] = useState(String(selectedDate || todayYMD()).slice(0, 7));
+  useEffect(() => {
+    setMonth(String(selectedDate || todayYMD()).slice(0, 7));
+  }, [selectedDate]);
+  const [year, monthNumber] = month.split("-").map(Number);
+  const firstDay = new Date(year, monthNumber - 1, 1);
+  const startOffset = (firstDay.getDay() + 6) % 7;
+  const selectedMonth = new Date(year, monthNumber - 1, 1);
+  const daysWithActions = new Set((actionDays || []).filter(day => (day.nodes || []).some(node => actionEntriesFor(node).length > 0)).map(day => day.date));
+  const cells = Array.from({
+    length: 42
+  }, (_, index) => {
+    const date = new Date(year, monthNumber - 1, index - startOffset + 1);
+    return todayYMD(date);
+  });
+  function shiftMonth(offset) {
+    const next = new Date(year, monthNumber - 1 + offset, 1);
+    setMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "absolute top-full right-0 mt-2 w-[292px] max-w-[calc(100vw-2rem)] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] p-3 origin-top-right animate-in fade-in zoom-in-95 duration-100 z-50"
+  }, React.createElement("div", {
+    className: "flex items-center justify-between mb-3"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: () => shiftMonth(-1),
+    className: "h-8 w-8 grid place-items-center rounded-full text-[#A7A7A7] hover:text-white hover:bg-[#333333] transition-colors",
+    "aria-label": "Previous month"
+  }, React.createElement(ChevronLeft, {
+    size: 16
+  })), React.createElement("div", {
+    className: "text-white text-[13px] font-extrabold"
+  }, selectedMonth.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric"
+  })), React.createElement("button", {
+    type: "button",
+    onClick: () => shiftMonth(1),
+    className: "h-8 w-8 grid place-items-center rounded-full text-[#A7A7A7] hover:text-white hover:bg-[#333333] transition-colors",
+    "aria-label": "Next month"
+  }, React.createElement(ChevronRight, {
+    size: 16
+  }))), React.createElement("div", {
+    className: "grid grid-cols-7 gap-1 mb-1"
+  }, ["M", "T", "W", "T", "F", "S", "S"].map((label, index) => React.createElement("div", {
+    key: `${label}-${index}`,
+    className: "h-6 grid place-items-center text-[10px] font-extrabold text-[#666666]"
+  }, label))), React.createElement("div", {
+    className: "grid grid-cols-7 gap-1"
+  }, cells.map(date => {
+    const inMonth = date.slice(0, 7) === month;
+    const hasActions = daysWithActions.has(date);
+    const selected = date === selectedDate;
+    const today = date === todayYMD();
+    const dayNumber = Number(date.slice(-2));
+    const className = selected ? "bg-[#FFD2D7] border-[#FFD2D7] text-black shadow-[0_0_18px_rgba(255,210,215,0.18)]" : hasActions ? "bg-[#FFD2D7]/[0.16] border-[#FFD2D7] text-[#FFD2D7]" : today ? "bg-transparent border-[#555555] text-white" : "bg-transparent border-transparent text-[#A7A7A7] hover:border-[#555555] hover:text-white";
+    return React.createElement("button", {
+      key: date,
+      type: "button",
+      onClick: () => onSelect(date),
+      className: `h-8 rounded-[9px] border text-[12px] font-extrabold transition-all ${className} ${inMonth ? "" : "opacity-35"}`,
+      "aria-label": displayDate(date),
+      title: hasActions ? "Has actions" : displayDate(date)
+    }, dayNumber);
+  })));
+}
 function RichNoteModal({
   modal,
   state,
@@ -3690,6 +3782,7 @@ function App() {
   const [isActiveMenuOpen, setIsActiveMenuOpen] = useState(false);
   const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+  const [isActionCalendarOpen, setIsActionCalendarOpen] = useState(false);
   const [isNotesViewMenuOpen, setIsNotesViewMenuOpen] = useState(false);
   const [isNotesViewByMenuOpen, setIsNotesViewByMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
@@ -3701,7 +3794,6 @@ function App() {
   const [historyTick, setHistoryTick] = useState(0);
   const [dragState, setDragState] = useState(null);
   const fileInputRef = useRef(null);
-  const dateInputRef = useRef(null);
   const hydratedRef = useRef(false);
   const saveTimerRef = useRef(null);
   const cloudTimerRef = useRef(null);
@@ -3743,6 +3835,7 @@ function App() {
     setIsActiveMenuOpen(false);
     setIsDateMenuOpen(false);
     setIsActionsMenuOpen(false);
+    setIsActionCalendarOpen(false);
     setIsNotesViewMenuOpen(false);
     setIsNotesViewByMenuOpen(false);
   }
@@ -3770,6 +3863,7 @@ function App() {
     setIsActiveMenuOpen(false);
     setIsDateMenuOpen(false);
     setIsActionsMenuOpen(false);
+    setIsActionCalendarOpen(false);
     setIsNotesViewMenuOpen(false);
     setIsNotesViewByMenuOpen(false);
   }
@@ -4944,6 +5038,15 @@ function App() {
       }
     }));
   }
+  function toggleNoteDate(date) {
+    setDb(prev => markPendingSync({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        collapsedNoteDates: toggleId(prev.ui.collapsedNoteDates || [], date)
+      }
+    }));
+  }
   function toggleSearchFilter(key) {
     setSearchFilters(prev => {
       const next = {
@@ -5247,7 +5350,7 @@ function App() {
     className: "flex items-center gap-1.5 px-6 py-2 bg-transparent hover:border-white active:scale-95 text-white text-[13px] font-bold rounded-full border border-[#878787] transition-all"
   }, db.ui.boxFilter === "today" ? "Today" : db.ui.boxFilter === "7" ? "7 days" : db.ui.boxFilter === "15" ? "15 days" : db.ui.boxFilter === "30" ? "30 days" : db.ui.boxFilter === "all" ? "All" : "Custom"), isDateMenuOpen && React.createElement("div", {
     onClick: e => e.stopPropagation(),
-    className: "absolute top-full left-0 mt-2 w-[180px] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] py-1.5 flex flex-col origin-top-left animate-in fade-in zoom-in-95 duration-100"
+    className: "absolute top-full left-0 mt-2 w-[280px] max-w-[calc(100vw-2rem)] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] py-1.5 flex flex-col origin-top-left animate-in fade-in zoom-in-95 duration-100"
   }, [["today", "Today"], ["7", "7 days"], ["15", "15 days"], ["30", "30 days"], ["all", "All"]].map(([value, label]) => React.createElement("button", {
     key: value,
     type: "button",
@@ -5276,10 +5379,12 @@ function App() {
     })),
     className: "h-4 w-4 accent-[#FFD2D7] cursor-pointer"
   }), "Show days"), React.createElement("div", {
-    className: "border-t border-[#3E3E3E] mt-1 pt-2 px-3 pb-2"
-  }, React.createElement("div", {
-    className: "text-[11px] text-[#A7A7A7] uppercase tracking-wider font-bold mb-2"
-  }, "Custom range"), React.createElement("input", {
+    className: "border-t border-[#3E3E3E] mt-1 px-3 py-3 space-y-2"
+  }, React.createElement("label", {
+    className: "flex items-center gap-3 rounded-[10px] bg-[#111111] border border-[#333333] px-3 py-2"
+  }, React.createElement("span", {
+    className: "w-12 text-[10px] text-[#A7A7A7] uppercase tracking-wider font-extrabold whitespace-nowrap"
+  }, "Start"), React.createElement("input", {
     type: "date",
     value: db.ui.boxFilterFrom || "",
     onChange: e => setDb(prev => markPendingSync({
@@ -5290,8 +5395,12 @@ function App() {
         boxFilterFrom: e.target.value
       }
     })),
-    className: "mb-2 w-full bg-[#111] border border-[#333] rounded-lg px-2 py-1.5 text-[13px] text-white"
-  }), React.createElement("input", {
+    className: "min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none [color-scheme:dark]"
+  })), React.createElement("label", {
+    className: "flex items-center gap-3 rounded-[10px] bg-[#111111] border border-[#333333] px-3 py-2"
+  }, React.createElement("span", {
+    className: "w-12 text-[10px] text-[#A7A7A7] uppercase tracking-wider font-extrabold whitespace-nowrap"
+  }, "End"), React.createElement("input", {
     type: "date",
     value: db.ui.boxFilterTo || "",
     onChange: e => setDb(prev => markPendingSync({
@@ -5302,8 +5411,8 @@ function App() {
         boxFilterTo: e.target.value
       }
     })),
-    className: "w-full bg-[#111] border border-[#333] rounded-lg px-2 py-1.5 text-[13px] text-white"
-  })))), React.createElement("button", {
+    className: "min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none [color-scheme:dark]"
+  }))))), React.createElement("button", {
     type: "button",
     onClick: createRootBox,
     className: "ml-auto px-5 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform",
@@ -5381,10 +5490,12 @@ function App() {
     size: 16
   })), React.createElement("button", {
     type: "button",
-    onClick: () => {
-      if (dateInputRef.current?.showPicker) dateInputRef.current.showPicker();else dateInputRef.current?.click();
+    onClick: e => {
+      e.stopPropagation();
+      setIsActionCalendarOpen(!isActionCalendarOpen);
+      setIsActionsMenuOpen(false);
     },
-    className: "flex items-center gap-2 text-white font-bold text-[13px]"
+    className: "flex items-center gap-2 text-white font-bold text-[13px] min-w-0"
   }, displayDate(selectedDate, true), " ", actionProgress ? React.createElement("span", {
     className: "text-[#A7A7A7] font-semibold"
   }, actionProgress.done, "/", actionProgress.total) : null, " ", React.createElement(CalendarDays, {
@@ -5396,12 +5507,13 @@ function App() {
     className: "text-[#A7A7A7] group-hover:text-white transition-colors"
   }, React.createElement(ChevronRight, {
     size: 16
-  })), React.createElement("input", {
-    ref: dateInputRef,
-    className: "native-date",
-    type: "date",
-    value: selectedDate,
-    onChange: e => selectActionDate(e.target.value)
+  })), isActionCalendarOpen && React.createElement(ActionDatePickerPanel, {
+    selectedDate: selectedDate,
+    actionDays: db.actionDays,
+    onSelect: date => {
+      selectActionDate(date);
+      setIsActionCalendarOpen(false);
+    }
   }))), !selectedDay ? React.createElement("div", {
     className: "flex-1 flex flex-col items-center justify-center pb-20 animate-in fade-in duration-300"
   }, React.createElement("div", {
@@ -5449,6 +5561,7 @@ function App() {
     onDeleteNote: requestDeleteCentralNote,
     onSetView: value => setNotesUI("notesView", value),
     onSetViewBy: setNotesViewBy,
+    onToggleDate: toggleNoteDate,
     onOpenExport: openNotesExport,
     flashTarget: flashTarget
   })), modal?.type === "boxNote" && React.createElement(RichNoteModal, {

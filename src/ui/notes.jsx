@@ -20,7 +20,7 @@ function NoteCard({ state, note, query = "", onOpen, onDelete, flashTarget }) {
   );
 }
 
-function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isViewByMenuOpen, setIsViewByMenuOpen, onCreateNote, onOpenNote, onDeleteNote, onSetView, onSetViewBy, onOpenExport, flashTarget }) {
+function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isViewByMenuOpen, setIsViewByMenuOpen, onCreateNote, onOpenNote, onDeleteNote, onSetView, onSetViewBy, onToggleDate, onOpenExport, flashTarget }) {
   const groups = groupNotesByDate(notes);
   const view = state.ui.notesView || "linked";
   const viewLabel = view === "linked" ? "Linked" : view === "free" ? "Free" : "All";
@@ -98,14 +98,25 @@ function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isV
 
       {groups.length ? (
         <div className="space-y-5">
-          {groups.map(group => (
-            <section key={group.date}>
-              <div className="text-[12px] font-extrabold text-[#A7A7A7] mb-2 px-1">{displayDate(group.date)}</div>
-              <div className="space-y-3">
-                {group.items.map(note => <NoteCard key={note.id} state={state} note={note} onOpen={onOpenNote} onDelete={onDeleteNote} flashTarget={flashTarget} />)}
-              </div>
-            </section>
-          ))}
+          {groups.map(group => {
+            const collapsed = (state.ui.collapsedNoteDates || []).includes(group.date);
+            return (
+              <section key={group.date}>
+                <button type="button" onClick={() => onToggleDate(group.date)} className="w-full flex items-center justify-between text-left text-[12px] font-extrabold text-[#A7A7A7] mb-2 px-1 hover:text-white transition-colors" aria-label={collapsed ? "Expand notes date" : "Collapse notes date"}>
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    {collapsed ? <ChevronRight size={14} className="shrink-0" /> : <ChevronDown size={14} className="shrink-0" />}
+                    <span className="truncate">{displayDate(group.date)}</span>
+                  </span>
+                  <span className="text-[11px] text-[#666666] shrink-0">{group.items.length}</span>
+                </button>
+                {!collapsed && (
+                  <div className="space-y-3">
+                    {group.items.map(note => <NoteCard key={note.id} state={state} note={note} onOpen={onOpenNote} onDelete={onDeleteNote} flashTarget={flashTarget} />)}
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center pb-20 text-center">

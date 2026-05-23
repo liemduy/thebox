@@ -110,3 +110,69 @@ function ActionTreeItem({ state, day, node, level, menuOpenId, setMenuOpenId, me
     </div>
   );
 }
+
+function ActionDatePickerPanel({ selectedDate, actionDays, onSelect }) {
+  const [month, setMonth] = useState(String(selectedDate || todayYMD()).slice(0, 7));
+  useEffect(() => { setMonth(String(selectedDate || todayYMD()).slice(0, 7)); }, [selectedDate]);
+  const [year, monthNumber] = month.split("-").map(Number);
+  const firstDay = new Date(year, monthNumber - 1, 1);
+  const startOffset = (firstDay.getDay() + 6) % 7;
+  const selectedMonth = new Date(year, monthNumber - 1, 1);
+  const daysWithActions = new Set((actionDays || [])
+    .filter(day => (day.nodes || []).some(node => actionEntriesFor(node).length > 0))
+    .map(day => day.date));
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(year, monthNumber - 1, index - startOffset + 1);
+    return todayYMD(date);
+  });
+
+  function shiftMonth(offset) {
+    const next = new Date(year, monthNumber - 1 + offset, 1);
+    setMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
+  }
+
+  return (
+    <div onClick={e => e.stopPropagation()} className="absolute top-full right-0 mt-2 w-[292px] max-w-[calc(100vw-2rem)] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] p-3 origin-top-right animate-in fade-in zoom-in-95 duration-100 z-50">
+      <div className="flex items-center justify-between mb-3">
+        <button type="button" onClick={() => shiftMonth(-1)} className="h-8 w-8 grid place-items-center rounded-full text-[#A7A7A7] hover:text-white hover:bg-[#333333] transition-colors" aria-label="Previous month"><ChevronLeft size={16} /></button>
+        <div className="text-white text-[13px] font-extrabold">
+          {selectedMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+        </div>
+        <button type="button" onClick={() => shiftMonth(1)} className="h-8 w-8 grid place-items-center rounded-full text-[#A7A7A7] hover:text-white hover:bg-[#333333] transition-colors" aria-label="Next month"><ChevronRight size={16} /></button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {["M", "T", "W", "T", "F", "S", "S"].map((label, index) => (
+          <div key={`${label}-${index}`} className="h-6 grid place-items-center text-[10px] font-extrabold text-[#666666]">{label}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map(date => {
+          const inMonth = date.slice(0, 7) === month;
+          const hasActions = daysWithActions.has(date);
+          const selected = date === selectedDate;
+          const today = date === todayYMD();
+          const dayNumber = Number(date.slice(-2));
+          const className = selected
+            ? "bg-[#FFD2D7] border-[#FFD2D7] text-black shadow-[0_0_18px_rgba(255,210,215,0.18)]"
+            : hasActions
+              ? "bg-[#FFD2D7]/[0.16] border-[#FFD2D7] text-[#FFD2D7]"
+              : today
+                ? "bg-transparent border-[#555555] text-white"
+                : "bg-transparent border-transparent text-[#A7A7A7] hover:border-[#555555] hover:text-white";
+          return (
+            <button
+              key={date}
+              type="button"
+              onClick={() => onSelect(date)}
+              className={`h-8 rounded-[9px] border text-[12px] font-extrabold transition-all ${className} ${inMonth ? "" : "opacity-35"}`}
+              aria-label={displayDate(date)}
+              title={hasActions ? "Has actions" : displayDate(date)}
+            >
+              {dayNumber}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

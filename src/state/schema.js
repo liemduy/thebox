@@ -137,6 +137,7 @@ function defaultUI() {
     notesDate: "all",
     notesTagsInput: "",
     notesDatesInput: "",
+    collapsedNoteDates: [],
     collapsedBoxNodes: [],
     expandedBoxNodes: [],
     expandedBoxActionDays: [],

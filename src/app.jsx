@@ -17,6 +17,7 @@ function App() {
   const [isActiveMenuOpen, setIsActiveMenuOpen] = useState(false);
   const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+  const [isActionCalendarOpen, setIsActionCalendarOpen] = useState(false);
   const [isNotesViewMenuOpen, setIsNotesViewMenuOpen] = useState(false);
   const [isNotesViewByMenuOpen, setIsNotesViewByMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
@@ -28,7 +29,6 @@ function App() {
   const [historyTick, setHistoryTick] = useState(0);
   const [dragState, setDragState] = useState(null);
   const fileInputRef = useRef(null);
-  const dateInputRef = useRef(null);
   const hydratedRef = useRef(false);
   const saveTimerRef = useRef(null);
   const cloudTimerRef = useRef(null);
@@ -75,6 +75,7 @@ function App() {
     setIsActiveMenuOpen(false);
     setIsDateMenuOpen(false);
     setIsActionsMenuOpen(false);
+    setIsActionCalendarOpen(false);
     setIsNotesViewMenuOpen(false);
     setIsNotesViewByMenuOpen(false);
   }
@@ -102,6 +103,7 @@ function App() {
     setIsActiveMenuOpen(false);
     setIsDateMenuOpen(false);
     setIsActionsMenuOpen(false);
+    setIsActionCalendarOpen(false);
     setIsNotesViewMenuOpen(false);
     setIsNotesViewByMenuOpen(false);
   }
@@ -1178,6 +1180,16 @@ function App() {
     }));
   }
 
+  function toggleNoteDate(date) {
+    setDb(prev => markPendingSync({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        collapsedNoteDates: toggleId(prev.ui.collapsedNoteDates || [], date)
+      }
+    }));
+  }
+
   function toggleSearchFilter(key) {
     setSearchFilters(prev => {
       const next = { ...prev, [key]: prev[key] === false };
@@ -1369,7 +1381,7 @@ function App() {
                     {db.ui.boxFilter === "today" ? "Today" : db.ui.boxFilter === "7" ? "7 days" : db.ui.boxFilter === "15" ? "15 days" : db.ui.boxFilter === "30" ? "30 days" : db.ui.boxFilter === "all" ? "All" : "Custom"}
                   </button>
                   {isDateMenuOpen && (
-                    <div onClick={e => e.stopPropagation()} className="absolute top-full left-0 mt-2 w-[180px] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] py-1.5 flex flex-col origin-top-left animate-in fade-in zoom-in-95 duration-100">
+                    <div onClick={e => e.stopPropagation()} className="absolute top-full left-0 mt-2 w-[280px] max-w-[calc(100vw-2rem)] bg-[#1A1A1A] rounded-xl shadow-2xl border border-[#444444] py-1.5 flex flex-col origin-top-left animate-in fade-in zoom-in-95 duration-100">
                       {[["today", "Today"], ["7", "7 days"], ["15", "15 days"], ["30", "30 days"], ["all", "All"]].map(([value, label]) => (
                         <button key={value} type="button" onClick={() => { setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: value } })); setIsDateMenuOpen(false); }} className="px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors">{label}</button>
                       ))}
@@ -1382,10 +1394,15 @@ function App() {
                         />
                         Show days
                       </label>
-                      <div className="border-t border-[#3E3E3E] mt-1 pt-2 px-3 pb-2">
-                        <div className="text-[11px] text-[#A7A7A7] uppercase tracking-wider font-bold mb-2">Custom range</div>
-                        <input type="date" value={db.ui.boxFilterFrom || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom", boxFilterFrom: e.target.value } }))} className="mb-2 w-full bg-[#111] border border-[#333] rounded-lg px-2 py-1.5 text-[13px] text-white" />
-                        <input type="date" value={db.ui.boxFilterTo || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom", boxFilterTo: e.target.value } }))} className="w-full bg-[#111] border border-[#333] rounded-lg px-2 py-1.5 text-[13px] text-white" />
+                      <div className="border-t border-[#3E3E3E] mt-1 px-3 py-3 space-y-2">
+                        <label className="flex items-center gap-3 rounded-[10px] bg-[#111111] border border-[#333333] px-3 py-2">
+                          <span className="w-12 text-[10px] text-[#A7A7A7] uppercase tracking-wider font-extrabold whitespace-nowrap">Start</span>
+                          <input type="date" value={db.ui.boxFilterFrom || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom", boxFilterFrom: e.target.value } }))} className="min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none [color-scheme:dark]" />
+                        </label>
+                        <label className="flex items-center gap-3 rounded-[10px] bg-[#111111] border border-[#333333] px-3 py-2">
+                          <span className="w-12 text-[10px] text-[#A7A7A7] uppercase tracking-wider font-extrabold whitespace-nowrap">End</span>
+                          <input type="date" value={db.ui.boxFilterTo || ""} onChange={(e) => setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, boxFilter: "custom", boxFilterTo: e.target.value } }))} className="min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none [color-scheme:dark]" />
+                        </label>
                       </div>
                     </div>
                   )}
@@ -1430,11 +1447,17 @@ function App() {
 
                 <div className="relative flex items-center justify-between bg-transparent border border-[#555555] rounded-full px-4 py-1.5 hover:border-white transition-colors group flex-1">
                   <button type="button" onClick={() => selectActionDate(addDaysYMD(selectedDate, -1))} className="text-[#A7A7A7] group-hover:text-white transition-colors"><ChevronLeft size={16} /></button>
-                  <button type="button" onClick={() => { if (dateInputRef.current?.showPicker) dateInputRef.current.showPicker(); else dateInputRef.current?.click(); }} className="flex items-center gap-2 text-white font-bold text-[13px]">
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setIsActionCalendarOpen(!isActionCalendarOpen); setIsActionsMenuOpen(false); }} className="flex items-center gap-2 text-white font-bold text-[13px] min-w-0">
                     {displayDate(selectedDate, true)} {actionProgress ? <span className="text-[#A7A7A7] font-semibold">{actionProgress.done}/{actionProgress.total}</span> : null} <CalendarDays size={14} className="text-[#FFD2D7]" />
                   </button>
                   <button type="button" onClick={() => selectActionDate(addDaysYMD(selectedDate, 1))} className="text-[#A7A7A7] group-hover:text-white transition-colors"><ChevronRight size={16} /></button>
-                  <input ref={dateInputRef} className="native-date" type="date" value={selectedDate} onChange={(e) => selectActionDate(e.target.value)} />
+                  {isActionCalendarOpen && (
+                    <ActionDatePickerPanel
+                      selectedDate={selectedDate}
+                      actionDays={db.actionDays}
+                      onSelect={(date) => { selectActionDate(date); setIsActionCalendarOpen(false); }}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -1476,6 +1499,7 @@ function App() {
               onDeleteNote={requestDeleteCentralNote}
               onSetView={(value) => setNotesUI("notesView", value)}
               onSetViewBy={setNotesViewBy}
+              onToggleDate={toggleNoteDate}
               onOpenExport={openNotesExport}
               flashTarget={flashTarget}
             />
