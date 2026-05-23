@@ -31,6 +31,7 @@ function uid(prefix = "id") {
 
 function sanitizeHtml(input) {
   const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H2", "H3", "BLOCKQUOTE"]);
+  const indentable = new Set(["DIV", "P", "H2", "H3"]);
   const template = document.createElement("template");
   template.innerHTML = String(input || "");
   function clean(node) {
@@ -40,7 +41,15 @@ function sanitizeHtml(input) {
           child.replaceWith(document.createTextNode(child.textContent || ""));
           return;
         }
-        [...child.attributes].forEach(attr => child.removeAttribute(attr.name));
+        [...child.attributes].forEach(attr => {
+          if (attr.name === "data-indent" && indentable.has(child.tagName)) {
+            const level = Math.max(0, Math.min(4, Number(attr.value) || 0));
+            if (level > 0) child.setAttribute("data-indent", String(level));
+            else child.removeAttribute(attr.name);
+            return;
+          }
+          child.removeAttribute(attr.name);
+        });
         clean(child);
       } else if (child.nodeType !== Node.TEXT_NODE) {
         child.remove();

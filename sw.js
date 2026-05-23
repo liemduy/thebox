@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v67-note-format-controls';
+const CACHE_NAME = 'idea-box-v68-prosemirror-note-editor';
 const APP_SHELL = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const APP_SHELL = [
   './vendor/react.production.min.js',
   './vendor/react-dom.production.min.js',
   './vendor/supabase.min.js',
+  './vendor/prosemirror.bundle.js',
   './manifest.json',
   './icon.svg',
   './apple-touch-icon.png',

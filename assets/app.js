@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-note-format-controls";
-const APP_CACHE_NAME = "idea-box-v67-note-format-controls";
+const APP_BUILD_ID = "2026-05-23-prosemirror-note-editor";
+const APP_CACHE_NAME = "idea-box-v68-prosemirror-note-editor";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -771,6 +771,11 @@ const iconPaths = {
   IndentIncrease: React.createElement(React.Fragment, null, React.createElement("path", {
     d: "M21 6H11M21 12H11M21 18H11M3 8l4 4-4 4"
   })),
+  Quote: React.createElement(React.Fragment, null, React.createElement("path", {
+    d: "M3 21c3 0 7-1 7-8V5c0-1.25-.75-2-2-2H5c-1.25 0-2 .75-2 2v6c0 1.25.75 2 2 2h1c0 2-1 4-3 4z"
+  }), React.createElement("path", {
+    d: "M14 21c3 0 7-1 7-8V5c0-1.25-.75-2-2-2h-3c-1.25 0-2 .75-2 2v6c0 1.25.75 2 2 2h1c0 2-1 4-3 4z"
+  })),
   List: React.createElement(React.Fragment, null, React.createElement("line", {
     x1: "8",
     x2: "21",
@@ -880,6 +885,7 @@ const Italic = makeIcon("Italic");
 const Underline = makeIcon("Underline");
 const Indent = makeIcon("Indent");
 const IndentIncrease = makeIcon("IndentIncrease");
+const Quote = makeIcon("Quote");
 const List = makeIcon("List");
 const Download = makeIcon("Download");
 const Upload = makeIcon("Upload");
@@ -1035,6 +1041,7 @@ function uid(prefix = "id") {
 }
 function sanitizeHtml(input) {
   const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H2", "H3", "BLOCKQUOTE"]);
+  const indentable = new Set(["DIV", "P", "H2", "H3"]);
   const template = document.createElement("template");
   template.innerHTML = String(input || "");
   function clean(node) {
@@ -1044,7 +1051,14 @@ function sanitizeHtml(input) {
           child.replaceWith(document.createTextNode(child.textContent || ""));
           return;
         }
-        [...child.attributes].forEach(attr => child.removeAttribute(attr.name));
+        [...child.attributes].forEach(attr => {
+          if (attr.name === "data-indent" && indentable.has(child.tagName)) {
+            const level = Math.max(0, Math.min(4, Number(attr.value) || 0));
+            if (level > 0) child.setAttribute("data-indent", String(level));else child.removeAttribute(attr.name);
+            return;
+          }
+          child.removeAttribute(attr.name);
+        });
         clean(child);
       } else if (child.nodeType !== Node.TEXT_NODE) {
         child.remove();
@@ -3285,6 +3299,440 @@ function ActionDatePickerPanel({
     }, dayNumber));
   })));
 }
+const NOTE_EDITOR_EMPTY_TOOLBAR = {
+  bold: false,
+  italic: false,
+  underline: false,
+  heading: false,
+  bullet: false,
+  ordered: false,
+  quote: false,
+  canUndo: false,
+  canRedo: false,
+  indentLevel: 0
+};
+let noteEditorSchemaCache = null;
+function noteEditorPM() {
+  return window.ProseMirrorBundle || null;
+}
+function clampNoteIndent(value) {
+  return Math.max(0, Math.min(4, Number(value) || 0));
+}
+function noteIndentAttrs(value) {
+  const indent = clampNoteIndent(value);
+  return indent > 0 ? {
+    "data-indent": String(indent)
+  } : {};
+}
+function parseNoteIndent(dom) {
+  return clampNoteIndent(dom?.getAttribute?.("data-indent"));
+}
+function createNoteEditorSchema() {
+  const pm = noteEditorPM();
+  if (!pm) return null;
+  if (noteEditorSchemaCache) return noteEditorSchemaCache;
+  let nodes = pm.addListNodes(pm.basicSchema.spec.nodes, "paragraph block*", "block");
+  const paragraphSpec = pm.basicSchema.spec.nodes.get("paragraph");
+  const headingSpec = pm.basicSchema.spec.nodes.get("heading");
+  nodes = nodes.update("paragraph", {
+    ...paragraphSpec,
+    attrs: {
+      indent: {
+        default: 0
+      }
+    },
+    parseDOM: [{
+      tag: "p",
+      getAttrs: dom => ({
+        indent: parseNoteIndent(dom)
+      })
+    }],
+    toDOM(node) {
+      return ["p", noteIndentAttrs(node.attrs.indent), 0];
+    }
+  });
+  nodes = nodes.update("heading", {
+    ...headingSpec,
+    attrs: {
+      level: {
+        default: 3
+      },
+      indent: {
+        default: 0
+      }
+    },
+    parseDOM: [1, 2, 3, 4, 5, 6].map(level => ({
+      tag: `h${level}`,
+      getAttrs: dom => ({
+        level,
+        indent: parseNoteIndent(dom)
+      })
+    })),
+    toDOM(node) {
+      return [`h${node.attrs.level}`, noteIndentAttrs(node.attrs.indent), 0];
+    }
+  });
+  const marks = pm.basicSchema.spec.marks.addToEnd("underline", {
+    parseDOM: [{
+      tag: "u"
+    }, {
+      style: "text-decoration",
+      getAttrs: value => String(value || "").includes("underline") ? null : false
+    }],
+    toDOM() {
+      return ["u", 0];
+    }
+  });
+  noteEditorSchemaCache = new pm.Schema({
+    nodes,
+    marks
+  });
+  return noteEditorSchemaCache;
+}
+function normalizeHtmlForNoteEditor(html) {
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = sanitizeHtml(html || "");
+  wrapper.querySelectorAll("div").forEach(div => {
+    const p = document.createElement("p");
+    if (div.hasAttribute("data-indent")) p.setAttribute("data-indent", div.getAttribute("data-indent"));
+    p.innerHTML = div.innerHTML || "<br>";
+    div.replaceWith(p);
+  });
+  if (!wrapper.textContent.trim() && !wrapper.querySelector("br, ul, ol, blockquote, h2, h3")) {
+    wrapper.innerHTML = "<p></p>";
+  }
+  return wrapper.innerHTML;
+}
+function parseNoteEditorDoc(schema, html) {
+  const pm = noteEditorPM();
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = normalizeHtmlForNoteEditor(html);
+  return pm.DOMParser.fromSchema(schema).parse(wrapper);
+}
+function serializeNoteEditorDoc(schema, doc) {
+  const pm = noteEditorPM();
+  const fragment = pm.DOMSerializer.fromSchema(schema).serializeFragment(doc.content);
+  const wrapper = document.createElement("div");
+  wrapper.appendChild(fragment);
+  return sanitizeHtml(wrapper.innerHTML);
+}
+function noteEditorIsEmptyDoc(doc) {
+  return doc.childCount === 1 && doc.firstChild?.isTextblock && doc.firstChild.content.size === 0;
+}
+function noteEditorPlaceholderPlugin(schema) {
+  const pm = noteEditorPM();
+  return new pm.Plugin({
+    props: {
+      decorations(state) {
+        if (!noteEditorIsEmptyDoc(state.doc)) return null;
+        const first = state.doc.firstChild;
+        return pm.DecorationSet.create(state.doc, [pm.Decoration.node(0, first.nodeSize, {
+          class: "is-editor-empty",
+          "data-placeholder": "Write your note here..."
+        })]);
+      }
+    }
+  });
+}
+function noteEditorHashtagPlugin() {
+  const pm = noteEditorPM();
+  const key = new pm.PluginKey("note-hashtag-decorations");
+  return new pm.Plugin({
+    key,
+    props: {
+      decorations(state) {
+        const decorations = [];
+        state.doc.descendants((node, pos) => {
+          if (!node.isText || !node.text?.includes("#")) return;
+          const regex = /(^|[^\p{L}\p{N}_-])#([\p{L}\p{N}_-]{1,48})/gu;
+          let match;
+          while (match = regex.exec(node.text)) {
+            const start = match.index + match[1].length;
+            const end = start + match[2].length + 1;
+            decorations.push(pm.Decoration.inline(pos + start, pos + end, {
+              class: "note-hashtag"
+            }));
+          }
+        });
+        return decorations.length ? pm.DecorationSet.create(state.doc, decorations) : null;
+      }
+    }
+  });
+}
+function createNoteEditorState(schema, html) {
+  const pm = noteEditorPM();
+  const doc = parseNoteEditorDoc(schema, html);
+  const commands = noteEditorKeymapCommands(schema);
+  return pm.EditorState.create({
+    doc,
+    plugins: [pm.history({
+      depth: 120
+    }), noteEditorHashtagPlugin(), noteEditorPlaceholderPlugin(schema), pm.keymap(commands), pm.keymap(pm.baseKeymap)]
+  });
+}
+function noteEditorKeymapCommands(schema) {
+  const pm = noteEditorPM();
+  return {
+    "Mod-b": pm.toggleMark(schema.marks.strong),
+    "Mod-i": pm.toggleMark(schema.marks.em),
+    "Mod-u": pm.toggleMark(schema.marks.underline),
+    "Mod-z": pm.undo,
+    "Shift-Mod-z": pm.redo,
+    "Mod-y": pm.redo,
+    "Enter": pm.splitListItem(schema.nodes.list_item),
+    "Tab": pm.sinkListItem(schema.nodes.list_item),
+    "Shift-Tab": pm.liftListItem(schema.nodes.list_item)
+  };
+}
+function markIsActive(state, markType) {
+  const {
+    from,
+    to,
+    empty,
+    $from
+  } = state.selection;
+  if (empty) return Boolean(markType.isInSet(state.storedMarks || $from.marks()));
+  return state.doc.rangeHasMark(from, to, markType);
+}
+function currentTextblockWithPos(state) {
+  const {
+    $from
+  } = state.selection;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth);
+    if (node.isTextblock) return {
+      node,
+      pos: $from.before(depth),
+      depth
+    };
+  }
+  return null;
+}
+function findParentNodeOfType(state, type) {
+  const {
+    $from
+  } = state.selection;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth);
+    if (node.type === type) return {
+      node,
+      pos: $from.before(depth),
+      depth
+    };
+  }
+  return null;
+}
+function currentListKind(state) {
+  const schema = state.schema;
+  if (findParentNodeOfType(state, schema.nodes.bullet_list)) return "bullet";
+  if (findParentNodeOfType(state, schema.nodes.ordered_list)) return "ordered";
+  return "none";
+}
+function readNoteEditorToolbarState(view) {
+  if (!view) return NOTE_EDITOR_EMPTY_TOOLBAR;
+  const pm = noteEditorPM();
+  const state = view.state;
+  const schema = state.schema;
+  const textblock = currentTextblockWithPos(state);
+  const listKind = currentListKind(state);
+  return {
+    bold: markIsActive(state, schema.marks.strong),
+    italic: markIsActive(state, schema.marks.em),
+    underline: markIsActive(state, schema.marks.underline),
+    heading: textblock?.node.type === schema.nodes.heading,
+    bullet: listKind === "bullet",
+    ordered: listKind === "ordered",
+    quote: Boolean(findParentNodeOfType(state, schema.nodes.blockquote)),
+    canUndo: pm.undo(state),
+    canRedo: pm.redo(state),
+    indentLevel: clampNoteIndent(textblock?.node.attrs.indent)
+  };
+}
+function selectedTextblockPositions(state) {
+  const schema = state.schema;
+  const blocks = [];
+  const seen = new Set();
+  state.doc.nodesBetween(state.selection.from, state.selection.to, (node, pos) => {
+    if (!node.isTextblock || node.type !== schema.nodes.paragraph && node.type !== schema.nodes.heading) return true;
+    if (!seen.has(pos)) {
+      seen.add(pos);
+      blocks.push({
+        node,
+        pos
+      });
+    }
+    return false;
+  });
+  if (!blocks.length) {
+    const current = currentTextblockWithPos(state);
+    if (current && (current.node.type === schema.nodes.paragraph || current.node.type === schema.nodes.heading)) {
+      blocks.push({
+        node: current.node,
+        pos: current.pos
+      });
+    }
+  }
+  return blocks;
+}
+function updateSelectedBlockIndent(schema, delta) {
+  return (state, dispatch) => {
+    const blocks = selectedTextblockPositions(state);
+    if (!blocks.length) return false;
+    let tr = state.tr;
+    let changed = false;
+    blocks.forEach(({
+      node,
+      pos
+    }) => {
+      const nextIndent = clampNoteIndent(Number(node.attrs.indent || 0) + delta);
+      if (nextIndent === Number(node.attrs.indent || 0)) return;
+      tr = tr.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        indent: nextIndent
+      });
+      changed = true;
+    });
+    if (changed && dispatch) dispatch(tr.scrollIntoView());
+    return changed;
+  };
+}
+function toggleHeadingCommand(schema) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    const block = currentTextblockWithPos(state);
+    const indent = clampNoteIndent(block?.node.attrs.indent);
+    if (block?.node.type === schema.nodes.heading) {
+      return pm.setBlockType(schema.nodes.paragraph, {
+        indent
+      })(state, dispatch);
+    }
+    return pm.setBlockType(schema.nodes.heading, {
+      level: 3,
+      indent
+    })(state, dispatch);
+  };
+}
+function cycleListCommand(schema) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    const bulletList = findParentNodeOfType(state, schema.nodes.bullet_list);
+    const orderedList = findParentNodeOfType(state, schema.nodes.ordered_list);
+    if (bulletList) {
+      if (dispatch) dispatch(state.tr.setNodeMarkup(bulletList.pos, schema.nodes.ordered_list, {
+        order: 1
+      }).scrollIntoView());
+      return true;
+    }
+    if (orderedList) return pm.liftListItem(schema.nodes.list_item)(state, dispatch);
+    return pm.wrapInList(schema.nodes.bullet_list)(state, dispatch);
+  };
+}
+function toggleQuoteCommand(schema) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    if (findParentNodeOfType(state, schema.nodes.blockquote)) return pm.lift(state, dispatch);
+    const list = findParentNodeOfType(state, schema.nodes.bullet_list) || findParentNodeOfType(state, schema.nodes.ordered_list);
+    if (list) {
+      const listSelection = pm.NodeSelection.create(state.doc, list.pos);
+      const selectedState = state.apply(state.tr.setSelection(listSelection));
+      return pm.wrapIn(schema.nodes.blockquote)(selectedState, dispatch);
+    }
+    return pm.wrapIn(schema.nodes.blockquote)(state, dispatch);
+  };
+}
+function indentCommand(schema, delta) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    if (currentListKind(state) !== "none") {
+      const command = delta > 0 ? pm.sinkListItem(schema.nodes.list_item) : pm.liftListItem(schema.nodes.list_item);
+      return command(state, dispatch);
+    }
+    return updateSelectedBlockIndent(schema, delta)(state, dispatch);
+  };
+}
+function runNoteEditorCommand(view, commandName) {
+  const pm = noteEditorPM();
+  if (!view || !pm) return false;
+  const schema = view.state.schema;
+  const commands = {
+    bold: pm.toggleMark(schema.marks.strong),
+    italic: pm.toggleMark(schema.marks.em),
+    underline: pm.toggleMark(schema.marks.underline),
+    heading: toggleHeadingCommand(schema),
+    list: cycleListCommand(schema),
+    quote: toggleQuoteCommand(schema),
+    "indent-in": indentCommand(schema, 1),
+    "indent-out": indentCommand(schema, -1),
+    undo: pm.undo,
+    redo: pm.redo
+  };
+  const command = commands[commandName];
+  if (!command) return false;
+  const handled = command(view.state, transaction => view.dispatch(transaction.scrollIntoView()), view);
+  if (handled) view.focus();
+  return handled;
+}
+function ProseMirrorNoteEditor({
+  initialHtml,
+  className = "",
+  onReady,
+  onToolbarState
+}) {
+  const hostRef = useRef(null);
+  const viewRef = useRef(null);
+  const readyRef = useRef(onReady);
+  const toolbarRef = useRef(onToolbarState);
+  useEffect(() => {
+    readyRef.current = onReady;
+    toolbarRef.current = onToolbarState;
+  }, [onReady, onToolbarState]);
+  useEffect(() => {
+    const pm = noteEditorPM();
+    const schema = createNoteEditorSchema();
+    const host = hostRef.current;
+    if (!pm || !schema || !host) return undefined;
+    host.innerHTML = "";
+    const view = new pm.EditorView(host, {
+      state: createNoteEditorState(schema, initialHtml),
+      dispatchTransaction(transaction) {
+        const nextState = view.state.apply(transaction);
+        view.updateState(nextState);
+        toolbarRef.current?.(readNoteEditorToolbarState(view));
+      }
+    });
+    viewRef.current = view;
+    const api = {
+      getHtml() {
+        return serializeNoteEditorDoc(schema, view.state.doc);
+      },
+      focus() {
+        view.focus();
+      },
+      run(commandName) {
+        const handled = runNoteEditorCommand(view, commandName);
+        toolbarRef.current?.(readNoteEditorToolbarState(view));
+        return handled;
+      },
+      setHtml(html) {
+        const nextState = createNoteEditorState(schema, html);
+        view.updateState(nextState);
+        toolbarRef.current?.(readNoteEditorToolbarState(view));
+      }
+    };
+    readyRef.current?.(api);
+    toolbarRef.current?.(readNoteEditorToolbarState(view));
+    return () => {
+      readyRef.current?.(null);
+      view.destroy();
+      viewRef.current = null;
+      host.innerHTML = "";
+    };
+  }, [initialHtml]);
+  return React.createElement("div", {
+    ref: hostRef,
+    className: className
+  });
+}
 function RichNoteModal({
   modal,
   state,
@@ -3293,22 +3741,9 @@ function RichNoteModal({
   syncLabel = "",
   onSyncNow = () => {}
 }) {
-  const editorRef = useRef(null);
   const titleRef = useRef(null);
-  const [historyTick, setHistoryTick] = useState(0);
-  const [toolbarState, setToolbarState] = useState({
-    bold: false,
-    italic: false,
-    underline: false,
-    heading: false,
-    bullet: false,
-    ordered: false
-  });
-  const historyRef = useRef({
-    undo: [],
-    redo: [],
-    last: null
-  });
+  const editorApiRef = useRef(null);
+  const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
@@ -3318,571 +3753,34 @@ function RichNoteModal({
   const entry = actionNode && modal.entryId ? entriesFor(actionNode).find(e => e.id === modal.entryId) : null;
   const initialHtml = isCentralNote ? centralNote?.bodyHtml || "" : isBoxNote ? box?.boxNoteHtml || "" : entry?.bodyHtml || "";
   const initialTitle = isCentralNote ? centralNote?.title || "" : isBoxNote ? box?.boxNoteTitle || "" : entry?.title || "";
+  const editorKey = `${modal.type}-${modal.noteId || modal.boxId || ""}-${modal.dayId || ""}-${modal.nodeId || ""}-${modal.entryId || "new"}`;
   useEffect(() => {
-    const html = sanitizeHtml(initialHtml);
-    if (editorRef.current) {
-      editorRef.current.innerHTML = html;
-      window.requestAnimationFrame(() => highlightEditableHashtags(editorRef.current));
-    }
-    if (titleRef.current) titleRef.current.value = initialTitle;
-    historyRef.current = {
-      undo: [],
-      redo: [],
-      last: {
-        title: initialTitle,
-        bodyHtml: html
-      }
-    };
-    setHistoryTick(tick => tick + 1);
-    setTimeout(() => (titleRef.current || editorRef.current)?.focus(), 40);
-  }, [modal]);
-  function noteSnapshot() {
-    return {
-      title: titleRef.current?.value || "",
-      bodyHtml: editorRef.current?.innerHTML || ""
-    };
-  }
-  function sameSnapshot(a, b) {
-    return Boolean(a && b && a.title === b.title && a.bodyHtml === b.bodyHtml);
-  }
-  function rememberHistory() {
-    const current = noteSnapshot();
-    const history = historyRef.current;
-    if (sameSnapshot(history.last, current)) return;
-    if (history.last) history.undo.push(history.last);
-    if (history.undo.length > 80) history.undo.shift();
-    history.last = current;
-    history.redo = [];
-    setHistoryTick(tick => tick + 1);
-  }
-  function restoreSnapshot(snapshot) {
-    if (!snapshot) return;
-    if (titleRef.current) titleRef.current.value = snapshot.title || "";
-    if (editorRef.current) {
-      editorRef.current.innerHTML = sanitizeHtml(snapshot.bodyHtml || "");
-      window.requestAnimationFrame(() => highlightEditableHashtags(editorRef.current));
-    }
-    historyRef.current.last = noteSnapshot();
-    setHistoryTick(tick => tick + 1);
-  }
-  function undoNoteEdit() {
-    const history = historyRef.current;
-    const previous = history.undo.pop();
-    if (!previous) return;
-    history.redo.push(noteSnapshot());
-    restoreSnapshot(previous);
-  }
-  function redoNoteEdit() {
-    const history = historyRef.current;
-    const next = history.redo.pop();
-    if (!next) return;
-    history.undo.push(noteSnapshot());
-    restoreSnapshot(next);
-  }
-  function selectionInEditor() {
-    const editor = editorRef.current;
-    const selection = window.getSelection();
-    return Boolean(editor && selection?.rangeCount && editor.contains(selection.anchorNode));
-  }
-  function focusEditorSelection() {
-    const editor = editorRef.current;
-    if (!editor) return false;
-    editor.focus();
-    const selection = window.getSelection();
-    if (!selection) return false;
-    if (!selection.rangeCount || !editor.contains(selection.anchorNode)) {
-      const range = document.createRange();
-      range.selectNodeContents(editor);
-      range.collapse(false);
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }
-    return true;
-  }
-  function closestInEditor(tags) {
-    const editor = editorRef.current;
-    const selection = window.getSelection();
-    if (!editor || !selection?.rangeCount) return null;
-    let node = selection.anchorNode;
-    if (node?.nodeType === Node.TEXT_NODE) node = node.parentNode;
-    const wanted = new Set(tags);
-    while (node && node !== editor) {
-      if (node.nodeType === Node.ELEMENT_NODE && wanted.has(node.tagName)) return node;
-      node = node.parentNode;
-    }
-    return null;
-  }
-  function selectionRange() {
-    const selection = window.getSelection();
-    return selection?.rangeCount ? selection.getRangeAt(0) : null;
-  }
-  function setCaretAtEnd(node) {
-    const selection = window.getSelection();
-    if (!selection || !node) return;
-    const range = document.createRange();
-    range.selectNodeContents(node);
-    range.collapse(false);
-    selection.removeAllRanges();
-    selection.addRange(range);
-  }
-  function currentBlock() {
-    return closestInEditor(["LI", "DIV", "P", "H2", "H3", "BLOCKQUOTE"]);
-  }
-  function textToHtml(value) {
-    const span = document.createElement("span");
-    span.textContent = value || "";
-    return span.innerHTML;
-  }
-  function visibleText(value) {
-    return String(value || "").replace(/\u200B/g, "").trim();
-  }
-  function cloneInlineHtml(element) {
-    const html = sanitizeHtml(element?.innerHTML || "");
-    return html || textToHtml(element?.textContent || "");
-  }
-  function makePlainBlockFrom(element) {
-    const div = document.createElement("div");
-    div.innerHTML = cloneInlineHtml(element);
-    if (!String(div.textContent || "").trim()) div.appendChild(document.createElement("br"));
-    return div;
-  }
-  function makeHeadingFrom(element) {
-    const h3 = document.createElement("h3");
-    h3.innerHTML = cloneInlineHtml(element);
-    if (!String(h3.textContent || "").trim()) h3.textContent = "Heading";
-    return h3;
-  }
-  function pendingOrActiveInlineState() {
-    return {
-      bold: commandState("bold") || Boolean(closestInEditor(["B", "STRONG"])),
-      italic: commandState("italic") || Boolean(closestInEditor(["I", "EM"])),
-      underline: commandState("underline") || Boolean(closestInEditor(["U"]))
-    };
-  }
-  function commandState(command) {
-    try {
-      return Boolean(document.queryCommandState(command));
-    } catch {
-      return false;
-    }
-  }
-  function inlineConfig(format) {
-    if (format === "bold") return {
-      tagName: "strong",
-      tags: ["B", "STRONG"]
-    };
-    if (format === "italic") return {
-      tagName: "em",
-      tags: ["I", "EM"]
-    };
-    return {
-      tagName: "u",
-      tags: ["U"]
-    };
-  }
-  function insertInlineTypingShell(tagName, range) {
-    const wrapper = document.createElement(tagName);
-    const marker = document.createTextNode("\u200B");
-    wrapper.appendChild(marker);
-    range.insertNode(wrapper);
-    setCaretAtEnd(marker);
-    return wrapper;
-  }
-  function placeCaretInEditableBlock(element) {
-    if (!element) return;
-    if (!visibleText(element.textContent)) {
-      element.innerHTML = "";
-      const marker = document.createTextNode("\u200B");
-      element.appendChild(marker);
-      setCaretAtEnd(marker);
-      return;
-    }
-    setCaretAtEnd(element);
-  }
-  function moveCaretPastInline(element) {
-    if (!element?.parentNode) return;
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.setStartAfter(element);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-  }
-  function selectedRange() {
-    if (!focusEditorSelection()) return null;
-    const selection = window.getSelection();
-    return selection?.rangeCount ? selection.getRangeAt(0) : null;
-  }
-  function textLines(value) {
-    return String(value || "").split(/\n+/).map(line => line.trim()).filter(Boolean);
-  }
-  function rangeLines(range) {
-    if (!range) return [];
-    const wrapper = document.createElement("div");
-    wrapper.appendChild(range.cloneContents());
-    return htmlLines(wrapper).length ? htmlLines(wrapper) : textLines(range.toString());
-  }
-  function htmlLines(node) {
-    if (!node) return [];
-    const html = String(node.innerHTML || "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(div|p|li|h2|h3|blockquote)>/gi, "\n");
-    const div = document.createElement("div");
-    div.innerHTML = sanitizeHtml(html);
-    return textLines(div.textContent || node.textContent || "");
-  }
-  function lineBlocks(lines) {
-    const fragment = document.createDocumentFragment();
-    (lines.length ? lines : [""]).forEach(line => {
-      const div = document.createElement("div");
-      div.textContent = line;
-      fragment.appendChild(div);
-    });
-    return fragment;
-  }
-  function makeList(tagName, lines) {
-    const list = document.createElement(tagName);
-    (lines.length ? lines : [""]).forEach(line => {
-      const li = document.createElement("li");
-      li.textContent = line;
-      list.appendChild(li);
-    });
-    return list;
-  }
-  function listItems(list) {
-    return [...(list?.children || [])].filter(child => child.tagName === "LI");
-  }
-  function listLines(list) {
-    return listItems(list).map(li => visibleText(htmlLines(li).join(" "))).filter(Boolean);
-  }
-  function makeListFromBlock(tagName, block) {
-    const list = document.createElement(tagName);
-    const li = document.createElement("li");
-    li.innerHTML = cloneInlineHtml(block);
-    if (!String(li.textContent || "").trim()) li.appendChild(document.createElement("br"));
-    list.appendChild(li);
-    return {
-      list,
-      li
-    };
-  }
-  function makeEmptyListAtRange(tagName, range) {
-    const list = document.createElement(tagName);
-    const li = document.createElement("li");
-    li.appendChild(document.createElement("br"));
-    list.appendChild(li);
-    range.insertNode(list);
-    return {
-      list,
-      li
-    };
-  }
-  function restoreAfterNode(node) {
-    const selection = window.getSelection();
-    if (!selection || !node?.parentNode) return;
-    const range = document.createRange();
-    range.setStartAfter(node);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-  }
-  function replaceRangeWith(nodeOrFragment) {
-    const range = selectedRange();
-    if (!range) return null;
-    const last = nodeOrFragment.nodeType === Node.DOCUMENT_FRAGMENT_NODE ? nodeOrFragment.lastChild : nodeOrFragment;
-    range.deleteContents();
-    range.insertNode(nodeOrFragment);
-    if (last) restoreAfterNode(last);
-    return last;
-  }
-  function unwrapElement(element) {
-    if (!element?.parentNode) return;
-    const fragment = document.createDocumentFragment();
-    let last = null;
-    while (element.firstChild) {
-      last = element.firstChild;
-      fragment.appendChild(element.firstChild);
-    }
-    element.replaceWith(fragment);
-    restoreAfterNode(last || element.parentNode?.lastChild);
-  }
-  function cleanupEditorDom() {
-    const editor = editorRef.current;
-    if (!editor) return;
-    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
-    const textNodes = [];
-    while (walker.nextNode()) textNodes.push(walker.currentNode);
-    textNodes.forEach(node => {
-      if (node.nodeValue?.includes("\u200B")) node.nodeValue = node.nodeValue.replace(/\u200B/g, "");
-    });
-    editor.querySelectorAll("b,strong,i,em,u,h2,h3,blockquote,ul,ol,li").forEach(node => {
-      if (!visibleText(node.textContent) && !node.querySelector("br")) node.remove();
-    });
-    editor.querySelectorAll("[style]").forEach(node => node.removeAttribute("style"));
-    editor.normalize();
-  }
-  function updateToolbarState() {
-    if (!selectionInEditor()) return;
-    const block = closestInEditor(["H2", "H3"]);
-    const list = closestInEditor(["UL", "OL"]);
-    const inline = pendingOrActiveInlineState();
-    setToolbarState({
-      bold: inline.bold,
-      italic: inline.italic,
-      underline: inline.underline,
-      heading: Boolean(block),
-      bullet: list?.tagName === "UL",
-      ordered: list?.tagName === "OL"
-    });
-  }
-  useEffect(() => {
-    const update = () => window.requestAnimationFrame(updateToolbarState);
-    document.addEventListener("selectionchange", update);
-    return () => document.removeEventListener("selectionchange", update);
-  }, []);
-  function afterFormat() {
-    window.requestAnimationFrame(() => {
-      cleanupEditorDom();
-      if (editorRef.current) highlightEditableHashtags(editorRef.current);
-      updateToolbarState();
-      rememberHistory();
-    });
-  }
-  function toggleInline(format) {
-    const config = inlineConfig(format);
-    if (!focusEditorSelection()) return;
-    if (editorRef.current) unwrapLiveHashtagSpans(editorRef.current);
-    const range = selectionRange();
-    const active = closestInEditor(config.tags);
-    if (!range) return;
-    if (range.collapsed) {
-      if (active) {
-        if (!visibleText(active.textContent) && (active.textContent || "").includes("\u200B")) {
-          const parent = active.parentNode;
-          active.remove();
-          setCaretAtEnd(parent || editorRef.current);
-        } else {
-          moveCaretPastInline(active);
-        }
-      } else {
-        insertInlineTypingShell(config.tagName, range);
-      }
-      updateToolbarState();
-      return;
-    }
-    if (active) {
-      unwrapElement(active);
-      return afterFormat();
-    }
-    if (!range.toString().trim()) return;
-    const wrapper = document.createElement(config.tagName);
-    wrapper.appendChild(range.extractContents());
-    range.insertNode(wrapper);
-    restoreAfterNode(wrapper);
-    afterFormat();
-  }
-  function toggleHeading() {
-    if (!focusEditorSelection()) return;
-    if (editorRef.current) unwrapLiveHashtagSpans(editorRef.current);
-    const heading = closestInEditor(["H2", "H3"]);
-    if (heading) {
-      const div = makePlainBlockFrom(heading);
-      heading.replaceWith(div);
-      setCaretAtEnd(div);
-      return afterFormat();
-    }
-    const range = selectionRange();
-    if (!range) return;
-    if (range.collapsed) {
-      const block = currentBlock();
-      if (block && block !== editorRef.current && block.tagName !== "LI" && block.tagName !== "BLOCKQUOTE") {
-        const h3 = makeHeadingFrom(block);
-        block.replaceWith(h3);
-        setCaretAtEnd(h3);
-      } else {
-        const h3 = document.createElement("h3");
-        h3.textContent = "Heading";
-        range.insertNode(h3);
-        setCaretAtEnd(h3);
-      }
-      return afterFormat();
-    }
-    const lines = rangeLines(range);
-    const h3 = document.createElement("h3");
-    h3.textContent = lines.join(" ") || "Heading";
-    replaceRangeWith(h3);
-    afterFormat();
-  }
-  function cycleListStyle() {
-    if (!focusEditorSelection()) return;
-    if (editorRef.current) unwrapLiveHashtagSpans(editorRef.current);
-    const list = closestInEditor(["UL", "OL"]);
-    if (list?.tagName === "UL") {
-      const activeLi = closestInEditor(["LI"]);
-      const activeIndex = Math.max(0, listItems(list).indexOf(activeLi));
-      const ol = makeList("ol", listLines(list));
-      list.replaceWith(ol);
-      const targetLi = listItems(ol)[activeIndex] || ol;
-      placeCaretInEditableBlock(targetLi);
-      if (!visibleText(targetLi?.textContent) && (targetLi?.textContent || "").includes("\u200B")) {
-        updateToolbarState();
-        return;
-      }
-      return afterFormat();
-    }
-    if (list?.tagName === "OL") {
-      const activeLi = closestInEditor(["LI"]);
-      const activeIndex = Math.max(0, listItems(list).indexOf(activeLi));
-      const blocks = listItems(list).map(li => {
-        const div = document.createElement("div");
-        div.innerHTML = cloneInlineHtml(li);
-        if (!visibleText(div.textContent)) div.appendChild(document.createElement("br"));
-        return div;
-      });
-      const fallback = document.createElement("div");
-      fallback.appendChild(document.createElement("br"));
-      const nextBlocks = blocks.length ? blocks : [fallback];
-      list.replaceWith(...nextBlocks);
-      placeCaretInEditableBlock(nextBlocks[activeIndex] || nextBlocks[nextBlocks.length - 1]);
-      return afterFormat();
-    }
-    const range = selectionRange();
-    if (!range) return;
-    if (range.collapsed) {
-      const block = currentBlock();
-      let targetLi = null;
-      if (block && block !== editorRef.current && block.tagName !== "LI") {
-        const {
-          list: ul,
-          li
-        } = makeListFromBlock("ul", block);
-        block.replaceWith(ul);
-        targetLi = li;
-      } else {
-        const {
-          li
-        } = makeEmptyListAtRange("ul", range);
-        targetLi = li;
-      }
-      placeCaretInEditableBlock(targetLi);
-      if (!visibleText(targetLi?.textContent) && (targetLi?.textContent || "").includes("\u200B")) {
-        updateToolbarState();
-        return;
-      }
-      return afterFormat();
-    }
-    const ul = makeList("ul", rangeLines(range));
-    replaceRangeWith(ul);
-    const items = listItems(ul);
-    placeCaretInEditableBlock(items[items.length - 1] || ul);
-    afterFormat();
-  }
-  function indentListItemIn() {
-    const li = closestInEditor(["LI"]);
-    const list = li?.parentElement;
-    const previous = li?.previousElementSibling;
-    if (!li || !list || previous?.tagName !== "LI") return false;
-    let nested = [...previous.children].find(child => child.tagName === list.tagName);
-    if (!nested) {
-      nested = document.createElement(list.tagName.toLowerCase());
-      previous.appendChild(nested);
-    }
-    nested.appendChild(li);
-    setCaretAtEnd(li);
-    return true;
-  }
-  function indentListItemOut() {
-    const li = closestInEditor(["LI"]);
-    const list = li?.parentElement;
-    const parentLi = list?.parentElement?.tagName === "LI" ? list.parentElement : null;
-    const parentList = parentLi?.parentElement;
-    if (!li || !list || !parentLi || !parentList) return false;
-    parentList.insertBefore(li, parentLi.nextSibling);
-    if (!list.children.length) list.remove();
-    setCaretAtEnd(li);
-    return true;
-  }
-  function indentIn() {
-    if (!focusEditorSelection()) return;
-    if (indentListItemIn()) return afterFormat();
-    const block = closestInEditor(["DIV", "P", "H2", "H3", "UL", "OL", "BLOCKQUOTE"]);
-    const quote = document.createElement("blockquote");
-    if (block && block !== editorRef.current) {
-      block.replaceWith(quote);
-      quote.appendChild(block);
-      restoreAfterNode(quote);
-    } else {
-      const range = selectedRange();
-      if (!range) return;
-      quote.appendChild(lineBlocks(rangeLines(range)));
-      replaceRangeWith(quote);
-    }
-    afterFormat();
-  }
-  function indentOut() {
-    if (!focusEditorSelection()) return;
-    if (indentListItemOut()) return afterFormat();
-    const quote = closestInEditor(["BLOCKQUOTE"]);
-    if (!quote) return;
-    const fragment = document.createDocumentFragment();
-    while (quote.firstChild) fragment.appendChild(quote.firstChild);
-    const parent = quote.parentNode;
-    quote.replaceWith(fragment);
-    restoreAfterNode(parent?.lastChild);
-    afterFormat();
-  }
-  function clearFormat() {
-    const range = selectedRange();
-    if (!range) return;
-    if (editorRef.current) unwrapLiveHashtagSpans(editorRef.current);
-    const block = closestInEditor(["B", "STRONG", "I", "EM", "U", "H2", "H3", "LI", "DIV", "P", "BLOCKQUOTE"]);
-    const selected = rangeLines(range);
-    if (selected.length && !range.collapsed) {
-      const last = replaceRangeWith(lineBlocks(selected));
-      restoreAfterNode(last);
-    } else if (block && block !== editorRef.current) {
-      const fragment = lineBlocks(htmlLines(block));
-      const parent = block.parentNode;
-      block.replaceWith(fragment);
-      restoreAfterNode(parent?.lastChild);
-    } else {
-      const end = document.createTextNode("");
-      editorRef.current.appendChild(end);
-      const selection = window.getSelection();
-      const clearRange = document.createRange();
-      clearRange.setStart(end, 0);
-      clearRange.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(clearRange);
-    }
-    afterFormat();
-  }
-  function applyFormat(format) {
-    if (format === "bold" || format === "italic" || format === "underline") return toggleInline(format);
-    if (format === "indent-in") return indentIn();
-    if (format === "indent-out") return indentOut();
-    if (format === "list") return cycleListStyle();
-    if (format === "heading") return toggleHeading();
-    if (format === "clear") return clearFormat();
-  }
+    setToolbarState(NOTE_EDITOR_EMPTY_TOOLBAR);
+    window.setTimeout(() => titleRef.current?.focus(), 40);
+  }, [editorKey]);
   function save() {
-    cleanupEditorDom();
-    const html = sanitizeHtml(editorRef.current?.innerHTML || "");
+    const html = sanitizeHtml(editorApiRef.current?.getHtml() || "");
+    const title = titleRef.current?.value || "";
     if (isCentralNote) onSave({
       noteId: modal.noteId || null,
-      title: titleRef.current?.value || "",
+      title,
       bodyHtml: html,
       noteDate: modal.noteDate || centralNote?.noteDate || todayYMD(),
       link: modal.link || null
     });else if (isBoxNote) onSave({
       boxId: modal.boxId,
-      title: titleRef.current?.value || "",
+      title,
       bodyHtml: html
     });else onSave({
       dayId: modal.dayId,
       nodeId: modal.nodeId,
       entryId: modal.entryId || null,
-      title: titleRef.current?.value || "Note",
+      title: title || "Note",
       bodyHtml: html
     });
+  }
+  function runEditorCommand(command) {
+    editorApiRef.current?.run(command);
   }
   const editorScreenStyle = {
     paddingTop: "calc(env(safe-area-inset-top, 0px) + 52px)"
@@ -3892,8 +3790,6 @@ function RichNoteModal({
   };
   const editorClassName = "rich-editor min-h-[calc(100dvh-180px)] w-full bg-transparent border-none outline-none px-0 pt-3 pb-16 text-[#E0E0E0] text-[17px] leading-relaxed";
   const topButtonClassName = (active = false) => `relative h-10 w-7 shrink-0 grid place-items-center disabled:opacity-35 disabled:hover:text-[#606060] transition-colors after:absolute after:left-2 after:right-2 after:bottom-1 after:h-px after:rounded-full after:transition-opacity ${active ? "text-[#FFD2D7] after:bg-[#FFD2D7] after:opacity-100" : "text-[#A7A7A7] hover:text-white after:opacity-0"}`;
-  const canUndoNote = historyTick >= 0 && historyRef.current.undo.length > 0;
-  const canRedoNote = historyTick >= 0 && historyRef.current.redo.length > 0;
   const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
   const syncColor = syncStatus === "saved" ? "#FFD2D7" : syncStatus === "error" ? "#fb7185" : syncStatus === "saving" ? "#FFD2D7" : "#666666";
   const keepToolbarFocus = event => event.preventDefault();
@@ -3924,26 +3820,26 @@ function RichNoteModal({
     className: "flex-1 min-w-0 overflow-x-auto thin-scroll flex items-center gap-0.5"
   }, React.createElement("button", _extends({
     type: "button"
-  }, toolbarButtonProps(() => applyFormat("heading")), {
+  }, toolbarButtonProps(() => runEditorCommand("heading")), {
     className: `${topButtonClassName(toolbarState.heading)} w-8 font-serif font-bold text-[16px] leading-none tracking-tight`,
     "aria-label": toolbarState.heading ? "Body text" : "Heading"
   }), "Aa"), React.createElement("button", _extends({
     type: "button"
-  }, toolbarButtonProps(() => applyFormat("bold")), {
+  }, toolbarButtonProps(() => runEditorCommand("bold")), {
     className: topButtonClassName(toolbarState.bold),
     "aria-label": "Bold"
   }), React.createElement(Bold, {
     size: 17
   })), React.createElement("button", _extends({
     type: "button"
-  }, toolbarButtonProps(() => applyFormat("italic")), {
+  }, toolbarButtonProps(() => runEditorCommand("italic")), {
     className: topButtonClassName(toolbarState.italic),
     "aria-label": "Italic"
   }), React.createElement(Italic, {
     size: 17
   })), React.createElement("button", _extends({
     type: "button"
-  }, toolbarButtonProps(() => applyFormat("underline")), {
+  }, toolbarButtonProps(() => runEditorCommand("underline")), {
     className: topButtonClassName(toolbarState.underline),
     "aria-label": "Underline"
   }), React.createElement(Underline, {
@@ -3952,46 +3848,46 @@ function RichNoteModal({
     className: "h-5 w-px bg-white/[0.08] mx-1 shrink-0"
   }), React.createElement("button", _extends({
     type: "button"
-  }, toolbarButtonProps(() => applyFormat("indent-out")), {
+  }, toolbarButtonProps(() => runEditorCommand("indent-out")), {
     className: topButtonClassName(false),
     "aria-label": "Outdent"
   }), React.createElement(Indent, {
     size: 17
   })), React.createElement("button", _extends({
     type: "button"
-  }, toolbarButtonProps(() => applyFormat("indent-in")), {
+  }, toolbarButtonProps(() => runEditorCommand("indent-in")), {
     className: topButtonClassName(false),
     "aria-label": "Indent"
   }), React.createElement(IndentIncrease, {
     size: 17
   })), React.createElement("button", _extends({
     type: "button"
-  }, toolbarButtonProps(() => applyFormat("list")), {
+  }, toolbarButtonProps(() => runEditorCommand("quote")), {
+    className: topButtonClassName(toolbarState.quote),
+    "aria-label": "Quote"
+  }), React.createElement(Quote, {
+    size: 16
+  })), React.createElement("button", _extends({
+    type: "button"
+  }, toolbarButtonProps(() => runEditorCommand("list")), {
     className: topButtonClassName(toolbarState.bullet || toolbarState.ordered),
     "aria-label": toolbarState.ordered ? "Turn list off" : toolbarState.bullet ? "Numbered list" : "Bullet list"
   }), React.createElement("span", {
     className: "text-[15px] font-extrabold leading-none"
-  }, toolbarState.ordered ? "1." : "•")), React.createElement("button", _extends({
-    type: "button"
-  }, toolbarButtonProps(() => applyFormat("clear")), {
-    className: `${topButtonClassName(false)} w-8 font-serif font-bold text-[15px] leading-none`,
-    "aria-label": "Clear formatting"
-  }), React.createElement("span", null, "A", React.createElement("span", {
-    className: "font-sans text-[11px] align-super"
-  }, "x"))), React.createElement("div", {
+  }, toolbarState.ordered ? "1." : "\u2022")), React.createElement("div", {
     className: "h-5 w-px bg-white/[0.08] mx-1 shrink-0"
   }), React.createElement("button", _extends({
     type: "button",
-    disabled: !canUndoNote
-  }, toolbarButtonProps(undoNoteEdit), {
+    disabled: !toolbarState.canUndo
+  }, toolbarButtonProps(() => runEditorCommand("undo")), {
     className: topButtonClassName(false),
     "aria-label": "Undo note edit"
   }), React.createElement(Undo2, {
     size: 17
   })), React.createElement("button", _extends({
     type: "button",
-    disabled: !canRedoNote
-  }, toolbarButtonProps(redoNoteEdit), {
+    disabled: !toolbarState.canRedo
+  }, toolbarButtonProps(() => runEditorCommand("redo")), {
     className: topButtonClassName(false),
     "aria-label": "Redo note edit"
   }), React.createElement(Redo2, {
@@ -4023,23 +3919,15 @@ function RichNoteModal({
     type: "text",
     placeholder: "Title",
     defaultValue: initialTitle,
-    onInput: rememberHistory,
     className: "w-full bg-transparent border-none outline-none px-0 pt-2 pb-1 text-white text-[24px] font-extrabold leading-tight placeholder:text-[#555555] tracking-normal"
-  }), React.createElement("div", {
-    ref: editorRef,
-    contentEditable: true,
-    suppressContentEditableWarning: true,
-    spellCheck: "true",
-    "data-placeholder": "Write your note here...",
-    onInput: e => {
-      if (!e.nativeEvent?.isComposing) highlightEditableHashtags(e.currentTarget);
-      rememberHistory();
+  }), React.createElement(ProseMirrorNoteEditor, {
+    key: editorKey,
+    initialHtml: initialHtml,
+    className: editorClassName,
+    onReady: api => {
+      editorApiRef.current = api;
     },
-    onCompositionEnd: e => {
-      highlightEditableHashtags(e.currentTarget);
-      rememberHistory();
-    },
-    className: editorClassName
+    onToolbarState: setToolbarState
   }))));
 }
 function ConfirmModal({

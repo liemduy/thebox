@@ -14,6 +14,14 @@
     .slide-in-from-right-4 { animation-name: fadeInRight; }
     .slide-in-from-left-4 { animation-name: fadeInLeft; }
     .slide-in-from-bottom-4 { animation-name: fadeInBottom; }
+    .rich-editor.ProseMirror { white-space: pre-wrap; word-break: break-word; }
+    .rich-editor.ProseMirror:focus { outline: none; }
+    .rich-editor p { min-height: 1.45em; margin: .18rem 0; }
+    .rich-editor .is-editor-empty:first-child::before { content: attr(data-placeholder); color: #555; float: left; height: 0; pointer-events: none; }
+    .rich-editor [data-indent="1"] { margin-left: 1.25rem; }
+    .rich-editor [data-indent="2"] { margin-left: 2.5rem; }
+    .rich-editor [data-indent="3"] { margin-left: 3.75rem; }
+    .rich-editor [data-indent="4"] { margin-left: 5rem; }
     .rich-editor b, .rich-editor strong { font-weight: 800; }
     .rich-editor i, .rich-editor em { font-style: italic; }
     .rich-editor u { text-decoration: underline; }

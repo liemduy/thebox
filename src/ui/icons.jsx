@@ -25,6 +25,7 @@ const iconPaths = {
   Underline: (<><path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" x2="20" y1="22" y2="22"/></>),
   Indent: (<><path d="M21 6H11M21 12H11M21 18H11M7 8l-4 4 4 4"/></>),
   IndentIncrease: (<><path d="M21 6H11M21 12H11M21 18H11M3 8l4 4-4 4"/></>),
+  Quote: (<><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.75-2-2-2H5c-1.25 0-2 .75-2 2v6c0 1.25.75 2 2 2h1c0 2-1 4-3 4z"/><path d="M14 21c3 0 7-1 7-8V5c0-1.25-.75-2-2-2h-3c-1.25 0-2 .75-2 2v6c0 1.25.75 2 2 2h1c0 2-1 4-3 4z"/></>),
   List: (<><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></>),
   Download: (<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></>),
   Upload: (<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></>),
@@ -67,6 +68,7 @@ const Italic = makeIcon("Italic");
 const Underline = makeIcon("Underline");
 const Indent = makeIcon("Indent");
 const IndentIncrease = makeIcon("IndentIncrease");
+const Quote = makeIcon("Quote");
 const List = makeIcon("List");
 const Download = makeIcon("Download");
 const Upload = makeIcon("Upload");

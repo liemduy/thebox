@@ -1,6 +1,18 @@
 import fs from "node:fs/promises";
+import esbuild from "esbuild";
 import { transformAsync } from "@babel/core";
 import presetReact from "@babel/preset-react";
+
+await fs.mkdir("vendor", { recursive: true });
+await esbuild.build({
+  entryPoints: ["src/vendor/prosemirror-entry.js"],
+  bundle: true,
+  minify: true,
+  format: "iife",
+  globalName: "ProseMirrorBundle",
+  outfile: "vendor/prosemirror.bundle.js",
+  logLevel: "silent"
+});
 
 const core = await fs.readFile("src/core.js", "utf8");
 const componentFiles = [
@@ -17,6 +29,7 @@ const componentFiles = [
   "src/ui/notes.jsx",
   "src/ui/boxes.jsx",
   "src/ui/actions.jsx",
+  "src/ui/noteEditor.jsx",
   "src/ui/modals.jsx",
   "src/ui/auth.jsx"
 ];
