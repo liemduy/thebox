@@ -16,11 +16,7 @@ function NoteTableGlyph({ active = false, menuHint = false }) {
 function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel = "", onSyncNow = () => {} }) {
   const titleRef = useRef(null);
   const editorApiRef = useRef(null);
-  const tablePanelActionRef = useRef(0);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
-  const [tablePanel, setTablePanel] = useState(null);
-  const [tableRows, setTableRows] = useState("2");
-  const [tableCols, setTableCols] = useState("2");
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
@@ -66,48 +62,21 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
     }, 40);
   }
 
-  function openTablePanel() {
-    setTablePanel(prev => {
-      const nextType = toolbarState.table ? "actions" : "insert";
-      return prev === nextType ? null : nextType;
-    });
-  }
-
-  function normalizeTableDimension(value, fallback, max) {
-    const parsed = Number.parseInt(String(value || "").replace(/\D/g, ""), 10);
-    if (!Number.isFinite(parsed)) return fallback;
-    return Math.max(1, Math.min(max, parsed));
-  }
-
-  function updateTableDimension(setter) {
-    return (event) => setter(event.target.value.replace(/\D/g, "").slice(0, 2));
-  }
-
-  function settleTableDimension(setter, value, fallback, max) {
-    setter(String(normalizeTableDimension(value, fallback, max)));
-  }
-
-  function insertCustomTable() {
-    const options = {
-      rows: normalizeTableDimension(tableRows, 2, 12),
-      cols: normalizeTableDimension(tableCols, 2, 8)
-    };
-    setTableRows(String(options.rows));
-    setTableCols(String(options.cols));
-    setTablePanel(null);
-    runEditorCommandAfterFocus("insert-table", options);
-  }
-
-  function submitCustomTable(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    insertCustomTable();
-  }
-
-  function runTableCommand(command) {
-    setTablePanel(null);
-    runEditorCommandAfterFocus(command);
-  }
+  const {
+    tablePanel,
+    setTablePanel,
+    tableRows,
+    tableCols,
+    setTableRows,
+    setTableCols,
+    openTablePanel,
+    updateTableDimension,
+    settleTableDimension,
+    insertCustomTable,
+    submitCustomTable,
+    runTableCommand,
+    tablePanelButtonProps
+  } = useNoteTablePanel(toolbarState, runEditorCommandAfterFocus);
 
   const editorScreenStyle = {
     paddingTop: "calc(env(safe-area-inset-top, 0px) + 52px)"
@@ -149,32 +118,6 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
     onClick: (event) => {
       if (event.detail === 0) action();
     },
-    tabIndex: -1
-  });
-  const runTablePanelAction = (event, action) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const stamp = Date.now();
-    if (stamp - tablePanelActionRef.current < 500) return;
-    tablePanelActionRef.current = stamp;
-    action();
-  };
-  const tablePanelButtonProps = (action) => ({
-    onPointerDown: (event) => {
-      runTablePanelAction(event, action);
-    },
-    onMouseDown: (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    onTouchEnd: (event) => runTablePanelAction(event, action),
-    onKeyDown: (event) => {
-      if (event.key === "Enter" || event.key === " ") runTablePanelAction(event, action);
-    },
-    onTouchStart: (event) => {
-      event.stopPropagation();
-    },
-    onClick: (event) => runTablePanelAction(event, action),
     tabIndex: -1
   });
   const tablePanelStyle = { top: "calc(env(safe-area-inset-top, 0px) + 54px)" };

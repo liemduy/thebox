@@ -21,8 +21,12 @@ const componentFiles = [
   "src/components/header.jsx",
   "src/state/schema.js",
   "src/sync/localStore.js",
+  "src/sync/cloudState.js",
   "src/sync/noteMirror.js",
   "src/state/notes.js",
+  "src/state/integrity.js",
+  "src/sync/syncState.js",
+  "src/appHooks.jsx",
   "src/ui/menuHelpers.js",
   "src/state/actions.js",
   "src/ui/search.jsx",
@@ -30,6 +34,7 @@ const componentFiles = [
   "src/ui/boxes.jsx",
   "src/ui/actions.jsx",
   "src/ui/noteEditor.jsx",
+  "src/ui/noteEditorTableState.jsx",
   "src/ui/modals.jsx",
   "src/ui/auth.jsx"
 ];

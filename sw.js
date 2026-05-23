@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v86-note-table-autofit-toggle';
+const CACHE_NAME = 'idea-box-v87-technical-hardening';
 const APP_SHELL = [
   './',
   './index.html',

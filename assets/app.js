@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-note-table-autofit-toggle-1";
-const APP_CACHE_NAME = "idea-box-v86-note-table-autofit-toggle";
+const APP_BUILD_ID = "2026-05-23-technical-hardening-1";
+const APP_CACHE_NAME = "idea-box-v87-technical-hardening";
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -1565,15 +1565,16 @@ function normalizeState(parsed) {
     ui
   });
   const ids = collectStateIds(state.boxNodes, state.actionDays, state.notes, state.noteLinks);
-  return {
+  const normalized = {
     ...state,
     version: 5,
     meta: normalizeMeta(parsed.meta || {}, ids)
   };
+  return typeof repairStateIntegrity === "function" ? repairStateIntegrity(normalized) : normalized;
 }
 function sanitizedState(state) {
   const normalized = normalizeState(clone(state));
-  return {
+  const clean = {
     version: 5,
     meta: normalizeMeta(normalized.meta || {}, new Set(normalized.meta?.usedIds || [])),
     boxNodes: normalized.boxNodes.map(n => ({
@@ -1597,6 +1598,7 @@ function sanitizedState(state) {
       ...(normalized.ui || {})
     }
   };
+  return typeof repairStateIntegrity === "function" ? repairStateIntegrity(clean) : clean;
 }
 function mergeById(currentItems = [], importedItems = []) {
   const byId = new Map();
@@ -1704,6 +1706,38 @@ function maybeWarnLargeSnapshot(payload) {
   if (t - lastSnapshotSizeWarningAt < 60000) return;
   lastSnapshotSizeWarningAt = t;
   console.warn(`Planner snapshot is ${(bytes / 1048576).toFixed(2)}MB. Long-term storage should move daily action entries out of the full snapshot.`);
+}
+function canUseCloudSync(user, online = navigator.onLine) {
+  return Boolean(sb && user?.id && user.id !== "local" && online);
+}
+async function loadCloudWorkspace(userId) {
+  if (!sb || !userId || userId === "local") return null;
+  const {
+    data,
+    error
+  } = await withTimeout(sb.from(STATE_TABLE).select("data,updated_at").eq("user_id", userId).maybeSingle(), CLOUD_READ_TIMEOUT_MS, "Workspace load");
+  if (error) throw error;
+  if (!data?.data) return null;
+  return {
+    data: data.data,
+    updatedAt: data.updated_at
+  };
+}
+async function saveCloudWorkspace(userId, snapshot, updatedAt) {
+  if (!sb || !userId || userId === "local") return {
+    skipped: true
+  };
+  const result = await withTimeout(sb.from(STATE_TABLE).upsert({
+    user_id: userId,
+    data: snapshot,
+    updated_at: updatedAt
+  }, {
+    onConflict: "user_id"
+  }), CLOUD_WRITE_TIMEOUT_MS, "Workspace save");
+  if (result?.error) throw result.error;
+  return result || {
+    ok: true
+  };
 }
 function noteDbRow(userId, note) {
   const normalized = normalizeNote(note);
@@ -1954,6 +1988,185 @@ function syncNoteToLinkedLegacy(state, noteId, deleted = false) {
       day.updatedAt = now();
     }
   });
+}
+function actionNodeForLink(state, link) {
+  if (!link?.actionDate || !link?.actionNodeId) return null;
+  const day = (state.actionDays || []).find(item => item.date === link.actionDate);
+  return day ? getNode(day.nodes || [], link.actionNodeId) : null;
+}
+function noteLinkTargetExists(state, link) {
+  if (!link?.noteId) return false;
+  if (link.linkType === "box") return Boolean(link.boxNodeId && getNode(state.boxNodes || [], link.boxNodeId));
+  if (link.linkType === "day") return Boolean(link.actionDate && (state.actionDays || []).some(day => day.date === link.actionDate));
+  if (link.linkType === "action_node") return Boolean(actionNodeForLink(state, link));
+  if (link.linkType === "action_entry") {
+    const node = actionNodeForLink(state, link);
+    return Boolean(node && link.actionEntryId && entriesFor(node).some(entry => entry.id === link.actionEntryId));
+  }
+  return false;
+}
+function markNoteDeletedForIntegrity(note, timestamp = now()) {
+  if (!note || note.deletedAt) return;
+  note.deletedAt = timestamp;
+  note.updatedAt = timestamp;
+  note.clientUpdatedAt = timestamp;
+}
+function isStructuralLinkedNoteId(noteId) {
+  return String(noteId || "").startsWith("boxnote_") || String(noteId || "").startsWith("actionnote_");
+}
+function repairStateIntegrity(state, options = {}) {
+  const t = options.timestamp || now();
+  state.boxNodes = Array.isArray(state.boxNodes) ? state.boxNodes : [];
+  state.actionDays = Array.isArray(state.actionDays) ? state.actionDays : [];
+  state.notes = Array.isArray(state.notes) ? state.notes : [];
+  state.noteLinks = Array.isArray(state.noteLinks) ? state.noteLinks : [];
+  state.ui = {
+    ...defaultUI(),
+    ...(state.ui || {})
+  };
+  const noteById = new Map(state.notes.map(note => [note.id, note]).filter(([id]) => Boolean(id)));
+  const validLinksById = new Map();
+  const linkedNoteIds = new Set();
+  state.noteLinks.forEach(rawLink => {
+    const link = normalizeNoteLink(rawLink);
+    const note = noteById.get(link.noteId);
+    if (!note) return;
+    if (note.deletedAt) return;
+    if (!noteLinkTargetExists(state, link)) {
+      if (isStructuralLinkedNoteId(link.noteId)) markNoteDeletedForIntegrity(note, t);
+      return;
+    }
+    validLinksById.set(link.id, link);
+    linkedNoteIds.add(link.noteId);
+  });
+  state.notes.forEach(note => {
+    if (isStructuralLinkedNoteId(note.id) && !linkedNoteIds.has(note.id)) {
+      markNoteDeletedForIntegrity(note, t);
+    }
+  });
+  const activeNoteIds = new Set(state.notes.filter(note => !note.deletedAt).map(note => note.id));
+  state.noteLinks = [...validLinksById.values()].filter(link => activeNoteIds.has(link.noteId));
+  const boxIds = new Set(state.boxNodes.map(node => node.id));
+  const actionNodeIds = new Set((state.actionDays || []).flatMap(day => (day.nodes || []).map(node => node.id)));
+  state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(id => boxIds.has(id));
+  state.ui.expandedBoxNodes = (state.ui.expandedBoxNodes || []).filter(id => boxIds.has(id));
+  state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => actionNodeIds.has(id));
+  state.ui.boxCascadeModes = Object.fromEntries(Object.entries(normalizeModeMap(state.ui.boxCascadeModes)).filter(([id]) => boxIds.has(id)));
+  state.ui.actionCascadeModes = Object.fromEntries(Object.entries(normalizeModeMap(state.ui.actionCascadeModes)).filter(([id]) => actionNodeIds.has(id)));
+  return state;
+}
+function stateIntegrityReport(state) {
+  const normalized = normalizeState(state);
+  const noteIds = new Set((normalized.notes || []).map(note => note.id));
+  const invalidLinks = (normalized.noteLinks || []).filter(link => !noteIds.has(link.noteId) || !noteLinkTargetExists(normalized, link));
+  const structuralGhostNotes = (normalized.notes || []).filter(note => !note.deletedAt && isStructuralLinkedNoteId(note.id) && !noteIsLinked(normalized, note.id));
+  return {
+    invalidLinks: invalidLinks.length,
+    structuralGhostNotes: structuralGhostNotes.length,
+    orphanUiBoxIds: (normalized.ui.collapsedBoxNodes || []).filter(id => !getNode(normalized.boxNodes, id)).length + (normalized.ui.expandedBoxNodes || []).filter(id => !getNode(normalized.boxNodes, id)).length
+  };
+}
+const SYNC_STATUS_VALUES = new Set(["saved", "saving", "pending", "offline", "error"]);
+const SYNC_STUCK_TIMEOUT_MS = 18000;
+function normalizeSyncStatus(status, online = navigator.onLine) {
+  const value = SYNC_STATUS_VALUES.has(status) ? status : online ? "saved" : "offline";
+  if (!online && value !== "saving" && value !== "error") return "offline";
+  return value;
+}
+function syncLabelFor(status, online = navigator.onLine) {
+  const value = normalizeSyncStatus(status, online);
+  if (value === "saving") return "Saving";
+  if (value === "pending") return "Pending";
+  if (value === "offline") return "Local saved";
+  if (value === "error") return "Sync error";
+  return "Saved";
+}
+function syncStatusFromSnapshot(snapshot, user, online = navigator.onLine) {
+  if (snapshot?.meta?.pendingSync) {
+    if (!sb || !user?.id || user.id === "local" || !online) return "offline";
+    return "pending";
+  }
+  return online ? "saved" : "offline";
+}
+function useSyncStatusMachine(initialStatus = navigator.onLine ? "saved" : "offline") {
+  const [syncStatus, setRawSyncStatus] = useState(() => normalizeSyncStatus(initialStatus));
+  const [syncLabel, setRawSyncLabel] = useState(() => syncLabelFor(initialStatus));
+  const savingStartedAtRef = useRef(0);
+  function setSyncState(status, label) {
+    const normalized = normalizeSyncStatus(status);
+    savingStartedAtRef.current = normalized === "saving" ? Date.now() : 0;
+    setRawSyncStatus(normalized);
+    setRawSyncLabel(label || syncLabelFor(normalized));
+  }
+  function setSyncStatus(status) {
+    const normalized = normalizeSyncStatus(status);
+    savingStartedAtRef.current = normalized === "saving" ? Date.now() : 0;
+    setRawSyncStatus(normalized);
+  }
+  function setSyncLabel(label) {
+    setRawSyncLabel(String(label || ""));
+  }
+  useEffect(() => {
+    if (syncStatus !== "saving") return undefined;
+    const timer = window.setTimeout(() => {
+      if (!savingStartedAtRef.current) return;
+      if (Date.now() - savingStartedAtRef.current < SYNC_STUCK_TIMEOUT_MS) return;
+      setSyncState(navigator.onLine ? "pending" : "offline");
+    }, SYNC_STUCK_TIMEOUT_MS + 250);
+    return () => window.clearTimeout(timer);
+  }, [syncStatus]);
+  return {
+    syncStatus,
+    syncLabel,
+    setSyncStatus,
+    setSyncLabel,
+    setSyncState
+  };
+}
+function usePlannerHistory(setDb, syncBeforeSave) {
+  const [historyTick, setHistoryTick] = useState(0);
+  const undoRef = useRef([]);
+  const redoRef = useRef([]);
+  function commit(label, mutator, options = {}) {
+    setDb(prev => {
+      const before = sanitizedState(prev);
+      const next = normalizeState(clone(prev));
+      const changed = mutator(next);
+      if (changed === false) return prev;
+      if (options.sync !== false) syncBeforeSave?.(next);
+      undoRef.current.push(before);
+      if (undoRef.current.length > HISTORY_LIMIT) undoRef.current.shift();
+      redoRef.current = [];
+      setHistoryTick(t => t + 1);
+      return markPendingSync(next);
+    });
+  }
+  function undo() {
+    if (!undoRef.current.length) return;
+    setDb(prev => {
+      redoRef.current.push(sanitizedState(prev));
+      const snap = undoRef.current.pop();
+      setHistoryTick(t => t + 1);
+      return markPendingSync(clone(snap));
+    });
+  }
+  function redo() {
+    if (!redoRef.current.length) return;
+    setDb(prev => {
+      undoRef.current.push(sanitizedState(prev));
+      const snap = redoRef.current.pop();
+      setHistoryTick(t => t + 1);
+      return markPendingSync(clone(snap));
+    });
+  }
+  return {
+    historyTick,
+    undoRef,
+    redoRef,
+    commit,
+    undo,
+    redo
+  };
 }
 function toggleId(list, id) {
   const set = new Set(list || []);
@@ -4391,6 +4604,89 @@ function ProseMirrorNoteEditor({
     className: className
   });
 }
+function normalizeTableDimension(value, fallback, max) {
+  const parsed = Number.parseInt(String(value || "").replace(/\D/g, ""), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(max, parsed));
+}
+function useNoteTablePanel(toolbarState, runEditorCommandAfterFocus) {
+  const tablePanelActionRef = useRef(0);
+  const [tablePanel, setTablePanel] = useState(null);
+  const [tableRows, setTableRows] = useState("2");
+  const [tableCols, setTableCols] = useState("2");
+  function openTablePanel() {
+    setTablePanel(prev => {
+      const nextType = toolbarState.table ? "actions" : "insert";
+      return prev === nextType ? null : nextType;
+    });
+  }
+  function updateTableDimension(setter) {
+    return event => setter(event.target.value.replace(/\D/g, "").slice(0, 2));
+  }
+  function settleTableDimension(setter, value, fallback, max) {
+    setter(String(normalizeTableDimension(value, fallback, max)));
+  }
+  function insertCustomTable() {
+    const options = {
+      rows: normalizeTableDimension(tableRows, 2, 12),
+      cols: normalizeTableDimension(tableCols, 2, 8)
+    };
+    setTableRows(String(options.rows));
+    setTableCols(String(options.cols));
+    setTablePanel(null);
+    runEditorCommandAfterFocus("insert-table", options);
+  }
+  function submitCustomTable(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    insertCustomTable();
+  }
+  function runTableCommand(command) {
+    setTablePanel(null);
+    runEditorCommandAfterFocus(command);
+  }
+  function runTablePanelAction(event, action) {
+    event.preventDefault();
+    event.stopPropagation();
+    const stamp = Date.now();
+    if (stamp - tablePanelActionRef.current < 500) return;
+    tablePanelActionRef.current = stamp;
+    action();
+  }
+  function tablePanelButtonProps(action) {
+    return {
+      onPointerDown: event => runTablePanelAction(event, action),
+      onMouseDown: event => {
+        event.preventDefault();
+        event.stopPropagation();
+      },
+      onTouchEnd: event => runTablePanelAction(event, action),
+      onKeyDown: event => {
+        if (event.key === "Enter" || event.key === " ") runTablePanelAction(event, action);
+      },
+      onTouchStart: event => {
+        event.stopPropagation();
+      },
+      onClick: event => runTablePanelAction(event, action),
+      tabIndex: -1
+    };
+  }
+  return {
+    tablePanel,
+    setTablePanel,
+    tableRows,
+    tableCols,
+    setTableRows,
+    setTableCols,
+    openTablePanel,
+    updateTableDimension,
+    settleTableDimension,
+    insertCustomTable,
+    submitCustomTable,
+    runTableCommand,
+    tablePanelButtonProps
+  };
+}
 function NoteTableGlyph({
   active = false,
   menuHint = false
@@ -4415,11 +4711,7 @@ function RichNoteModal({
 }) {
   const titleRef = useRef(null);
   const editorApiRef = useRef(null);
-  const tablePanelActionRef = useRef(0);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
-  const [tablePanel, setTablePanel] = useState(null);
-  const [tableRows, setTableRows] = useState("2");
-  const [tableCols, setTableCols] = useState("2");
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
@@ -4474,42 +4766,21 @@ function RichNoteModal({
       }
     }, 40);
   }
-  function openTablePanel() {
-    setTablePanel(prev => {
-      const nextType = toolbarState.table ? "actions" : "insert";
-      return prev === nextType ? null : nextType;
-    });
-  }
-  function normalizeTableDimension(value, fallback, max) {
-    const parsed = Number.parseInt(String(value || "").replace(/\D/g, ""), 10);
-    if (!Number.isFinite(parsed)) return fallback;
-    return Math.max(1, Math.min(max, parsed));
-  }
-  function updateTableDimension(setter) {
-    return event => setter(event.target.value.replace(/\D/g, "").slice(0, 2));
-  }
-  function settleTableDimension(setter, value, fallback, max) {
-    setter(String(normalizeTableDimension(value, fallback, max)));
-  }
-  function insertCustomTable() {
-    const options = {
-      rows: normalizeTableDimension(tableRows, 2, 12),
-      cols: normalizeTableDimension(tableCols, 2, 8)
-    };
-    setTableRows(String(options.rows));
-    setTableCols(String(options.cols));
-    setTablePanel(null);
-    runEditorCommandAfterFocus("insert-table", options);
-  }
-  function submitCustomTable(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    insertCustomTable();
-  }
-  function runTableCommand(command) {
-    setTablePanel(null);
-    runEditorCommandAfterFocus(command);
-  }
+  const {
+    tablePanel,
+    setTablePanel,
+    tableRows,
+    tableCols,
+    setTableRows,
+    setTableCols,
+    openTablePanel,
+    updateTableDimension,
+    settleTableDimension,
+    insertCustomTable,
+    submitCustomTable,
+    runTableCommand,
+    tablePanelButtonProps
+  } = useNoteTablePanel(toolbarState, runEditorCommandAfterFocus);
   const editorScreenStyle = {
     paddingTop: "calc(env(safe-area-inset-top, 0px) + 52px)"
   };
@@ -4558,32 +4829,6 @@ function RichNoteModal({
     onClick: event => {
       if (event.detail === 0) action();
     },
-    tabIndex: -1
-  });
-  const runTablePanelAction = (event, action) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const stamp = Date.now();
-    if (stamp - tablePanelActionRef.current < 500) return;
-    tablePanelActionRef.current = stamp;
-    action();
-  };
-  const tablePanelButtonProps = action => ({
-    onPointerDown: event => {
-      runTablePanelAction(event, action);
-    },
-    onMouseDown: event => {
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    onTouchEnd: event => runTablePanelAction(event, action),
-    onKeyDown: event => {
-      if (event.key === "Enter" || event.key === " ") runTablePanelAction(event, action);
-    },
-    onTouchStart: event => {
-      event.stopPropagation();
-    },
-    onClick: event => runTablePanelAction(event, action),
     tabIndex: -1
   });
   const tablePanelStyle = {
@@ -5104,18 +5349,28 @@ function App() {
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [toast, setToast] = useState("");
   const [flashTarget, setFlashTarget] = useState(null);
-  const [syncStatus, setSyncStatus] = useState(navigator.onLine ? "saved" : "offline");
-  const [syncLabel, setSyncLabel] = useState(navigator.onLine ? "Saved" : "Offline");
-  const [historyTick, setHistoryTick] = useState(0);
+  const {
+    syncStatus,
+    syncLabel,
+    setSyncStatus,
+    setSyncLabel,
+    setSyncState
+  } = useSyncStatusMachine(navigator.onLine ? "saved" : "offline");
   const [dragState, setDragState] = useState(null);
   const fileInputRef = useRef(null);
   const hydratedRef = useRef(false);
   const saveTimerRef = useRef(null);
   const cloudTimerRef = useRef(null);
-  const undoRef = useRef([]);
-  const redoRef = useRef([]);
   const routeApplyRef = useRef(false);
   const skipNextAutoSaveRef = useRef(false);
+  const {
+    historyTick,
+    undoRef,
+    redoRef,
+    commit,
+    undo,
+    redo
+  } = usePlannerHistory(setDb, syncSelectedActionDayWithBox);
   const selectedDate = db.ui.selectedActionDate || todayYMD();
   const selectedDay = db.actionDays.find(day => day.date === selectedDate);
   const boxView = db.ui.boxView || "active";
@@ -5206,13 +5461,9 @@ function App() {
       try {
         setSyncStatus("saving");
         setSyncLabel("Loading");
-        const {
-          data: stateRow,
-          error: stateError
-        } = await withTimeout(sb.from(STATE_TABLE).select("data,updated_at").eq("user_id", userId).maybeSingle(), CLOUD_READ_TIMEOUT_MS, "Workspace load");
-        if (stateError) throw stateError;
-        if (!stateError && stateRow?.data) {
-          const cloudUpdatedAt = validTimestamp(stateRow.updated_at) || validTimestamp(stateRow.data?.meta?.cloudUpdatedAt);
+        const stateRow = await loadCloudWorkspace(userId);
+        if (stateRow?.data) {
+          const cloudUpdatedAt = validTimestamp(stateRow.updatedAt) || validTimestamp(stateRow.data?.meta?.cloudUpdatedAt);
           const cloudState = markCloudSynced(normalizeState(stateRow.data), cloudUpdatedAt || now());
           const preferLocal = shouldPreferLocal(localState, cloudState, cloudUpdatedAt);
           allowCloudNotes = !preferLocal;
@@ -5352,7 +5603,7 @@ function App() {
       setSyncLabel(navigator.onLine ? "Saved" : "Local saved");
       return;
     }
-    if (!sb || !user?.id || user.id === "local" || !navigator.onLine) {
+    if (!canUseCloudSync(user)) {
       setSyncStatus("offline");
       setSyncLabel("Local saved");
       return;
@@ -5391,7 +5642,7 @@ function App() {
     scheduleCloudSync(snapshot, currentUser, delay);
   }
   async function pushCloudState(snapshot, user, options = {}) {
-    if (!sb || !user?.id || user.id === "local" || !navigator.onLine) {
+    if (!canUseCloudSync(user)) {
       setSyncStatus("offline");
       setSyncLabel("Local saved");
       return;
@@ -5405,14 +5656,7 @@ function App() {
       }
       const syncedAt = now();
       const cloudSnapshot = markCloudSynced(clean, syncedAt);
-      const stateResult = await withTimeout(sb.from(STATE_TABLE).upsert({
-        user_id: user.id,
-        data: cloudSnapshot,
-        updated_at: syncedAt
-      }, {
-        onConflict: "user_id"
-      }), CLOUD_WRITE_TIMEOUT_MS, "Workspace save");
-      if (stateResult?.error) throw stateResult.error;
+      await saveCloudWorkspace(user.id, cloudSnapshot, syncedAt);
       await pushNormalizedNoteTables(cloudSnapshot, user);
       const currentLocal = loadLocalForUser(user.id);
       const pushedTime = timestampMs(cloudSnapshot.meta?.localUpdatedAt);
@@ -5450,7 +5694,7 @@ function App() {
   }
   function syncNow() {
     saveLocal(db, currentUser?.id);
-    if (!sb || !currentUser?.id || currentUser.id === "local" || !navigator.onLine) {
+    if (!canUseCloudSync(currentUser)) {
       setSyncStatus("offline");
       setSyncLabel("Local saved");
       showToast("Saved locally");
@@ -5508,38 +5752,6 @@ function App() {
       document.removeEventListener("visibilitychange", resume);
     };
   }, [db, currentUser?.id]);
-  function commit(label, mutator, options = {}) {
-    setDb(prev => {
-      const before = sanitizedState(prev);
-      const next = normalizeState(clone(prev));
-      const changed = mutator(next);
-      if (changed === false) return prev;
-      if (options.sync !== false) syncSelectedActionDayWithBox(next);
-      undoRef.current.push(before);
-      if (undoRef.current.length > HISTORY_LIMIT) undoRef.current.shift();
-      redoRef.current = [];
-      setHistoryTick(t => t + 1);
-      return markPendingSync(next);
-    });
-  }
-  function undo() {
-    if (!undoRef.current.length) return;
-    setDb(prev => {
-      redoRef.current.push(sanitizedState(prev));
-      const snap = undoRef.current.pop();
-      setHistoryTick(t => t + 1);
-      return markPendingSync(clone(snap));
-    });
-  }
-  function redo() {
-    if (!redoRef.current.length) return;
-    setDb(prev => {
-      undoRef.current.push(sanitizedState(prev));
-      const snap = redoRef.current.pop();
-      setHistoryTick(t => t + 1);
-      return markPendingSync(clone(snap));
-    });
-  }
   async function handleAuth(action, payload) {
     if (!sb) {
       const localUser = {

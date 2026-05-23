@@ -477,12 +477,13 @@ function normalizeState(parsed) {
   const noteLinks = Array.isArray(parsed.noteLinks) ? parsed.noteLinks.map(normalizeNoteLink).filter(link => link.noteId) : [];
   const state = ensureCentralNotes({ version: 5, boxNodes, actionDays, notes, noteLinks, ui });
   const ids = collectStateIds(state.boxNodes, state.actionDays, state.notes, state.noteLinks);
-  return { ...state, version: 5, meta: normalizeMeta(parsed.meta || {}, ids) };
+  const normalized = { ...state, version: 5, meta: normalizeMeta(parsed.meta || {}, ids) };
+  return typeof repairStateIntegrity === "function" ? repairStateIntegrity(normalized) : normalized;
 }
 
 function sanitizedState(state) {
   const normalized = normalizeState(clone(state));
-  return {
+  const clean = {
     version: 5,
     meta: normalizeMeta(normalized.meta || {}, new Set(normalized.meta?.usedIds || [])),
     boxNodes: normalized.boxNodes.map(n => ({ ...n, title: cleanTitle(n.title), boxNoteTitle: cleanOptionalTitle(n.boxNoteTitle || ""), boxNoteHtml: sanitizeHtml(n.boxNoteHtml || "") })),
@@ -494,6 +495,7 @@ function sanitizedState(state) {
     noteLinks: normalized.noteLinks.map(normalizeNoteLink).filter(link => link.noteId),
     ui: { ...defaultUI(), ...(normalized.ui || {}) }
   };
+  return typeof repairStateIntegrity === "function" ? repairStateIntegrity(clean) : clean;
 }
 
 function mergeById(currentItems = [], importedItems = []) {

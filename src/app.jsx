@@ -25,18 +25,15 @@ function App() {
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [toast, setToast] = useState("");
   const [flashTarget, setFlashTarget] = useState(null);
-  const [syncStatus, setSyncStatus] = useState(navigator.onLine ? "saved" : "offline");
-  const [syncLabel, setSyncLabel] = useState(navigator.onLine ? "Saved" : "Offline");
-  const [historyTick, setHistoryTick] = useState(0);
+  const { syncStatus, syncLabel, setSyncStatus, setSyncLabel, setSyncState } = useSyncStatusMachine(navigator.onLine ? "saved" : "offline");
   const [dragState, setDragState] = useState(null);
   const fileInputRef = useRef(null);
   const hydratedRef = useRef(false);
   const saveTimerRef = useRef(null);
   const cloudTimerRef = useRef(null);
-  const undoRef = useRef([]);
-  const redoRef = useRef([]);
   const routeApplyRef = useRef(false);
   const skipNextAutoSaveRef = useRef(false);
+  const { historyTick, undoRef, redoRef, commit, undo, redo } = usePlannerHistory(setDb, syncSelectedActionDayWithBox);
 
   const selectedDate = db.ui.selectedActionDate || todayYMD();
   const selectedDay = db.actionDays.find(day => day.date === selectedDate);
@@ -132,14 +129,9 @@ function App() {
       try {
         setSyncStatus("saving");
         setSyncLabel("Loading");
-        const { data: stateRow, error: stateError } = await withTimeout(
-          sb.from(STATE_TABLE).select("data,updated_at").eq("user_id", userId).maybeSingle(),
-          CLOUD_READ_TIMEOUT_MS,
-          "Workspace load"
-        );
-        if (stateError) throw stateError;
-        if (!stateError && stateRow?.data) {
-          const cloudUpdatedAt = validTimestamp(stateRow.updated_at) || validTimestamp(stateRow.data?.meta?.cloudUpdatedAt);
+        const stateRow = await loadCloudWorkspace(userId);
+        if (stateRow?.data) {
+          const cloudUpdatedAt = validTimestamp(stateRow.updatedAt) || validTimestamp(stateRow.data?.meta?.cloudUpdatedAt);
           const cloudState = markCloudSynced(normalizeState(stateRow.data), cloudUpdatedAt || now());
           const preferLocal = shouldPreferLocal(localState, cloudState, cloudUpdatedAt);
           allowCloudNotes = !preferLocal;
@@ -291,7 +283,7 @@ function App() {
       setSyncLabel(navigator.onLine ? "Saved" : "Local saved");
       return;
     }
-    if (!sb || !user?.id || user.id === "local" || !navigator.onLine) {
+    if (!canUseCloudSync(user)) {
       setSyncStatus("offline");
       setSyncLabel("Local saved");
       return;
@@ -335,7 +327,7 @@ function App() {
   }
 
   async function pushCloudState(snapshot, user, options = {}) {
-    if (!sb || !user?.id || user.id === "local" || !navigator.onLine) {
+    if (!canUseCloudSync(user)) {
       setSyncStatus("offline");
       setSyncLabel("Local saved");
       return;
@@ -349,12 +341,7 @@ function App() {
       }
       const syncedAt = now();
       const cloudSnapshot = markCloudSynced(clean, syncedAt);
-      const stateResult = await withTimeout(
-        sb.from(STATE_TABLE).upsert({ user_id: user.id, data: cloudSnapshot, updated_at: syncedAt }, { onConflict: "user_id" }),
-        CLOUD_WRITE_TIMEOUT_MS,
-        "Workspace save"
-      );
-      if (stateResult?.error) throw stateResult.error;
+      await saveCloudWorkspace(user.id, cloudSnapshot, syncedAt);
       await pushNormalizedNoteTables(cloudSnapshot, user);
       const currentLocal = loadLocalForUser(user.id);
       const pushedTime = timestampMs(cloudSnapshot.meta?.localUpdatedAt);
@@ -396,7 +383,7 @@ function App() {
 
   function syncNow() {
     saveLocal(db, currentUser?.id);
-    if (!sb || !currentUser?.id || currentUser.id === "local" || !navigator.onLine) {
+    if (!canUseCloudSync(currentUser)) {
       setSyncStatus("offline");
       setSyncLabel("Local saved");
       showToast("Saved locally");
@@ -454,41 +441,6 @@ function App() {
       document.removeEventListener("visibilitychange", resume);
     };
   }, [db, currentUser?.id]);
-
-  function commit(label, mutator, options = {}) {
-    setDb(prev => {
-      const before = sanitizedState(prev);
-      const next = normalizeState(clone(prev));
-      const changed = mutator(next);
-      if (changed === false) return prev;
-      if (options.sync !== false) syncSelectedActionDayWithBox(next);
-      undoRef.current.push(before);
-      if (undoRef.current.length > HISTORY_LIMIT) undoRef.current.shift();
-      redoRef.current = [];
-      setHistoryTick(t => t + 1);
-      return markPendingSync(next);
-    });
-  }
-
-  function undo() {
-    if (!undoRef.current.length) return;
-    setDb(prev => {
-      redoRef.current.push(sanitizedState(prev));
-      const snap = undoRef.current.pop();
-      setHistoryTick(t => t + 1);
-      return markPendingSync(clone(snap));
-    });
-  }
-
-  function redo() {
-    if (!redoRef.current.length) return;
-    setDb(prev => {
-      undoRef.current.push(sanitizedState(prev));
-      const snap = redoRef.current.pop();
-      setHistoryTick(t => t + 1);
-      return markPendingSync(clone(snap));
-    });
-  }
 
   async function handleAuth(action, payload) {
     if (!sb) {

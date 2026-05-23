@@ -6,7 +6,7 @@
     "build": "npm run build:js && npm run build:css",
     "build:js": "node scripts/build-js.mjs",
     "build:css": "tailwindcss -i src/styles.css -o assets/styles.css --minify",
-    "test": "node test/core.test.cjs",
+    "test": "node test/core.test.cjs && node test/integrity.test.cjs && node test/source-smoke.test.cjs",
     "verify": "npm run test && npm run build && node --check assets/app.js && node --check scripts/build-js.mjs"
   },
   "devDependencies": {
