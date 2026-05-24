@@ -81,6 +81,34 @@ test("app loads in local mode and primary tabs respond", async ({ page }) => {
   expect(runtimeErrors).toEqual([]);
 });
 
+test("header workspace personalization keeps a two-letter logo and account menu", async ({ page }) => {
+  const runtimeErrors = [];
+  page.on("pageerror", error => runtimeErrors.push(error.message));
+  page.on("console", message => {
+    if (message.type() === "error") runtimeErrors.push(message.text());
+  });
+
+  await page.goto(`${baseURL}/?local=1#/boxes`, { waitUntil: "networkidle" });
+  await expect(page.getByLabel("Change logo style")).toContainText("LP");
+
+  const nameInput = page.getByLabel("Workspace name");
+  await nameInput.fill("Alpha Beta Gamma");
+  await nameInput.blur();
+  await expect(nameInput).toHaveValue("Alpha Beta");
+  await expect(page.getByLabel("Change logo style")).toContainText("AB");
+
+  await page.getByLabel("Change logo style").click();
+  await expect(page.getByLabel("Change logo style")).toContainText("AB");
+
+  await page.getByLabel("Account").click();
+  await expect(page.getByText("Export JSON")).toBeVisible();
+  await expect(page.getByText("Import JSON")).toBeVisible();
+  await expect(page.getByText("Log out")).toBeVisible();
+  await expect(page.getByText("Debug")).toHaveCount(0);
+
+  expect(runtimeErrors).toEqual([]);
+});
+
 test("note table auto fit persists after save and reopen", async ({ page }) => {
   const runtimeErrors = [];
   page.on("pageerror", error => runtimeErrors.push(error.message));

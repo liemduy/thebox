@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v92-box-notes-origin';
+const CACHE_NAME = 'idea-box-v93-personal-header';
 const APP_SHELL = [
   './',
   './index.html',

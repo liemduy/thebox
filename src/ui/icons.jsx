@@ -1,5 +1,6 @@
 const iconPaths = {
   MoreHorizontal: (<><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></>),
+  User: (<><path d="M19 21a7 7 0 0 0-14 0"/><circle cx="12" cy="8" r="4"/></>),
   GripVertical: (<><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></>),
   ChevronRight: (<path d="m9 18 6-6-6-6"/>),
   ChevronDown: (<path d="m6 9 6 6 6-6"/>),
@@ -46,6 +47,7 @@ function makeIcon(name) {
 }
 
 const MoreHorizontal = makeIcon("MoreHorizontal");
+const User = makeIcon("User");
 const GripVertical = makeIcon("GripVertical");
 const ChevronRight = makeIcon("ChevronRight");
 const ChevronDown = makeIcon("ChevronDown");

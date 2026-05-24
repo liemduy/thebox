@@ -191,6 +191,8 @@ function defaultUI() {
     notesTagsInput: "",
     notesDatesInput: "",
     selectedBoxNoteId: "",
+    workspaceName: "Liem's Planner",
+    logoStyle: 0,
     collapsedNoteDates: [],
     collapsedBoxNoteDates: [],
     collapsedBoxNodes: [],

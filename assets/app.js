@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-24-box-notes-origin";
-const APP_CACHE_NAME = "idea-box-v92-box-notes-origin";
+const APP_BUILD_ID = "2026-05-24-personal-header";
+const APP_CACHE_NAME = "idea-box-v93-personal-header";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -783,6 +783,13 @@ const iconPaths = {
     cx: "5",
     cy: "12",
     r: "1"
+  })),
+  User: React.createElement(React.Fragment, null, React.createElement("path", {
+    d: "M19 21a7 7 0 0 0-14 0"
+  }), React.createElement("circle", {
+    cx: "12",
+    cy: "8",
+    r: "4"
   })),
   GripVertical: React.createElement(React.Fragment, null, React.createElement("circle", {
     cx: "12",
@@ -1053,6 +1060,7 @@ function makeIcon(name) {
   };
 }
 const MoreHorizontal = makeIcon("MoreHorizontal");
+const User = makeIcon("User");
 const GripVertical = makeIcon("GripVertical");
 const ChevronRight = makeIcon("ChevronRight");
 const ChevronDown = makeIcon("ChevronDown");
@@ -1086,7 +1094,30 @@ const List = makeIcon("List");
 const Download = makeIcon("Download");
 const Upload = makeIcon("Upload");
 const LogOut = makeIcon("LogOut");
+const DEFAULT_WORKSPACE_NAME = "Liem's Planner";
+const LOGO_STYLE_COUNT = 5;
+function normalizeWorkspaceName(value, options = {}) {
+  const compact = String(value || "").replace(/\s+/g, " ").trimStart().slice(0, 21);
+  const words = compact.split(" ").filter(Boolean).slice(0, 2);
+  const trailingSpace = !options.final && compact.endsWith(" ") && words.length < 2;
+  return `${words.join(" ")}${trailingSpace ? " " : ""}`;
+}
+function workspaceInitials(name) {
+  const words = normalizeWorkspaceName(name || DEFAULT_WORKSPACE_NAME, {
+    final: true
+  }).split(" ").filter(Boolean);
+  const letters = words.length > 1 ? `${words[0][0] || ""}${words[1][0] || ""}` : String(words[0] || DEFAULT_WORKSPACE_NAME).slice(0, 2);
+  return letters.toUpperCase() || "LP";
+}
+function logoStyleClass(style) {
+  const index = Math.abs(Number(style) || 0) % LOGO_STYLE_COUNT;
+  return ["bg-gradient-to-tr from-[#FFD2D7] to-[#e4b3b9] text-[#111] rounded-[12px] shadow-[0_0_15px_rgba(255,210,215,0.2)]", "bg-transparent border border-[#FFD2D7] text-[#FFD2D7] rounded-[12px]", "bg-[#F2F2F2] text-black rounded-full", "bg-[#151515] border border-[#444444] text-white rounded-[10px]", "bg-[#FFD2D7] text-black rounded-[4px]"][index];
+}
 function Header({
+  workspaceName,
+  logoStyle,
+  onWorkspaceNameChange,
+  onCycleLogoStyle,
   syncStatus,
   syncLabel,
   isSearchOpen,
@@ -1096,29 +1127,62 @@ function Header({
   onSyncNow,
   onExport,
   onImportClick,
-  onOpenDebug,
   onSignOut,
   fileInputRef,
   onImportFile
 }) {
+  const displayName = normalizeWorkspaceName(workspaceName, {
+    final: true
+  }) || DEFAULT_WORKSPACE_NAME;
+  const [draftName, setDraftName] = useState(displayName);
+  useEffect(() => setDraftName(displayName), [displayName]);
   const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
   const syncColor = syncStatus === "saved" ? "#FFD2D7" : syncStatus === "error" ? "#fb7185" : syncStatus === "saving" ? "#FFD2D7" : "#666666";
+  function commitWorkspaceName() {
+    const next = normalizeWorkspaceName(draftName, {
+      final: true
+    }) || DEFAULT_WORKSPACE_NAME;
+    setDraftName(next);
+    if (next !== displayName) onWorkspaceNameChange?.(next);
+  }
   return React.createElement("header", {
     className: "app-header flex justify-between items-center p-5 border-b border-[#333333] bg-[#0a0a0a] relative z-40"
   }, React.createElement("div", {
-    className: "flex items-center gap-3"
-  }, React.createElement("div", {
-    className: "relative w-[40px] h-[40px] flex items-center justify-center bg-gradient-to-tr from-[#FFD2D7] to-[#e4b3b9] rounded-[12px] shadow-[0_0_15px_rgba(255,210,215,0.2)]"
+    className: "flex items-center gap-3 min-w-0"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      onCycleLogoStyle?.();
+    },
+    className: `relative w-[40px] h-[40px] shrink-0 flex items-center justify-center transition-all active:scale-95 ${logoStyleClass(logoStyle)}`,
+    "aria-label": "Change logo style",
+    title: "Change logo style"
   }, React.createElement("span", {
-    className: "font-black text-[20px] text-[#111] tracking-tighter"
-  }, "LP"), React.createElement("div", {
+    className: "font-black text-[18px] tracking-tighter"
+  }, workspaceInitials(displayName)), React.createElement("span", {
     className: "absolute -top-1 -right-1 w-3 h-3 bg-black rounded-full border-2 border-[#FFD2D7]"
-  })), React.createElement("h1", {
-    className: "font-extrabold text-[20px] tracking-tight text-white flex items-baseline gap-1.5"
-  }, "Liem's ", React.createElement("span", {
-    className: "text-[#FFD2D7] font-medium text-[17px] italic font-serif"
-  }, "Planner"))), React.createElement("div", {
-    className: "flex gap-4 text-[#A7A7A7] items-center"
+  })), React.createElement("div", {
+    className: "min-w-0"
+  }, React.createElement("input", {
+    value: draftName,
+    onChange: e => setDraftName(normalizeWorkspaceName(e.target.value)),
+    onBlur: commitWorkspaceName,
+    onKeyDown: e => {
+      if (e.key === "Enter") e.currentTarget.blur();
+      if (e.key === "Escape") {
+        setDraftName(displayName);
+        e.currentTarget.blur();
+      }
+    },
+    onClick: e => e.stopPropagation(),
+    maxLength: 21,
+    "aria-label": "Workspace name",
+    className: "block w-full max-w-[168px] bg-transparent border-none outline-none p-0 text-white font-extrabold text-[19px] leading-tight tracking-tight truncate focus:text-[#FFD2D7]"
+  }), React.createElement("div", {
+    className: "text-[#777777] italic text-[11px] leading-tight font-semibold"
+  }, "\u2014thebox"))), React.createElement("div", {
+    className: "flex gap-4 text-[#A7A7A7] items-center shrink-0"
   }, React.createElement("button", {
     type: "button",
     onClick: e => {
@@ -1155,8 +1219,8 @@ function Header({
       setIsHeaderMenuOpen(!isHeaderMenuOpen);
     },
     className: `p-1.5 rounded-full transition-colors ${isHeaderMenuOpen ? "bg-[#222] text-white" : "hover:text-white"}`,
-    "aria-label": "Tools"
-  }, React.createElement(MoreHorizontal, {
+    "aria-label": "Account"
+  }, React.createElement(User, {
     size: 20
   })), isHeaderMenuOpen && React.createElement("div", {
     onClick: e => e.stopPropagation(),
@@ -1173,13 +1237,7 @@ function Header({
     className: "flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
   }, React.createElement(Upload, {
     size: 16
-  }), " Import JSON"), React.createElement("button", {
-    type: "button",
-    onClick: onOpenDebug,
-    className: "flex items-center gap-3 w-full px-3 py-2.5 hover:bg-[#333] rounded-lg transition-colors text-[14px]"
-  }, React.createElement(FileText, {
-    size: 16
-  }), " Debug"), React.createElement("div", {
+  }), " Import JSON"), React.createElement("div", {
     className: "h-px bg-[#333] my-1"
   }), React.createElement("button", {
     type: "button",
@@ -1424,6 +1482,8 @@ function defaultUI() {
     notesTagsInput: "",
     notesDatesInput: "",
     selectedBoxNoteId: "",
+    workspaceName: "Liem's Planner",
+    logoStyle: 0,
     collapsedNoteDates: [],
     collapsedBoxNoteDates: [],
     collapsedBoxNodes: [],
@@ -7050,6 +7110,24 @@ function App() {
     });
     setIsHeaderMenuOpen(false);
   }
+  function updateWorkspaceName(name) {
+    setDb(prev => markPendingSync({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        workspaceName: name || "Liem's Planner"
+      }
+    }));
+  }
+  function cycleLogoStyle() {
+    setDb(prev => markPendingSync({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        logoStyle: ((Number(prev.ui.logoStyle) || 0) + 1) % 5
+      }
+    }));
+  }
   function setNotesUI(key, value) {
     setDb(prev => markPendingSync({
       ...prev,
@@ -7320,6 +7398,10 @@ function App() {
   }, React.createElement("div", {
     className: "app-shell w-full max-w-md bg-[#0a0a0a] sm:rounded-[24px] sm:border border-[#333333] overflow-hidden min-h-screen sm:min-h-[850px] relative flex flex-col shadow-2xl"
   }, React.createElement(Header, {
+    workspaceName: db.ui.workspaceName,
+    logoStyle: db.ui.logoStyle,
+    onWorkspaceNameChange: updateWorkspaceName,
+    onCycleLogoStyle: cycleLogoStyle,
     syncStatus: syncStatus,
     syncLabel: syncLabel,
     isSearchOpen: isSearchOpen,
@@ -7329,7 +7411,6 @@ function App() {
     onSyncNow: syncNow,
     onExport: exportJson,
     onImportClick: () => fileInputRef.current?.click(),
-    onOpenDebug: openDebugPanel,
     onImportFile: e => importJson(e.target.files?.[0]),
     onSignOut: signOut,
     fileInputRef: fileInputRef

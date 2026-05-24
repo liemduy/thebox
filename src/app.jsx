@@ -333,6 +333,14 @@ function App() {
     setIsHeaderMenuOpen(false);
   }
 
+  function updateWorkspaceName(name) {
+    setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, workspaceName: name || "Liem's Planner" } }));
+  }
+
+  function cycleLogoStyle() {
+    setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, logoStyle: ((Number(prev.ui.logoStyle) || 0) + 1) % 5 } }));
+  }
+
   function setNotesUI(key, value) {
     setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, [key]: value } }));
   }
@@ -560,6 +568,10 @@ function App() {
     <div className="min-h-screen bg-black text-white font-sans flex justify-center items-start pt-0 sm:pt-8 pb-12 selection:bg-[#FFD2D7] selection:text-black relative" onClick={closeFloating}>
       <div className="app-shell w-full max-w-md bg-[#0a0a0a] sm:rounded-[24px] sm:border border-[#333333] overflow-hidden min-h-screen sm:min-h-[850px] relative flex flex-col shadow-2xl">
         <Header
+          workspaceName={db.ui.workspaceName}
+          logoStyle={db.ui.logoStyle}
+          onWorkspaceNameChange={updateWorkspaceName}
+          onCycleLogoStyle={cycleLogoStyle}
           syncStatus={syncStatus}
           syncLabel={syncLabel}
           isSearchOpen={isSearchOpen}
@@ -569,7 +581,6 @@ function App() {
           onSyncNow={syncNow}
           onExport={exportJson}
           onImportClick={() => fileInputRef.current?.click()}
-          onOpenDebug={openDebugPanel}
           onImportFile={(e) => importJson(e.target.files?.[0])}
           onSignOut={signOut}
           fileInputRef={fileInputRef}
