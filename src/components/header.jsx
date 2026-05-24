@@ -1,5 +1,5 @@
 const DEFAULT_WORKSPACE_NAME = "Liem's Planner";
-const LOGO_STYLE_COUNT = 5;
+const LOGO_STYLE_COUNT = 15;
 
 function normalizeWorkspaceName(value, options = {}) {
   const compact = String(value || "").replace(/\s+/g, " ").trimStart().slice(0, 21);
@@ -16,15 +16,48 @@ function workspaceInitials(name) {
   return letters.toUpperCase() || "LP";
 }
 
+function logoStyleIndex(style) {
+  return Math.abs(Number(style) || 0) % LOGO_STYLE_COUNT;
+}
+
 function logoStyleClass(style) {
-  const index = Math.abs(Number(style) || 0) % LOGO_STYLE_COUNT;
+  const index = logoStyleIndex(style);
   return [
     "bg-gradient-to-tr from-[#FFD2D7] to-[#e4b3b9] text-[#111] rounded-[12px] shadow-[0_0_15px_rgba(255,210,215,0.2)]",
-    "bg-transparent border border-[#FFD2D7] text-[#FFD2D7] rounded-[12px]",
-    "bg-[#F2F2F2] text-black rounded-full",
-    "bg-[#151515] border border-[#444444] text-white rounded-[10px]",
-    "bg-[#FFD2D7] text-black rounded-[4px]"
+    "bg-[#111111] border border-[#FFD2D7] text-[#FFD2D7] rounded-[12px] shadow-[inset_0_4px_0_rgba(255,210,215,0.18)]",
+    "bg-[#151515] border border-[#3d3d3d] text-white rounded-[10px]",
+    "bg-[#FFD2D7] text-black rounded-[9px] shadow-[0_8px_18px_rgba(255,210,215,0.16)]",
+    "bg-[#101010] border border-[#444444] text-white rounded-[12px] shadow-[inset_0_-7px_0_rgba(255,210,215,0.10)]",
+    "bg-transparent border border-dashed border-[#FFD2D7] text-[#FFD2D7] rounded-[8px]",
+    "bg-[#FFD2D7] text-black rounded-[5px_12px_12px_12px]",
+    "bg-[#101010] border border-[#343434] text-[#FFD2D7] rounded-[12px] shadow-[inset_0_0_0_1px_rgba(255,210,215,0.08)]",
+    "bg-[#F2F2F2] text-black rounded-[10px] shadow-[4px_4px_0_#2D2D2D]",
+    "bg-[#111111] border border-[#FFD2D7] text-white rounded-[14px]",
+    "bg-[#151515] border border-[#3E3E3E] text-white rounded-[12px]",
+    "bg-[#F7DDE1] text-black rounded-full shadow-[0_0_0_1px_rgba(255,255,255,0.28)]",
+    "bg-[#101010] border border-[#3A3A3A] text-[#FFD2D7] rounded-[6px]",
+    "bg-[#0a0a0a] border border-[#555555] text-white rounded-[12px]",
+    "bg-black border border-[#FFD2D7] text-[#FFD2D7] rounded-[10px] shadow-[0_0_18px_rgba(255,210,215,0.18)]"
   ][index];
+}
+
+function LogoDecoration({ style }) {
+  const index = Math.abs(Number(style) || 0) % LOGO_STYLE_COUNT;
+  if (index === 0) return <span className="absolute -top-1 -right-1 w-3 h-3 bg-black rounded-full border-2 border-[#FFD2D7]" />;
+  if (index === 1) return <><span className="absolute left-2 right-2 top-[7px] h-px bg-[#FFD2D7]/60" /><span className="absolute left-[9px] top-[4px] h-[6px] w-[3px] rounded-full bg-[#FFD2D7]" /><span className="absolute right-[9px] top-[4px] h-[6px] w-[3px] rounded-full bg-[#FFD2D7]" /></>;
+  if (index === 2) return <><span className="absolute left-[5px] top-[8px] h-[3px] w-[3px] rounded-full bg-[#FFD2D7]" /><span className="absolute left-[5px] top-[16px] h-[3px] w-[3px] rounded-full bg-[#FFD2D7]" /><span className="absolute left-[5px] top-[24px] h-[3px] w-[3px] rounded-full bg-[#FFD2D7]" /></>;
+  if (index === 3) return <><span className="absolute right-[7px] top-[8px] h-[7px] w-[7px] border border-black rounded-[2px]" /><span className="absolute right-[8px] top-[9px] h-[4px] w-[6px] border-b-2 border-l-2 border-black rotate-[-35deg]" /></>;
+  if (index === 4) return <><span className="absolute left-1/2 top-[-3px] h-[9px] w-[17px] -translate-x-1/2 rounded-b-[5px] border border-[#FFD2D7]/70 bg-[#0a0a0a]" /><span className="absolute left-1/2 top-[2px] h-px w-[10px] -translate-x-1/2 bg-[#FFD2D7]/70" /></>;
+  if (index === 5) return <><span className="absolute left-[7px] top-[7px] h-[5px] w-[5px] border-l border-t border-[#FFD2D7]" /><span className="absolute right-[7px] bottom-[7px] h-[5px] w-[5px] border-r border-b border-[#FFD2D7]" /></>;
+  if (index === 6) return <span className="absolute left-[6px] top-[-1px] h-[8px] w-[17px] rounded-t-[5px] bg-[#FFD2D7] border border-black/10" />;
+  if (index === 7) return <><span className="absolute left-[9px] right-[9px] top-[12px] h-px bg-[#FFD2D7]/25" /><span className="absolute left-[9px] right-[9px] top-[20px] h-px bg-[#FFD2D7]/25" /><span className="absolute left-[9px] right-[9px] top-[28px] h-px bg-[#FFD2D7]/25" /><span className="absolute left-[17px] top-[8px] bottom-[8px] w-px bg-[#FFD2D7]/20" /></>;
+  if (index === 8) return <><span className="absolute -right-[4px] top-[5px] h-[31px] w-[31px] rounded-[9px] border border-[#555555] -z-10" /><span className="absolute -right-[2px] top-[3px] h-[33px] w-[33px] rounded-[9px] border border-[#777777] -z-10" /></>;
+  if (index === 9) return <><span className="absolute left-[-3px] top-1/2 h-[7px] w-[7px] -translate-y-1/2 rounded-full bg-[#0a0a0a] border border-[#FFD2D7]" /><span className="absolute right-[-3px] top-1/2 h-[7px] w-[7px] -translate-y-1/2 rounded-full bg-[#0a0a0a] border border-[#FFD2D7]" /></>;
+  if (index === 10) return <><span className="absolute left-[9px] top-[8px] bottom-[8px] w-px bg-[#FFD2D7]/65" /><span className="absolute left-[7px] top-[10px] h-[5px] w-[5px] rounded-full bg-[#FFD2D7]" /><span className="absolute left-[7px] bottom-[10px] h-[5px] w-[5px] rounded-full bg-[#FFD2D7]" /></>;
+  if (index === 11) return <><span className="absolute inset-[6px] rounded-full border border-black/15" /><span className="absolute bottom-[6px] h-px w-[16px] bg-black/20" /></>;
+  if (index === 12) return <><span className="absolute left-0 top-0 bottom-0 w-[5px] bg-[#FFD2D7]" /><span className="absolute left-[11px] right-[7px] top-[11px] h-px bg-[#FFD2D7]/35" /><span className="absolute left-[11px] right-[7px] bottom-[11px] h-px bg-[#FFD2D7]/35" /></>;
+  if (index === 13) return <><span className="absolute left-[6px] top-[6px] h-[6px] w-[6px] border-l border-t border-[#FFD2D7]" /><span className="absolute right-[6px] top-[6px] h-[6px] w-[6px] border-r border-t border-[#FFD2D7]" /><span className="absolute left-[6px] bottom-[6px] h-[6px] w-[6px] border-l border-b border-[#FFD2D7]" /><span className="absolute right-[6px] bottom-[6px] h-[6px] w-[6px] border-r border-b border-[#FFD2D7]" /></>;
+  return <><span className="absolute inset-[5px] rounded-[7px] border border-[#FFD2D7]/30" /><span className="absolute -bottom-[2px] left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-full bg-[#FFD2D7]/60 blur-[1px]" /></>;
 }
 
 function Header({ workspaceName, logoStyle, onWorkspaceNameChange, onCycleLogoStyle, syncStatus, syncLabel, isSearchOpen, setIsSearchOpen, isHeaderMenuOpen, setIsHeaderMenuOpen, onSyncNow, onExport, onImportClick, onSignOut, fileInputRef, onImportFile }) {
@@ -52,12 +85,12 @@ function Header({ workspaceName, logoStyle, onWorkspaceNameChange, onCycleLogoSt
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onCycleLogoStyle?.(); }}
-          className={`relative w-[40px] h-[40px] shrink-0 flex items-center justify-center transition-all active:scale-95 ${logoStyleClass(logoStyle)}`}
+          className={`relative isolate w-[40px] h-[40px] shrink-0 flex items-center justify-center transition-all active:scale-95 ${logoStyleClass(logoStyle)}`}
           aria-label="Change logo style"
           title="Change logo style"
         >
-          <span className="font-black text-[18px] tracking-tighter">{workspaceInitials(displayName)}</span>
-          <span className="absolute -top-1 -right-1 w-3 h-3 bg-black rounded-full border-2 border-[#FFD2D7]" />
+          <LogoDecoration style={logoStyle} />
+          <span className="relative z-10 font-black text-[18px] tracking-tighter">{workspaceInitials(displayName)}</span>
         </button>
         <div className="min-w-0">
           <input

@@ -338,7 +338,7 @@ function App() {
   }
 
   function cycleLogoStyle() {
-    setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, logoStyle: ((Number(prev.ui.logoStyle) || 0) + 1) % 5 } }));
+    setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, logoStyle: ((Number(prev.ui.logoStyle) || 0) + 1) % 15 } }));
   }
 
   function setNotesUI(key, value) {

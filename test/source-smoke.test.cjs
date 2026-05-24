@@ -66,6 +66,13 @@ test("note editor no longer relies on execCommand", () => {
   assert.equal(/execCommand/.test(editor + modals), false);
 });
 
+test("planner logo exposes fifteen personal styles", () => {
+  const header = fs.readFileSync("src/components/header.jsx", "utf8");
+  const app = fs.readFileSync("src/app.jsx", "utf8");
+  assert.match(header, /LOGO_STYLE_COUNT\s*=\s*15/);
+  assert.match(app, /logoStyle:[\s\S]*%\s*15/);
+});
+
 test("github actions verifies build and browser smoke", () => {
   const workflow = fs.readFileSync(".github/workflows/verify.yml", "utf8");
   assert.match(workflow, /npm ci/);
