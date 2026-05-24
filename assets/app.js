@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-23-table-autofit-persistence-1";
-const APP_CACHE_NAME = "idea-box-v89-table-autofit-persistence";
+const APP_BUILD_ID = "2026-05-24-numbered-list-shortcut-1";
+const APP_CACHE_NAME = "idea-box-v90-numbered-list-shortcut";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -5029,6 +5029,36 @@ function noteEditorChecklistPlugin(schema) {
     }
   });
 }
+function noteEditorOrderedListShortcutPlugin(schema) {
+  const pm = noteEditorPM();
+  return new pm.Plugin({
+    props: {
+      handleTextInput(view, from, to, text) {
+        if (text !== " " || from !== to) return false;
+        const state = view.state;
+        if (currentListKind(state) !== "none" || insideTable(state)) return false;
+        const block = currentTextblockWithPos(state);
+        if (!block || block.node.type !== schema.nodes.paragraph) return false;
+        const blockStart = block.pos + 1;
+        const blockEnd = blockStart + block.node.content.size;
+        if (from !== blockEnd) return false;
+        const markerText = state.doc.textBetween(blockStart, from, "\n", "\n");
+        const match = markerText.match(/^(\d{1,3})[.)]$/);
+        if (!match) return false;
+        const order = Math.max(1, Math.min(999, Number(match[1]) || 1));
+        const wrapOrdered = pm.wrapInList(schema.nodes.ordered_list, {
+          order,
+          style: "decimal"
+        });
+        if (!wrapOrdered(state, null)) return false;
+        view.dispatch(state.tr.delete(blockStart, from));
+        wrapOrdered(view.state, transaction => view.dispatch(transaction.scrollIntoView()), view);
+        view.focus();
+        return true;
+      }
+    }
+  });
+}
 function placeSelectionAfterTable(view, schema, rawPos) {
   const pm = noteEditorPM();
   if (!view || !pm) return false;
@@ -5078,7 +5108,7 @@ function createNoteEditorState(schema, html) {
     doc,
     plugins: [pm.history({
       depth: 120
-    }), noteEditorHashtagPlugin(), noteEditorChecklistPlugin(schema), noteEditorTableExitPlugin(schema), noteEditorPlaceholderPlugin(schema), pm.keymap(commands), pm.keymap(pm.baseKeymap)]
+    }), noteEditorHashtagPlugin(), noteEditorChecklistPlugin(schema), noteEditorOrderedListShortcutPlugin(schema), noteEditorTableExitPlugin(schema), noteEditorPlaceholderPlugin(schema), pm.keymap(commands), pm.keymap(pm.baseKeymap)]
   });
 }
 function noteEditorKeymapCommands(schema) {

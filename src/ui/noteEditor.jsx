@@ -315,6 +315,34 @@ function noteEditorChecklistPlugin(schema) {
   });
 }
 
+function noteEditorOrderedListShortcutPlugin(schema) {
+  const pm = noteEditorPM();
+  return new pm.Plugin({
+    props: {
+      handleTextInput(view, from, to, text) {
+        if (text !== " " || from !== to) return false;
+        const state = view.state;
+        if (currentListKind(state) !== "none" || insideTable(state)) return false;
+        const block = currentTextblockWithPos(state);
+        if (!block || block.node.type !== schema.nodes.paragraph) return false;
+        const blockStart = block.pos + 1;
+        const blockEnd = blockStart + block.node.content.size;
+        if (from !== blockEnd) return false;
+        const markerText = state.doc.textBetween(blockStart, from, "\n", "\n");
+        const match = markerText.match(/^(\d{1,3})[.)]$/);
+        if (!match) return false;
+        const order = Math.max(1, Math.min(999, Number(match[1]) || 1));
+        const wrapOrdered = pm.wrapInList(schema.nodes.ordered_list, { order, style: "decimal" });
+        if (!wrapOrdered(state, null)) return false;
+        view.dispatch(state.tr.delete(blockStart, from));
+        wrapOrdered(view.state, transaction => view.dispatch(transaction.scrollIntoView()), view);
+        view.focus();
+        return true;
+      }
+    }
+  });
+}
+
 function placeSelectionAfterTable(view, schema, rawPos) {
   const pm = noteEditorPM();
   if (!view || !pm) return false;
@@ -366,6 +394,7 @@ function createNoteEditorState(schema, html) {
       pm.history({ depth: 120 }),
       noteEditorHashtagPlugin(),
       noteEditorChecklistPlugin(schema),
+      noteEditorOrderedListShortcutPlugin(schema),
       noteEditorTableExitPlugin(schema),
       noteEditorPlaceholderPlugin(schema),
       pm.keymap(commands),

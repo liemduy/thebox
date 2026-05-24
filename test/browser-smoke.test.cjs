@@ -111,3 +111,28 @@ test("note table auto fit persists after save and reopen", async ({ page }) => {
 
   expect(runtimeErrors).toEqual([]);
 });
+
+test("numbered list shortcut continues as an ordered list", async ({ page }) => {
+  const runtimeErrors = [];
+  page.on("pageerror", error => runtimeErrors.push(error.message));
+  page.on("console", message => {
+    if (message.type() === "error") runtimeErrors.push(message.text());
+  });
+
+  await page.goto(`${baseURL}/?local=1#/notes`, { waitUntil: "networkidle" });
+  await page.getByLabel("Create note").click();
+  await page.getByPlaceholder("Title").fill("Numbered list smoke");
+  await page.locator(".ProseMirror").click();
+  await page.keyboard.type("1. First");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Second");
+
+  await expect(page.locator(".ProseMirror ol > li")).toHaveCount(2);
+  const listInfo = await page.locator(".ProseMirror ol").evaluate(ol => ({
+    style: getComputedStyle(ol).listStyleType,
+    text: Array.from(ol.querySelectorAll(":scope > li")).map(li => li.textContent.trim())
+  }));
+  expect(listInfo).toEqual({ style: "decimal", text: ["First", "Second"] });
+
+  expect(runtimeErrors).toEqual([]);
+});

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v89-table-autofit-persistence';
+const CACHE_NAME = 'idea-box-v90-numbered-list-shortcut';
 const APP_SHELL = [
   './',
   './index.html',
