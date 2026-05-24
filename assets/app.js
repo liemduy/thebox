@@ -105,6 +105,11 @@
     return ui;
   }
 
+  function parseBoxNotesRouteParams(params, parts = []) {
+    const box = params.get("box") || parts[1] || "";
+    return { selectedBoxNoteId: box };
+  }
+
   function parseRouteHash(hash = global.location?.hash || "") {
     const raw = String(hash || "").replace(/^#/, "");
     const [pathRaw, queryRaw = ""] = raw.split("?");
@@ -114,6 +119,7 @@
     const name = parts[0] || "boxes";
     if (name === "actions") return { name: "actions", ui: parseActionRouteParams(params) };
     if (name === "notes") return { name: "notes", ui: parseNotesRouteParams(params) };
+    if (name === "box-notes") return { name: "box-notes", ui: parseBoxNotesRouteParams(params, parts) };
     if (name === "search") {
       const tab = params.get("tab") === "actions" ? "actions" : params.get("tab") === "notes" ? "notes" : "boxes";
       return {
@@ -129,6 +135,7 @@
   function routeView(route) {
     if (route?.name === "actions") return "actions";
     if (route?.name === "notes") return "notes";
+    if (route?.name === "box-notes") return "boxNotes";
     if (route?.name === "search") return route.tab === "actions" ? "actions" : route.tab === "notes" ? "notes" : "boxes";
     return "boxes";
   }
@@ -161,10 +168,11 @@
   function buildAppHash({ currentView, ui, isSearchOpen, searchQuery }) {
     const params = new URLSearchParams();
     if (isSearchOpen) {
-      params.set("tab", currentView === "actions" ? "actions" : currentView === "notes" ? "notes" : "boxes");
+      const tab = currentView === "actions" ? "actions" : (currentView === "notes" || currentView === "boxNotes") ? "notes" : "boxes";
+      params.set("tab", tab);
       if (String(searchQuery || "").trim()) params.set("q", String(searchQuery || "").trim());
       if (currentView === "actions") appendActionRouteParams(params, ui);
-      else if (currentView === "notes") appendNotesRouteParams(params, ui);
+      else if (currentView === "notes" || currentView === "boxNotes") appendNotesRouteParams(params, ui);
       else appendBoxRouteParams(params, ui);
       return `#/search?${params.toString()}`;
     }
@@ -175,6 +183,11 @@
     if (currentView === "notes") {
       appendNotesRouteParams(params, ui);
       return `#/notes?${params.toString()}`;
+    }
+    if (currentView === "boxNotes") {
+      if (ui.selectedBoxNoteId) params.set("box", ui.selectedBoxNoteId);
+      const query = params.toString();
+      return query ? `#/box-notes?${query}` : "#/box-notes";
     }
     appendBoxRouteParams(params, ui);
     return `#/boxes?${params.toString()}`;
@@ -480,6 +493,7 @@
     parseBoxRouteParams,
     parseActionRouteParams,
     parseNotesRouteParams,
+    parseBoxNotesRouteParams,
     parseRouteHash,
     routeView,
     appendBoxRouteParams,
@@ -541,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-24-note-list-shortcuts-2";
-const APP_CACHE_NAME = "idea-box-v91-note-list-shortcuts";
+const APP_BUILD_ID = "2026-05-24-box-notes-origin";
+const APP_CACHE_NAME = "idea-box-v92-box-notes-origin";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -844,6 +858,13 @@ const iconPaths = {
   }), React.createElement("path", {
     d: "M8 2v20M8 6H4M8 10H4M8 14H4M8 18H4M12 7h4M12 11h4"
   })),
+  MapPin: React.createElement(React.Fragment, null, React.createElement("path", {
+    d: "M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0"
+  }), React.createElement("circle", {
+    cx: "12",
+    cy: "10",
+    r: "3"
+  })),
   Archive: React.createElement(React.Fragment, null, React.createElement("rect", {
     width: "20",
     height: "5",
@@ -1046,6 +1067,7 @@ const Redo2 = makeIcon("Redo2");
 const PlusSquare = makeIcon("PlusSquare");
 const FileText = makeIcon("FileText");
 const Notebook = makeIcon("Notebook");
+const MapPin = makeIcon("MapPin");
 const Archive = makeIcon("Archive");
 const CheckCircle = makeIcon("CheckCircle");
 const Trash2 = makeIcon("Trash2");
@@ -1401,7 +1423,9 @@ function defaultUI() {
     notesDate: "all",
     notesTagsInput: "",
     notesDatesInput: "",
+    selectedBoxNoteId: "",
     collapsedNoteDates: [],
+    collapsedBoxNoteDates: [],
     collapsedBoxNodes: [],
     expandedBoxNodes: [],
     expandedBoxActionDays: [],
@@ -2061,6 +2085,10 @@ function noteDisplayTitle(note) {
 function notePreview(note) {
   return noteBodyText(note).slice(0, 140);
 }
+function activeNoteById(state, noteId) {
+  const note = getNote(state, noteId);
+  return note && !note.deletedAt && !note.archivedAt && noteHasContent(note) ? note : null;
+}
 function noteBoxLinkInfo(state, noteId) {
   const link = noteLinksFor(state, noteId).find(item => item.linkType === "box" && item.boxNodeId);
   const box = link ? getNode(state.boxNodes || [], link.boxNodeId) : null;
@@ -2072,6 +2100,75 @@ function noteBoxLinkInfo(state, noteId) {
 }
 function activeNotes(state) {
   return (state.notes || []).filter(note => !note.deletedAt && !note.archivedAt && noteHasContent(note));
+}
+function boxNoteLinksFor(state, boxId) {
+  return (state.noteLinks || []).filter(link => link.linkType === "box" && link.boxNodeId === boxId).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+}
+function boxNotesFor(state, boxId) {
+  const seen = new Set();
+  return boxNoteLinksFor(state, boxId).map(link => activeNoteById(state, link.noteId)).filter(note => {
+    if (!note || seen.has(note.id)) return false;
+    seen.add(note.id);
+    return true;
+  }).sort((a, b) => b.noteDate.localeCompare(a.noteDate) || timestampMs(b.updatedAt) - timestampMs(a.updatedAt));
+}
+function boxNoteCount(state, boxId) {
+  return boxNotesFor(state, boxId).length;
+}
+function notePrimaryOrigin(state, noteId) {
+  const links = noteLinksFor(state, noteId);
+  const boxLink = links.find(link => link.linkType === "box" && link.boxNodeId && getNode(state.boxNodes || [], link.boxNodeId));
+  if (boxLink) {
+    return {
+      type: "box",
+      boxId: boxLink.boxNodeId,
+      box: getNode(state.boxNodes || [], boxLink.boxNodeId),
+      link: boxLink
+    };
+  }
+  const actionEntryLink = links.find(link => {
+    if (link.linkType !== "action_entry" || !link.actionDate || !link.actionNodeId) return false;
+    const day = (state.actionDays || []).find(item => item.date === link.actionDate);
+    const node = day ? getNode(day.nodes || [], link.actionNodeId) : null;
+    return Boolean(day && node);
+  });
+  if (actionEntryLink) {
+    const day = (state.actionDays || []).find(item => item.date === actionEntryLink.actionDate);
+    const node = day ? getNode(day.nodes || [], actionEntryLink.actionNodeId) : null;
+    return {
+      type: "action_entry",
+      date: actionEntryLink.actionDate,
+      actionNodeId: actionEntryLink.actionNodeId,
+      entryId: actionEntryLink.actionEntryId || null,
+      day,
+      node,
+      link: actionEntryLink
+    };
+  }
+  const actionNodeLink = links.find(link => {
+    if (link.linkType !== "action_node" || !link.actionDate || !link.actionNodeId) return false;
+    const day = (state.actionDays || []).find(item => item.date === link.actionDate);
+    return Boolean(day && getNode(day.nodes || [], link.actionNodeId));
+  });
+  if (actionNodeLink) {
+    const day = (state.actionDays || []).find(item => item.date === actionNodeLink.actionDate);
+    const node = day ? getNode(day.nodes || [], actionNodeLink.actionNodeId) : null;
+    return {
+      type: "action_node",
+      date: actionNodeLink.actionDate,
+      actionNodeId: actionNodeLink.actionNodeId,
+      day,
+      node,
+      link: actionNodeLink
+    };
+  }
+  const dayLink = links.find(link => link.linkType === "day" && link.actionDate && (state.actionDays || []).some(item => item.date === link.actionDate));
+  return dayLink ? {
+    type: "day",
+    date: dayLink.actionDate,
+    day: (state.actionDays || []).find(item => item.date === dayLink.actionDate),
+    link: dayLink
+  } : null;
 }
 function noteTagList(note) {
   return normalizeTags(note?.tags || [], note?.title || "", note?.bodyHtml || "", note?.bodyText || "");
@@ -2163,6 +2260,7 @@ function syncNoteToLinkedLegacy(state, noteId, deleted = false) {
   const links = noteLinksFor(state, noteId);
   links.forEach(link => {
     if (link.linkType === "box" && link.boxNodeId) {
+      if (noteId !== boxNoteId(link.boxNodeId)) return;
       const box = getNode(state.boxNodes, link.boxNodeId);
       if (!box) return;
       box.boxNoteTitle = deleted ? "" : cleanOptionalTitle(note?.title || "");
@@ -3627,11 +3725,14 @@ function NoteCard({
   query = "",
   onOpen,
   onDelete,
+  onOpenOrigin,
+  showOrigin = true,
   flashTarget
 }) {
   const preview = notePreview(note);
   const linked = noteIsLinked(state, note.id);
   const boxLink = noteBoxLinkInfo(state, note.id);
+  const origin = showOrigin ? notePrimaryOrigin(state, note.id) : null;
   const boxTitleClass = boxLink ? boxLink.level > 1 ? "note-title-subbox" : "note-title-box" : "";
   return React.createElement("div", {
     "data-note-id": note.id,
@@ -3652,7 +3753,15 @@ function NoteCard({
   }, React.createElement(HighlightText, {
     text: preview || "No preview",
     query: query
-  }))), React.createElement("button", {
+  }))), origin && React.createElement("button", {
+    type: "button",
+    onClick: () => onOpenOrigin?.(note.id),
+    className: "text-[#666] hover:text-[#FFD2D7] transition-colors p-1.5 -mr-1 shrink-0",
+    "aria-label": "Open note origin",
+    title: "Open note origin"
+  }, React.createElement(MapPin, {
+    size: 16
+  })), React.createElement("button", {
     type: "button",
     onClick: () => onDelete(note.id),
     className: "text-[#666] hover:text-red-300 transition-colors p-1.5 -mr-1 shrink-0",
@@ -3672,6 +3781,7 @@ function NotesPanel({
   onCreateNote,
   onOpenNote,
   onDeleteNote,
+  onOpenOrigin,
   onSetView,
   onSetViewBy,
   onToggleDate,
@@ -3827,6 +3937,7 @@ function NotesPanel({
       note: note,
       onOpen: onOpenNote,
       onDelete: onDeleteNote,
+      onOpenOrigin: onOpenOrigin,
       flashTarget: flashTarget
     }))));
   })) : React.createElement("div", {
@@ -3850,6 +3961,124 @@ function NotesPanel({
   }) : React.createElement(Plus, {
     size: 18
   }), " ", emptyAction)));
+}
+function BoxNotesPanel({
+  state,
+  boxId,
+  notes,
+  onBack,
+  onCreateNote,
+  onOpenNote,
+  onDeleteNote,
+  onToggleDate,
+  flashTarget
+}) {
+  const box = getNode(state.boxNodes || [], boxId);
+  const groups = groupNotesByDate(notes);
+  const crumbs = box ? [...ancestorsOf(box.id, state.boxNodes || []), box] : [];
+  if (!box) {
+    return React.createElement("div", {
+      className: "animate-in fade-in slide-in-from-bottom-4 duration-300 flex-1 flex flex-col"
+    }, React.createElement("button", {
+      type: "button",
+      onClick: onBack,
+      className: "self-start flex items-center gap-1 text-[#A7A7A7] hover:text-white transition-colors text-[13px] font-extrabold mb-8",
+      "aria-label": "Back to boxes"
+    }, React.createElement(ChevronLeft, {
+      size: 17
+    }), " Box"), React.createElement("div", {
+      className: "flex-1 flex flex-col items-center justify-center pb-20 text-center"
+    }, React.createElement("div", {
+      className: "w-20 h-20 bg-[#1E1E1E] rounded-full flex items-center justify-center mb-6"
+    }, React.createElement(Notebook, {
+      size: 34,
+      className: "text-[#A7A7A7]"
+    })), React.createElement("h3", {
+      className: "text-white font-bold text-[18px] mb-2"
+    }, "Box not found"), React.createElement("button", {
+      type: "button",
+      onClick: onBack,
+      className: "mt-4 bg-[#FFD2D7] text-black font-bold px-7 py-3 rounded-full"
+    }, "Back")));
+  }
+  return React.createElement("div", {
+    className: "animate-in fade-in slide-in-from-bottom-4 duration-300 flex-1 flex flex-col"
+  }, React.createElement("div", {
+    className: "mb-6"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: onBack,
+    className: "flex items-center gap-1 text-[#A7A7A7] hover:text-white transition-colors text-[13px] font-extrabold",
+    "aria-label": "Back to boxes"
+  }, React.createElement(ChevronLeft, {
+    size: 17
+  }), " Box"), React.createElement("div", {
+    className: "mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] font-extrabold text-[#777777]"
+  }, crumbs.map((item, index) => React.createElement(React.Fragment, {
+    key: item.id
+  }, index > 0 ? React.createElement("span", {
+    className: "text-[#3E3E3E]"
+  }, "/") : null, React.createElement("span", {
+    className: index === crumbs.length - 1 ? "text-[#FFD2D7]" : ""
+  }, item.title)))), React.createElement("div", {
+    className: "mt-2 flex items-end justify-between gap-3"
+  }, React.createElement("h3", {
+    className: "min-w-0 flex-1 text-white font-extrabold text-[24px] leading-tight tracking-tight truncate"
+  }, box.title), React.createElement("button", {
+    type: "button",
+    onClick: () => onCreateNote(box.id),
+    className: "shrink-0 px-5 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform",
+    "aria-label": "Create box note"
+  }, "+note"))), groups.length ? React.createElement("div", {
+    className: "space-y-5"
+  }, groups.map(group => {
+    const collapsed = (state.ui.collapsedBoxNoteDates || []).includes(group.date);
+    return React.createElement("section", {
+      key: group.date
+    }, React.createElement("button", {
+      type: "button",
+      onClick: () => onToggleDate(group.date),
+      className: "w-full flex items-center justify-between text-left text-[12px] font-extrabold text-[#A7A7A7] mb-2 px-1 hover:text-white transition-colors",
+      "aria-label": collapsed ? "Expand box notes date" : "Collapse box notes date"
+    }, React.createElement("span", {
+      className: "flex items-center gap-1.5 min-w-0"
+    }, React.createElement("span", {
+      className: "truncate"
+    }, displayDate(group.date)), collapsed ? React.createElement(ChevronRight, {
+      size: 14,
+      className: "shrink-0"
+    }) : React.createElement(ChevronDown, {
+      size: 14,
+      className: "shrink-0"
+    })), React.createElement("span", {
+      className: "text-[11px] text-[#666666] shrink-0"
+    }, group.items.length)), !collapsed && React.createElement("div", {
+      className: "space-y-3"
+    }, group.items.map(note => React.createElement(NoteCard, {
+      key: note.id,
+      state: state,
+      note: note,
+      onOpen: onOpenNote,
+      onDelete: onDeleteNote,
+      showOrigin: false,
+      flashTarget: flashTarget
+    }))));
+  })) : React.createElement("div", {
+    className: "flex-1 flex flex-col items-center justify-center pb-20 text-center"
+  }, React.createElement("div", {
+    className: "w-20 h-20 bg-[#1E1E1E] rounded-full flex items-center justify-center mb-6"
+  }, React.createElement(Notebook, {
+    size: 34,
+    className: "text-[#A7A7A7]"
+  })), React.createElement("h3", {
+    className: "text-white font-bold text-[18px] mb-2"
+  }, "No notes in this box"), React.createElement("button", {
+    type: "button",
+    onClick: () => onCreateNote(box.id),
+    className: "mt-4 bg-[#FFD2D7] text-black font-bold px-7 py-3 rounded-full flex items-center gap-2"
+  }, React.createElement(Plus, {
+    size: 18
+  }), " Create note")));
 }
 function replaceLastCsvToken(input, value) {
   const parts = String(input || "").split(",");
@@ -4025,7 +4254,8 @@ function BoxTreeItem({
   const inactive = boxIsInactive(node) || boxIsArchived(node);
   const showBoxDays = state.ui.showBoxDays !== false;
   const timeline = showBoxDays ? actionTimelineForBox(state, node) : [];
-  const hasNote = boxHasNote(node);
+  const noteCount = boxNoteCount(state, node.id);
+  const hasNote = noteCount > 0;
   const hasBody = children.length > 0 || timeline.length > 0;
   const boxCascadeChildren = item => childrenOf(item.id, state.boxNodes).filter(child => shouldShowChildInView(child, view));
   const boxCascadeOwnContent = item => state.ui.showBoxDays !== false && actionTimelineForBox(state, item).length > 0;
@@ -4188,13 +4418,15 @@ function BoxTreeItem({
       e.stopPropagation();
       handlers.openBoxNote(node.id);
     },
-    className: "h-8 w-7 grid place-items-center rounded-full text-[#FFD2D7] hover:text-white hover:bg-[#444444] transition-colors",
+    className: "relative h-8 w-7 grid place-items-center rounded-full text-[#FFD2D7] hover:text-white hover:bg-[#444444] transition-colors",
     "aria-label": "View notes",
     title: "View notes"
   }, React.createElement(Notebook, {
     size: isRoot ? 18 : 16,
     strokeWidth: 2.1
-  })), React.createElement("button", {
+  }), React.createElement("span", {
+    className: "absolute -right-[2px] -top-[2px] min-w-[15px] h-[15px] px-[3px] rounded-full bg-[#FFD2D7] text-black text-[9px] leading-[15px] font-black text-center shadow-[0_0_0_2px_#141414]"
+  }, noteCount > 9 ? "9+" : noteCount)), React.createElement("button", {
     type: "button",
     onClick: e => {
       e.stopPropagation();
@@ -6560,6 +6792,8 @@ function App() {
   const searchResults = useMemo(() => collectSearchResults(db, searchQuery, searchFilters), [db, searchQuery, searchFilters]);
   const noteTags = useMemo(() => allNoteTags(db), [db]);
   const notesForView = useMemo(() => filteredNotes(db), [db]);
+  const selectedBoxNoteId = db.ui.selectedBoxNoteId || "";
+  const notesForSelectedBox = useMemo(() => selectedBoxNoteId ? boxNotesFor(db, selectedBoxNoteId) : [], [db, selectedBoxNoteId]);
   const {
     upsertCentralNote,
     saveCentralNote,
@@ -6693,7 +6927,7 @@ function App() {
     if (window.location.hash !== nextHash) {
       window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${nextHash}`);
     }
-  }, [currentView, isSearchOpen, searchQuery, db.ui.boxView, db.ui.boxFilter, db.ui.boxFilterFrom, db.ui.boxFilterTo, db.ui.showBoxDays, db.ui.selectedActionDate, db.ui.actionFilter, db.ui.notesView, db.ui.notesTag, db.ui.notesDate, db.ui.notesTagsInput, db.ui.notesDatesInput]);
+  }, [currentView, isSearchOpen, searchQuery, db.ui.boxView, db.ui.boxFilter, db.ui.boxFilterFrom, db.ui.boxFilterTo, db.ui.showBoxDays, db.ui.selectedActionDate, db.ui.actionFilter, db.ui.notesView, db.ui.notesTag, db.ui.notesDate, db.ui.notesTagsInput, db.ui.notesDatesInput, db.ui.selectedBoxNoteId]);
   useEffect(() => {
     if (!flashTarget) return;
     const safeId = window.CSS?.escape ? window.CSS.escape(flashTarget.id) : String(flashTarget.id).replace(/"/g, '\\"');
@@ -6844,6 +7078,15 @@ function App() {
       }
     }));
   }
+  function toggleBoxNoteDate(date) {
+    setDb(prev => markPendingSync({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        collapsedBoxNoteDates: toggleId(prev.ui.collapsedBoxNoteDates || [], date)
+      }
+    }));
+  }
   function toggleSearchFilter(key) {
     setSearchFilters(prev => {
       const next = {
@@ -6859,6 +7102,66 @@ function App() {
       type: "centralNote",
       noteId
     });
+  }
+  function expandBoxPathInState(state, boxId) {
+    const ancestors = ancestorsOf(boxId, state.boxNodes);
+    ancestors.forEach(parent => {
+      if (parent.level === 1) state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(id => id !== parent.id);else state.ui.expandedBoxNodes = [...new Set([...(state.ui.expandedBoxNodes || []), parent.id])];
+    });
+    const node = getNode(state.boxNodes, boxId);
+    const root = node ? rootOf(node, state.boxNodes) : null;
+    if (root) state.ui.boxView = boxIsArchived(root) ? "archived" : boxIsDone(root) ? "done" : "active";
+  }
+  function revealBox(boxId) {
+    if (!boxId) return;
+    setDb(prev => {
+      const state = normalizeState(clone(prev));
+      expandBoxPathInState(state, boxId);
+      state.ui.selectedBoxNoteId = "";
+      return markPendingSync(state);
+    });
+    setCurrentView("boxes");
+    setIsSearchOpen(false);
+    flashAfterNavigation({
+      type: "box",
+      id: boxId
+    });
+  }
+  function openBoxNotes(boxId) {
+    if (!boxId) return;
+    setDb(prev => {
+      const state = normalizeState(clone(prev));
+      state.ui.selectedBoxNoteId = boxId;
+      expandBoxPathInState(state, boxId);
+      return markPendingSync(state);
+    });
+    setCurrentView("boxNotes");
+    setIsSearchOpen(false);
+    setActiveMenu(null);
+  }
+  function createBoxLinkedNote(boxId) {
+    if (!boxId) return;
+    openBoxNotes(boxId);
+    setModal({
+      type: "centralNote",
+      noteId: null,
+      noteDate: todayYMD(),
+      link: {
+        id: uid("notelink"),
+        linkType: "box",
+        boxNodeId: boxId
+      }
+    });
+  }
+  function openNotesTab() {
+    setCurrentView("notes");
+    setDb(prev => prev.ui.selectedBoxNoteId ? markPendingSync({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        selectedBoxNoteId: ""
+      }
+    }) : prev);
   }
   function preferredFreeNoteDate() {
     const filters = parseExportDateFilters(db.ui.notesDatesInput || "");
@@ -6911,24 +7214,7 @@ function App() {
         id: result.noteId
       });
     } else if (result.boxId) {
-      setDb(prev => {
-        const state = normalizeState(clone(prev));
-        const ancestors = ancestorsOf(result.boxId, state.boxNodes);
-        ancestors.forEach(parent => {
-          if (parent.level === 1) state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(id => id !== parent.id);else state.ui.expandedBoxNodes = [...new Set([...(state.ui.expandedBoxNodes || []), parent.id])];
-        });
-        const node = getNode(state.boxNodes, result.boxId);
-        const root = node ? rootOf(node, state.boxNodes) : null;
-        if (root) {
-          state.ui.boxView = boxIsArchived(root) ? "archived" : boxIsDone(root) ? "done" : "active";
-        }
-        return markPendingSync(state);
-      });
-      setCurrentView("boxes");
-      flashAfterNavigation({
-        type: "box",
-        id: result.boxId
-      });
+      revealBox(result.boxId);
     } else if (result.date) {
       setDb(prev => {
         const state = normalizeState(clone(prev));
@@ -6952,6 +7238,15 @@ function App() {
       });
     }
     setIsSearchOpen(false);
+  }
+  function openNoteOrigin(noteId) {
+    const origin = notePrimaryOrigin(db, noteId);
+    if (!origin) return;
+    if (origin.type === "box") {
+      revealBox(origin.boxId);
+      return;
+    }
+    if (origin.date) openActionDate(origin.date, origin.actionNodeId || null, origin.entryId || null);
   }
   if (booting) {
     return React.createElement("div", {
@@ -6985,10 +7280,7 @@ function App() {
     doneBox,
     restoreBox,
     deleteBox,
-    openBoxNote: boxId => setModal({
-      type: "boxNote",
-      boxId
-    }),
+    openBoxNote: openBoxNotes,
     toggleBoxTimelineDay,
     openActionDate,
     reorderBox
@@ -7075,10 +7367,10 @@ function App() {
     className: "text-[#3E3E3E] mx-1.5 font-light"
   }, "/"), React.createElement("button", {
     type: "button",
-    className: `cursor-pointer transition-colors whitespace-nowrap ${currentView === "notes" ? "text-white" : "text-[#555555]"}`,
+    className: `cursor-pointer transition-colors whitespace-nowrap ${currentView === "notes" || currentView === "boxNotes" ? "text-white" : "text-[#555555]"}`,
     onClick: e => {
       e.stopPropagation();
-      setCurrentView("notes");
+      openNotesTab();
     }
   }, "Note")), React.createElement("div", {
     className: "flex gap-3 text-[#A7A7A7] shrink-0"
@@ -7435,10 +7727,21 @@ function App() {
     onCreateNote: createFreeNote,
     onOpenNote: openCentralNote,
     onDeleteNote: requestDeleteCentralNote,
+    onOpenOrigin: openNoteOrigin,
     onSetView: value => setNotesUI("notesView", value),
     onSetViewBy: setNotesViewBy,
     onToggleDate: toggleNoteDate,
     onOpenExport: openNotesExport,
+    flashTarget: flashTarget
+  }), currentView === "boxNotes" && React.createElement(BoxNotesPanel, {
+    state: db,
+    boxId: selectedBoxNoteId,
+    notes: notesForSelectedBox,
+    onBack: () => revealBox(selectedBoxNoteId),
+    onCreateNote: createBoxLinkedNote,
+    onOpenNote: openCentralNote,
+    onDeleteNote: requestDeleteCentralNote,
+    onToggleDate: toggleBoxNoteDate,
     flashTarget: flashTarget
   })), modal?.type === "boxNote" && React.createElement(RichNoteModal, {
     modal: modal,

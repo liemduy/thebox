@@ -1,7 +1,8 @@
-function NoteCard({ state, note, query = "", onOpen, onDelete, flashTarget }) {
+function NoteCard({ state, note, query = "", onOpen, onDelete, onOpenOrigin, showOrigin = true, flashTarget }) {
   const preview = notePreview(note);
   const linked = noteIsLinked(state, note.id);
   const boxLink = noteBoxLinkInfo(state, note.id);
+  const origin = showOrigin ? notePrimaryOrigin(state, note.id) : null;
   const boxTitleClass = boxLink ? (boxLink.level > 1 ? "note-title-subbox" : "note-title-box") : "";
   return (
     <div data-note-id={note.id} className={`group bg-[#141414] border border-white/[0.04] rounded-[12px] px-4 py-3.5 ${flashTarget?.type === "note" && flashTarget.id === note.id ? "flash-target" : ""}`}>
@@ -14,6 +15,11 @@ function NoteCard({ state, note, query = "", onOpen, onDelete, flashTarget }) {
             <HighlightText text={preview || "No preview"} query={query} />
           </p>
         </button>
+        {origin && (
+          <button type="button" onClick={() => onOpenOrigin?.(note.id)} className="text-[#666] hover:text-[#FFD2D7] transition-colors p-1.5 -mr-1 shrink-0" aria-label="Open note origin" title="Open note origin">
+            <MapPin size={16} />
+          </button>
+        )}
         <button type="button" onClick={() => onDelete(note.id)} className="text-[#666] hover:text-red-300 transition-colors p-1.5 -mr-1 shrink-0" aria-label="Delete note">
           <Trash2 size={16} />
         </button>
@@ -22,7 +28,7 @@ function NoteCard({ state, note, query = "", onOpen, onDelete, flashTarget }) {
   );
 }
 
-function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isViewByMenuOpen, setIsViewByMenuOpen, onCreateNote, onOpenNote, onDeleteNote, onSetView, onSetViewBy, onToggleDate, onOpenExport, flashTarget }) {
+function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isViewByMenuOpen, setIsViewByMenuOpen, onCreateNote, onOpenNote, onDeleteNote, onOpenOrigin, onSetView, onSetViewBy, onToggleDate, onOpenExport, flashTarget }) {
   const groups = groupNotesByDate(notes);
   const view = state.ui.notesView || "linked";
   const viewLabel = view === "linked" ? "Linked" : view === "free" ? "Free" : "All";
@@ -113,7 +119,7 @@ function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isV
                 </button>
                 {!collapsed && (
                   <div className="space-y-3">
-                    {group.items.map(note => <NoteCard key={note.id} state={state} note={note} onOpen={onOpenNote} onDelete={onDeleteNote} flashTarget={flashTarget} />)}
+                    {group.items.map(note => <NoteCard key={note.id} state={state} note={note} onOpen={onOpenNote} onDelete={onDeleteNote} onOpenOrigin={onOpenOrigin} flashTarget={flashTarget} />)}
                   </div>
                 )}
               </section>
@@ -126,6 +132,83 @@ function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isV
           <h3 className="text-white font-bold text-[18px] mb-2">{emptyTitle}</h3>
           <button type="button" onClick={hasViewBy ? () => onSetViewBy({ tagsInput: "", datesInput: "" }) : onCreateNote} className="mt-4 bg-[#FFD2D7] text-black font-bold px-7 py-3 rounded-full flex items-center gap-2">
             {hasViewBy ? <X size={18} /> : <Plus size={18} />} {emptyAction}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BoxNotesPanel({ state, boxId, notes, onBack, onCreateNote, onOpenNote, onDeleteNote, onToggleDate, flashTarget }) {
+  const box = getNode(state.boxNodes || [], boxId);
+  const groups = groupNotesByDate(notes);
+  const crumbs = box ? [...ancestorsOf(box.id, state.boxNodes || []), box] : [];
+  if (!box) {
+    return (
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 flex-1 flex flex-col">
+        <button type="button" onClick={onBack} className="self-start flex items-center gap-1 text-[#A7A7A7] hover:text-white transition-colors text-[13px] font-extrabold mb-8" aria-label="Back to boxes">
+          <ChevronLeft size={17} /> Box
+        </button>
+        <div className="flex-1 flex flex-col items-center justify-center pb-20 text-center">
+          <div className="w-20 h-20 bg-[#1E1E1E] rounded-full flex items-center justify-center mb-6"><Notebook size={34} className="text-[#A7A7A7]" /></div>
+          <h3 className="text-white font-bold text-[18px] mb-2">Box not found</h3>
+          <button type="button" onClick={onBack} className="mt-4 bg-[#FFD2D7] text-black font-bold px-7 py-3 rounded-full">Back</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 flex-1 flex flex-col">
+      <div className="mb-6">
+        <button type="button" onClick={onBack} className="flex items-center gap-1 text-[#A7A7A7] hover:text-white transition-colors text-[13px] font-extrabold" aria-label="Back to boxes">
+          <ChevronLeft size={17} /> Box
+        </button>
+        <div className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] font-extrabold text-[#777777]">
+          {crumbs.map((item, index) => (
+            <React.Fragment key={item.id}>
+              {index > 0 ? <span className="text-[#3E3E3E]">/</span> : null}
+              <span className={index === crumbs.length - 1 ? "text-[#FFD2D7]" : ""}>{item.title}</span>
+            </React.Fragment>
+          ))}
+        </div>
+        <div className="mt-2 flex items-end justify-between gap-3">
+          <h3 className="min-w-0 flex-1 text-white font-extrabold text-[24px] leading-tight tracking-tight truncate">{box.title}</h3>
+          <button type="button" onClick={() => onCreateNote(box.id)} className="shrink-0 px-5 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform" aria-label="Create box note">
+            +note
+          </button>
+        </div>
+      </div>
+
+      {groups.length ? (
+        <div className="space-y-5">
+          {groups.map(group => {
+            const collapsed = (state.ui.collapsedBoxNoteDates || []).includes(group.date);
+            return (
+              <section key={group.date}>
+                <button type="button" onClick={() => onToggleDate(group.date)} className="w-full flex items-center justify-between text-left text-[12px] font-extrabold text-[#A7A7A7] mb-2 px-1 hover:text-white transition-colors" aria-label={collapsed ? "Expand box notes date" : "Collapse box notes date"}>
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="truncate">{displayDate(group.date)}</span>
+                    {collapsed ? <ChevronRight size={14} className="shrink-0" /> : <ChevronDown size={14} className="shrink-0" />}
+                  </span>
+                  <span className="text-[11px] text-[#666666] shrink-0">{group.items.length}</span>
+                </button>
+                {!collapsed && (
+                  <div className="space-y-3">
+                    {group.items.map(note => (
+                      <NoteCard key={note.id} state={state} note={note} onOpen={onOpenNote} onDelete={onDeleteNote} showOrigin={false} flashTarget={flashTarget} />
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center pb-20 text-center">
+          <div className="w-20 h-20 bg-[#1E1E1E] rounded-full flex items-center justify-center mb-6"><Notebook size={34} className="text-[#A7A7A7]" /></div>
+          <h3 className="text-white font-bold text-[18px] mb-2">No notes in this box</h3>
+          <button type="button" onClick={() => onCreateNote(box.id)} className="mt-4 bg-[#FFD2D7] text-black font-bold px-7 py-3 rounded-full flex items-center gap-2">
+            <Plus size={18} /> Create note
           </button>
         </div>
       )}

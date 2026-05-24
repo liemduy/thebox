@@ -107,6 +107,31 @@ test("resets omitted note route filters to defaults", () => {
   });
 });
 
+test("parses and builds box note routes", () => {
+  const route = core.parseRouteHash("#/box-notes?box=root");
+  assert.equal(route.name, "box-notes");
+  assert.equal(core.routeView(route), "boxNotes");
+  assert.deepEqual(route.ui, { selectedBoxNoteId: "root" });
+  assert.equal(
+    core.buildAppHash({
+      currentView: "boxNotes",
+      ui: { selectedBoxNoteId: "root", notesView: "all" },
+      isSearchOpen: false,
+      searchQuery: ""
+    }),
+    "#/box-notes?box=root"
+  );
+  assert.equal(
+    core.buildAppHash({
+      currentView: "boxNotes",
+      ui: { selectedBoxNoteId: "root", notesView: "all" },
+      isSearchOpen: true,
+      searchQuery: "linked"
+    }),
+    "#/search?tab=notes&q=linked&view=all"
+  );
+});
+
 test("normalizes cascade mode maps without keeping garbage", () => {
   assert.deepEqual(
     core.normalizeModeMap({ a: "expanding", b: "collapsing", c: "bad", d: true }),

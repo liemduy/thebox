@@ -14,6 +14,7 @@ const iconPaths = {
   PlusSquare: (<><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8M12 8v8"/></>),
   FileText: (<><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></>),
   Notebook: (<><path d="M4 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 2v20M8 6H4M8 10H4M8 14H4M8 18H4M12 7h4M12 11h4"/></>),
+  MapPin: (<><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0"/><circle cx="12" cy="10" r="3"/></>),
   Archive: (<><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></>),
   CheckCircle: (<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></>),
   Trash2: (<><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></>),
@@ -59,6 +60,7 @@ const Redo2 = makeIcon("Redo2");
 const PlusSquare = makeIcon("PlusSquare");
 const FileText = makeIcon("FileText");
 const Notebook = makeIcon("Notebook");
+const MapPin = makeIcon("MapPin");
 const Archive = makeIcon("Archive");
 const CheckCircle = makeIcon("CheckCircle");
 const Trash2 = makeIcon("Trash2");

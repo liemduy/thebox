@@ -14,12 +14,76 @@ function noteLinksFor(state, noteId) { return (state.noteLinks || []).filter(lin
 function noteIsLinked(state, noteId) { return noteLinksFor(state, noteId).length > 0; }
 function noteDisplayTitle(note) { return cleanOptionalTitle(note?.title || "") || "Untitled"; }
 function notePreview(note) { return noteBodyText(note).slice(0, 140); }
+function activeNoteById(state, noteId) {
+  const note = getNote(state, noteId);
+  return note && !note.deletedAt && !note.archivedAt && noteHasContent(note) ? note : null;
+}
 function noteBoxLinkInfo(state, noteId) {
   const link = noteLinksFor(state, noteId).find(item => item.linkType === "box" && item.boxNodeId);
   const box = link ? getNode(state.boxNodes || [], link.boxNodeId) : null;
   return box ? { link, box, level: clampLevel(box.level || (box.parentId ? 2 : 1)) } : null;
 }
 function activeNotes(state) { return (state.notes || []).filter(note => !note.deletedAt && !note.archivedAt && noteHasContent(note)); }
+function boxNoteLinksFor(state, boxId) {
+  return (state.noteLinks || [])
+    .filter(link => link.linkType === "box" && link.boxNodeId === boxId)
+    .sort((a, b) => (a.sort || 0) - (b.sort || 0));
+}
+function boxNotesFor(state, boxId) {
+  const seen = new Set();
+  return boxNoteLinksFor(state, boxId)
+    .map(link => activeNoteById(state, link.noteId))
+    .filter(note => {
+      if (!note || seen.has(note.id)) return false;
+      seen.add(note.id);
+      return true;
+    })
+    .sort((a, b) => b.noteDate.localeCompare(a.noteDate) || timestampMs(b.updatedAt) - timestampMs(a.updatedAt));
+}
+function boxNoteCount(state, boxId) { return boxNotesFor(state, boxId).length; }
+function notePrimaryOrigin(state, noteId) {
+  const links = noteLinksFor(state, noteId);
+  const boxLink = links.find(link => link.linkType === "box" && link.boxNodeId && getNode(state.boxNodes || [], link.boxNodeId));
+  if (boxLink) {
+    return {
+      type: "box",
+      boxId: boxLink.boxNodeId,
+      box: getNode(state.boxNodes || [], boxLink.boxNodeId),
+      link: boxLink
+    };
+  }
+  const actionEntryLink = links.find(link => {
+    if (link.linkType !== "action_entry" || !link.actionDate || !link.actionNodeId) return false;
+    const day = (state.actionDays || []).find(item => item.date === link.actionDate);
+    const node = day ? getNode(day.nodes || [], link.actionNodeId) : null;
+    return Boolean(day && node);
+  });
+  if (actionEntryLink) {
+    const day = (state.actionDays || []).find(item => item.date === actionEntryLink.actionDate);
+    const node = day ? getNode(day.nodes || [], actionEntryLink.actionNodeId) : null;
+    return {
+      type: "action_entry",
+      date: actionEntryLink.actionDate,
+      actionNodeId: actionEntryLink.actionNodeId,
+      entryId: actionEntryLink.actionEntryId || null,
+      day,
+      node,
+      link: actionEntryLink
+    };
+  }
+  const actionNodeLink = links.find(link => {
+    if (link.linkType !== "action_node" || !link.actionDate || !link.actionNodeId) return false;
+    const day = (state.actionDays || []).find(item => item.date === link.actionDate);
+    return Boolean(day && getNode(day.nodes || [], link.actionNodeId));
+  });
+  if (actionNodeLink) {
+    const day = (state.actionDays || []).find(item => item.date === actionNodeLink.actionDate);
+    const node = day ? getNode(day.nodes || [], actionNodeLink.actionNodeId) : null;
+    return { type: "action_node", date: actionNodeLink.actionDate, actionNodeId: actionNodeLink.actionNodeId, day, node, link: actionNodeLink };
+  }
+  const dayLink = links.find(link => link.linkType === "day" && link.actionDate && (state.actionDays || []).some(item => item.date === link.actionDate));
+  return dayLink ? { type: "day", date: dayLink.actionDate, day: (state.actionDays || []).find(item => item.date === dayLink.actionDate), link: dayLink } : null;
+}
 function noteTagList(note) {
   return normalizeTags(note?.tags || [], note?.title || "", note?.bodyHtml || "", note?.bodyText || "");
 }
@@ -104,6 +168,7 @@ function syncNoteToLinkedLegacy(state, noteId, deleted = false) {
   const links = noteLinksFor(state, noteId);
   links.forEach(link => {
     if (link.linkType === "box" && link.boxNodeId) {
+      if (noteId !== boxNoteId(link.boxNodeId)) return;
       const box = getNode(state.boxNodes, link.boxNodeId);
       if (!box) return;
       box.boxNoteTitle = deleted ? "" : cleanOptionalTitle(note?.title || "");

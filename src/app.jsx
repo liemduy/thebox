@@ -62,6 +62,8 @@ function App() {
   const searchResults = useMemo(() => collectSearchResults(db, searchQuery, searchFilters), [db, searchQuery, searchFilters]);
   const noteTags = useMemo(() => allNoteTags(db), [db]);
   const notesForView = useMemo(() => filteredNotes(db), [db]);
+  const selectedBoxNoteId = db.ui.selectedBoxNoteId || "";
+  const notesForSelectedBox = useMemo(() => selectedBoxNoteId ? boxNotesFor(db, selectedBoxNoteId) : [], [db, selectedBoxNoteId]);
   const {
     upsertCentralNote,
     saveCentralNote,
@@ -204,7 +206,8 @@ function App() {
     db.ui.notesTag,
     db.ui.notesDate,
     db.ui.notesTagsInput,
-    db.ui.notesDatesInput
+    db.ui.notesDatesInput,
+    db.ui.selectedBoxNoteId
   ]);
 
   useEffect(() => {
@@ -355,6 +358,16 @@ function App() {
     }));
   }
 
+  function toggleBoxNoteDate(date) {
+    setDb(prev => markPendingSync({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        collapsedBoxNoteDates: toggleId(prev.ui.collapsedBoxNoteDates || [], date)
+      }
+    }));
+  }
+
   function toggleSearchFilter(key) {
     setSearchFilters(prev => {
       const next = { ...prev, [key]: prev[key] === false };
@@ -365,6 +378,59 @@ function App() {
 
   function openCentralNote(noteId) {
     setModal({ type: "centralNote", noteId });
+  }
+
+  function expandBoxPathInState(state, boxId) {
+    const ancestors = ancestorsOf(boxId, state.boxNodes);
+    ancestors.forEach(parent => {
+      if (parent.level === 1) state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(id => id !== parent.id);
+      else state.ui.expandedBoxNodes = [...new Set([...(state.ui.expandedBoxNodes || []), parent.id])];
+    });
+    const node = getNode(state.boxNodes, boxId);
+    const root = node ? rootOf(node, state.boxNodes) : null;
+    if (root) state.ui.boxView = boxIsArchived(root) ? "archived" : boxIsDone(root) ? "done" : "active";
+  }
+
+  function revealBox(boxId) {
+    if (!boxId) return;
+    setDb(prev => {
+      const state = normalizeState(clone(prev));
+      expandBoxPathInState(state, boxId);
+      state.ui.selectedBoxNoteId = "";
+      return markPendingSync(state);
+    });
+    setCurrentView("boxes");
+    setIsSearchOpen(false);
+    flashAfterNavigation({ type: "box", id: boxId });
+  }
+
+  function openBoxNotes(boxId) {
+    if (!boxId) return;
+    setDb(prev => {
+      const state = normalizeState(clone(prev));
+      state.ui.selectedBoxNoteId = boxId;
+      expandBoxPathInState(state, boxId);
+      return markPendingSync(state);
+    });
+    setCurrentView("boxNotes");
+    setIsSearchOpen(false);
+    setActiveMenu(null);
+  }
+
+  function createBoxLinkedNote(boxId) {
+    if (!boxId) return;
+    openBoxNotes(boxId);
+    setModal({
+      type: "centralNote",
+      noteId: null,
+      noteDate: todayYMD(),
+      link: { id: uid("notelink"), linkType: "box", boxNodeId: boxId }
+    });
+  }
+
+  function openNotesTab() {
+    setCurrentView("notes");
+    setDb(prev => prev.ui.selectedBoxNoteId ? markPendingSync({ ...prev, ui: { ...prev.ui, selectedBoxNoteId: "" } }) : prev);
   }
 
   function preferredFreeNoteDate() {
@@ -411,22 +477,7 @@ function App() {
       }));
       flashAfterNavigation({ type: "note", id: result.noteId });
     } else if (result.boxId) {
-      setDb(prev => {
-        const state = normalizeState(clone(prev));
-        const ancestors = ancestorsOf(result.boxId, state.boxNodes);
-        ancestors.forEach(parent => {
-          if (parent.level === 1) state.ui.collapsedBoxNodes = (state.ui.collapsedBoxNodes || []).filter(id => id !== parent.id);
-          else state.ui.expandedBoxNodes = [...new Set([...(state.ui.expandedBoxNodes || []), parent.id])];
-        });
-        const node = getNode(state.boxNodes, result.boxId);
-        const root = node ? rootOf(node, state.boxNodes) : null;
-        if (root) {
-          state.ui.boxView = boxIsArchived(root) ? "archived" : boxIsDone(root) ? "done" : "active";
-        }
-        return markPendingSync(state);
-      });
-      setCurrentView("boxes");
-      flashAfterNavigation({ type: "box", id: result.boxId });
+      revealBox(result.boxId);
     } else if (result.date) {
       setDb(prev => {
         const state = normalizeState(clone(prev));
@@ -445,6 +496,16 @@ function App() {
       else if (result.actionNodeId) flashAfterNavigation({ type: "action", id: result.actionNodeId });
     }
     setIsSearchOpen(false);
+  }
+
+  function openNoteOrigin(noteId) {
+    const origin = notePrimaryOrigin(db, noteId);
+    if (!origin) return;
+    if (origin.type === "box") {
+      revealBox(origin.boxId);
+      return;
+    }
+    if (origin.date) openActionDate(origin.date, origin.actionNodeId || null, origin.entryId || null);
   }
 
   if (booting) {
@@ -473,7 +534,7 @@ function App() {
     doneBox,
     restoreBox,
     deleteBox,
-    openBoxNote: (boxId) => setModal({ type: "boxNote", boxId }),
+    openBoxNote: openBoxNotes,
     toggleBoxTimelineDay,
     openActionDate,
     reorderBox
@@ -523,7 +584,7 @@ function App() {
               <span className="text-[#3E3E3E] mx-1.5 font-light">/</span>
               <button type="button" className={`cursor-pointer transition-colors whitespace-nowrap ${currentView === "actions" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("actions"); }}>Act</button>
               <span className="text-[#3E3E3E] mx-1.5 font-light">/</span>
-              <button type="button" className={`cursor-pointer transition-colors whitespace-nowrap ${currentView === "notes" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("notes"); }}>Note</button>
+              <button type="button" className={`cursor-pointer transition-colors whitespace-nowrap ${currentView === "notes" || currentView === "boxNotes" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); openNotesTab(); }}>Note</button>
             </h2>
             <div className="flex gap-3 text-[#A7A7A7] shrink-0">
               <button type="button" disabled={!undoRef.current.length} onClick={(e) => { e.stopPropagation(); undo(); }} className="cursor-pointer hover:text-white transition-colors" aria-label="Undo"><Undo2 size={18} /></button>
@@ -726,10 +787,25 @@ function App() {
               onCreateNote={createFreeNote}
               onOpenNote={openCentralNote}
               onDeleteNote={requestDeleteCentralNote}
+              onOpenOrigin={openNoteOrigin}
               onSetView={(value) => setNotesUI("notesView", value)}
               onSetViewBy={setNotesViewBy}
               onToggleDate={toggleNoteDate}
               onOpenExport={openNotesExport}
+              flashTarget={flashTarget}
+            />
+          )}
+
+          {currentView === "boxNotes" && (
+            <BoxNotesPanel
+              state={db}
+              boxId={selectedBoxNoteId}
+              notes={notesForSelectedBox}
+              onBack={() => revealBox(selectedBoxNoteId)}
+              onCreateNote={createBoxLinkedNote}
+              onOpenNote={openCentralNote}
+              onDeleteNote={requestDeleteCentralNote}
+              onToggleDate={toggleBoxNoteDate}
               flashTarget={flashTarget}
             />
           )}

@@ -202,3 +202,67 @@ test("box notes show root and sub-box title underline styles", async ({ page }) 
   await expect(page.locator('[data-note-id="boxnote_root"] h3')).toHaveClass(/note-title-box/);
   await expect(page.locator('[data-note-id="boxnote_sub"] h3')).toHaveClass(/note-title-subbox/);
 });
+
+test("box note badge opens a dedicated box notes page", async ({ page }) => {
+  const t = "2026-05-24T12:00:00.000Z";
+  const snapshot = {
+    version: 5,
+    meta: {},
+    boxNodes: [
+      { id: "root", parentId: null, level: 1, title: "Root", sort: 1, boxNoteTitle: "", boxNoteHtml: "", archivedAt: null, doneAt: null, createdAt: t, updatedAt: t }
+    ],
+    actionDays: [],
+    notes: [
+      { id: "note_a", title: "First linked note", bodyHtml: "<p>One</p>", bodyText: "One", noteDate: "2026-05-24", createdAt: t, updatedAt: t, clientUpdatedAt: t },
+      { id: "note_b", title: "Second linked note", bodyHtml: "<p>Two</p>", bodyText: "Two", noteDate: "2026-05-23", createdAt: t, updatedAt: t, clientUpdatedAt: t }
+    ],
+    noteLinks: [
+      { id: "link_a", noteId: "note_a", linkType: "box", boxNodeId: "root", sort: 1, createdAt: t },
+      { id: "link_b", noteId: "note_b", linkType: "box", boxNodeId: "root", sort: 2, createdAt: t }
+    ],
+    ui: { boxFilter: "all", showBoxDays: false }
+  };
+  await page.addInitScript(payload => {
+    localStorage.setItem("idea-box-html-v13-action-notes:guest", JSON.stringify(payload));
+    localStorage.setItem("idea-box-html-v13-action-notes:local", JSON.stringify(payload));
+  }, snapshot);
+
+  await page.goto(`${baseURL}/?local=1#/boxes?view=active&range=all&showDays=0`, { waitUntil: "networkidle" });
+  const noteButton = page.locator('[data-box-node-id="root"]').getByLabel("View notes");
+  await expect(noteButton).toContainText("2");
+  await noteButton.click();
+
+  await expect(page).toHaveURL(/#\/box-notes\?box=root/);
+  await expect(page.getByText("First linked note")).toBeVisible();
+  await expect(page.getByText("Second linked note")).toBeVisible();
+  await expect(page.getByLabel("Create box note")).toBeVisible();
+});
+
+test("linked note location jumps back to its source box", async ({ page }) => {
+  const t = "2026-05-24T12:00:00.000Z";
+  const snapshot = {
+    version: 5,
+    meta: {},
+    boxNodes: [
+      { id: "root", parentId: null, level: 1, title: "Root", sort: 1, boxNoteTitle: "", boxNoteHtml: "", archivedAt: null, doneAt: null, createdAt: t, updatedAt: t }
+    ],
+    actionDays: [],
+    notes: [
+      { id: "note_a", title: "Located note", bodyHtml: "<p>Find me</p>", bodyText: "Find me", noteDate: "2026-05-24", createdAt: t, updatedAt: t, clientUpdatedAt: t }
+    ],
+    noteLinks: [
+      { id: "link_a", noteId: "note_a", linkType: "box", boxNodeId: "root", sort: 1, createdAt: t }
+    ],
+    ui: { notesView: "all" }
+  };
+  await page.addInitScript(payload => {
+    localStorage.setItem("idea-box-html-v13-action-notes:guest", JSON.stringify(payload));
+    localStorage.setItem("idea-box-html-v13-action-notes:local", JSON.stringify(payload));
+  }, snapshot);
+
+  await page.goto(`${baseURL}/?local=1#/notes?view=all`, { waitUntil: "networkidle" });
+  await page.locator('[data-note-id="note_a"]').getByLabel("Open note origin").click();
+
+  await expect(page).toHaveURL(/#\/boxes\?/);
+  await expect(page.locator('[data-box-node-id="root"]')).toHaveClass(/flash-target/);
+});

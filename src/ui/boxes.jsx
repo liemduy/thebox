@@ -54,7 +54,8 @@ function BoxTreeItem({ state, node, level, view, menuOpenId, setMenuOpenId, menu
   const inactive = boxIsInactive(node) || boxIsArchived(node);
   const showBoxDays = state.ui.showBoxDays !== false;
   const timeline = showBoxDays ? actionTimelineForBox(state, node) : [];
-  const hasNote = boxHasNote(node);
+  const noteCount = boxNoteCount(state, node.id);
+  const hasNote = noteCount > 0;
   const hasBody = children.length > 0 || timeline.length > 0;
   const boxCascadeChildren = item => childrenOf(item.id, state.boxNodes).filter(child => shouldShowChildInView(child, view));
   const boxCascadeOwnContent = item => state.ui.showBoxDays !== false && actionTimelineForBox(state, item).length > 0;
@@ -186,11 +187,14 @@ function BoxTreeItem({ state, node, level, view, menuOpenId, setMenuOpenId, menu
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); handlers.openBoxNote(node.id); }}
-              className="h-8 w-7 grid place-items-center rounded-full text-[#FFD2D7] hover:text-white hover:bg-[#444444] transition-colors"
+              className="relative h-8 w-7 grid place-items-center rounded-full text-[#FFD2D7] hover:text-white hover:bg-[#444444] transition-colors"
               aria-label="View notes"
               title="View notes"
             >
               <Notebook size={isRoot ? 18 : 16} strokeWidth={2.1} />
+              <span className="absolute -right-[2px] -top-[2px] min-w-[15px] h-[15px] px-[3px] rounded-full bg-[#FFD2D7] text-black text-[9px] leading-[15px] font-black text-center shadow-[0_0_0_2px_#141414]">
+                {noteCount > 9 ? "9+" : noteCount}
+              </span>
             </button>
           )}
           <button type="button" onClick={(e) => { e.stopPropagation(); handlers.toggleBoxOpen(node.id); }} className="h-8 w-8 grid place-items-center rounded-full transition-colors hover:text-white hover:bg-[#444444]" aria-label={cascadeLabel} title={cascadeLabel}>

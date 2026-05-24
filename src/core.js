@@ -105,6 +105,11 @@
     return ui;
   }
 
+  function parseBoxNotesRouteParams(params, parts = []) {
+    const box = params.get("box") || parts[1] || "";
+    return { selectedBoxNoteId: box };
+  }
+
   function parseRouteHash(hash = global.location?.hash || "") {
     const raw = String(hash || "").replace(/^#/, "");
     const [pathRaw, queryRaw = ""] = raw.split("?");
@@ -114,6 +119,7 @@
     const name = parts[0] || "boxes";
     if (name === "actions") return { name: "actions", ui: parseActionRouteParams(params) };
     if (name === "notes") return { name: "notes", ui: parseNotesRouteParams(params) };
+    if (name === "box-notes") return { name: "box-notes", ui: parseBoxNotesRouteParams(params, parts) };
     if (name === "search") {
       const tab = params.get("tab") === "actions" ? "actions" : params.get("tab") === "notes" ? "notes" : "boxes";
       return {
@@ -129,6 +135,7 @@
   function routeView(route) {
     if (route?.name === "actions") return "actions";
     if (route?.name === "notes") return "notes";
+    if (route?.name === "box-notes") return "boxNotes";
     if (route?.name === "search") return route.tab === "actions" ? "actions" : route.tab === "notes" ? "notes" : "boxes";
     return "boxes";
   }
@@ -161,10 +168,11 @@
   function buildAppHash({ currentView, ui, isSearchOpen, searchQuery }) {
     const params = new URLSearchParams();
     if (isSearchOpen) {
-      params.set("tab", currentView === "actions" ? "actions" : currentView === "notes" ? "notes" : "boxes");
+      const tab = currentView === "actions" ? "actions" : (currentView === "notes" || currentView === "boxNotes") ? "notes" : "boxes";
+      params.set("tab", tab);
       if (String(searchQuery || "").trim()) params.set("q", String(searchQuery || "").trim());
       if (currentView === "actions") appendActionRouteParams(params, ui);
-      else if (currentView === "notes") appendNotesRouteParams(params, ui);
+      else if (currentView === "notes" || currentView === "boxNotes") appendNotesRouteParams(params, ui);
       else appendBoxRouteParams(params, ui);
       return `#/search?${params.toString()}`;
     }
@@ -175,6 +183,11 @@
     if (currentView === "notes") {
       appendNotesRouteParams(params, ui);
       return `#/notes?${params.toString()}`;
+    }
+    if (currentView === "boxNotes") {
+      if (ui.selectedBoxNoteId) params.set("box", ui.selectedBoxNoteId);
+      const query = params.toString();
+      return query ? `#/box-notes?${query}` : "#/box-notes";
     }
     appendBoxRouteParams(params, ui);
     return `#/boxes?${params.toString()}`;
@@ -480,6 +493,7 @@
     parseBoxRouteParams,
     parseActionRouteParams,
     parseNotesRouteParams,
+    parseBoxNotesRouteParams,
     parseRouteHash,
     routeView,
     appendBoxRouteParams,
