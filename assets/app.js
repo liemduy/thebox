@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-24-planner-logo-styles";
-const APP_CACHE_NAME = "idea-box-v94-planner-logo-styles";
+const APP_BUILD_ID = "2026-05-24-brand-loading-logo";
+const APP_CACHE_NAME = "idea-box-v95-brand-loading-logo";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -1109,6 +1109,15 @@ function workspaceInitials(name) {
   const letters = words.length > 1 ? `${words[0][0] || ""}${words[1][0] || ""}` : String(words[0] || DEFAULT_WORKSPACE_NAME).slice(0, 2);
   return letters.toUpperCase() || "LP";
 }
+function workspaceNameParts(name) {
+  const words = normalizeWorkspaceName(name || DEFAULT_WORKSPACE_NAME, {
+    final: true
+  }).split(" ").filter(Boolean);
+  return {
+    first: words[0] || "Liem's",
+    second: words[1] || ""
+  };
+}
 function logoStyleIndex(style) {
   return Math.abs(Number(style) || 0) % LOGO_STYLE_COUNT;
 }
@@ -1208,6 +1217,36 @@ function LogoDecoration({
     className: "absolute -bottom-[2px] left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-full bg-[#FFD2D7]/60 blur-[1px]"
   }));
 }
+function BrandLogo({
+  name,
+  style,
+  onClick,
+  className = "w-[40px] h-[40px]",
+  textClassName = "text-[18px]",
+  ariaLabel = "Workspace logo",
+  title = "Workspace logo"
+}) {
+  const content = React.createElement(React.Fragment, null, React.createElement(LogoDecoration, {
+    style: style
+  }), React.createElement("span", {
+    className: `relative z-10 font-black tracking-tighter ${textClassName}`
+  }, workspaceInitials(name)));
+  const classes = `relative isolate shrink-0 flex items-center justify-center transition-all ${className} ${logoStyleClass(style)}`;
+  if (onClick) {
+    return React.createElement("button", {
+      type: "button",
+      onClick: onClick,
+      className: `${classes} active:scale-95`,
+      "aria-label": ariaLabel,
+      title: title
+    }, content);
+  }
+  return React.createElement("div", {
+    className: classes,
+    "aria-label": ariaLabel,
+    title: title
+  }, content);
+}
 function Header({
   workspaceName,
   logoStyle,
@@ -1230,7 +1269,16 @@ function Header({
     final: true
   }) || DEFAULT_WORKSPACE_NAME;
   const [draftName, setDraftName] = useState(displayName);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const titleInputRef = useRef(null);
   useEffect(() => setDraftName(displayName), [displayName]);
+  useEffect(() => {
+    if (!isEditingName) return;
+    window.setTimeout(() => {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }, 20);
+  }, [isEditingName]);
   const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
   const syncColor = syncStatus === "saved" ? "#FFD2D7" : syncStatus === "error" ? "#fb7185" : syncStatus === "saving" ? "#FFD2D7" : "#666666";
   function commitWorkspaceName() {
@@ -1238,43 +1286,59 @@ function Header({
       final: true
     }) || DEFAULT_WORKSPACE_NAME;
     setDraftName(next);
+    setIsEditingName(false);
     if (next !== displayName) onWorkspaceNameChange?.(next);
   }
+  function cancelWorkspaceNameEdit() {
+    setDraftName(displayName);
+    setIsEditingName(false);
+  }
+  function startWorkspaceNameEdit(event) {
+    event.stopPropagation();
+    setDraftName(displayName);
+    setIsEditingName(true);
+  }
+  const titleParts = workspaceNameParts(displayName);
   return React.createElement("header", {
     className: "app-header flex justify-between items-center p-5 border-b border-[#333333] bg-[#0a0a0a] relative z-40"
   }, React.createElement("div", {
     className: "flex items-center gap-3 min-w-0"
-  }, React.createElement("button", {
-    type: "button",
+  }, React.createElement(BrandLogo, {
+    name: displayName,
+    style: logoStyle,
     onClick: e => {
       e.stopPropagation();
       onCycleLogoStyle?.();
     },
-    className: `relative isolate w-[40px] h-[40px] shrink-0 flex items-center justify-center transition-all active:scale-95 ${logoStyleClass(logoStyle)}`,
-    "aria-label": "Change logo style",
+    className: "w-[40px] h-[40px]",
+    textClassName: "text-[18px]",
+    ariaLabel: "Change logo style",
     title: "Change logo style"
-  }, React.createElement(LogoDecoration, {
-    style: logoStyle
-  }), React.createElement("span", {
-    className: "relative z-10 font-black text-[18px] tracking-tighter"
-  }, workspaceInitials(displayName))), React.createElement("div", {
+  }), React.createElement("div", {
     className: "min-w-0"
-  }, React.createElement("input", {
+  }, isEditingName ? React.createElement("input", {
+    ref: titleInputRef,
     value: draftName,
     onChange: e => setDraftName(normalizeWorkspaceName(e.target.value)),
     onBlur: commitWorkspaceName,
     onKeyDown: e => {
       if (e.key === "Enter") e.currentTarget.blur();
-      if (e.key === "Escape") {
-        setDraftName(displayName);
-        e.currentTarget.blur();
-      }
+      if (e.key === "Escape") cancelWorkspaceNameEdit();
     },
     onClick: e => e.stopPropagation(),
     maxLength: 21,
     "aria-label": "Workspace name",
     className: "block w-full max-w-[168px] bg-transparent border-none outline-none p-0 text-white font-extrabold text-[19px] leading-tight tracking-tight truncate focus:text-[#FFD2D7]"
-  }), React.createElement("div", {
+  }) : React.createElement("button", {
+    type: "button",
+    onClick: startWorkspaceNameEdit,
+    "aria-label": "Workspace name",
+    className: "workspace-title-display flex max-w-[168px] items-baseline gap-1.5 text-left leading-tight truncate"
+  }, React.createElement("span", {
+    className: "truncate font-extrabold text-[19px] tracking-tight text-[#FFD2D7]"
+  }, titleParts.first), titleParts.second ? React.createElement("span", {
+    className: "workspace-title-second shrink-0 text-[#FFD2D7] font-medium text-[16px] italic font-serif"
+  }, titleParts.second) : null), React.createElement("div", {
     className: "text-[#777777] italic text-[11px] leading-tight font-semibold"
   }, "\u2014thebox"))), React.createElement("div", {
     className: "flex gap-4 text-[#A7A7A7] items-center shrink-0"
@@ -7428,9 +7492,14 @@ function App() {
       className: "w-full max-w-md bg-[#0a0a0a] sm:rounded-[24px] sm:border border-[#333333] min-h-screen sm:min-h-[850px] flex items-center justify-center"
     }, React.createElement("div", {
       className: "text-center"
-    }, React.createElement("div", {
-      className: "mx-auto mb-4 w-[46px] h-[46px] grid place-items-center bg-[#FFD2D7] text-black rounded-[14px] font-black"
-    }, "LP"), React.createElement("div", {
+    }, React.createElement(BrandLogo, {
+      name: db.ui.workspaceName,
+      style: db.ui.logoStyle,
+      className: "mx-auto mb-4 w-[46px] h-[46px]",
+      textClassName: "text-[20px]",
+      ariaLabel: "Loading workspace logo",
+      title: "Loading workspace logo"
+    }), React.createElement("div", {
       className: "font-extrabold text-[20px]"
     }, "Loading"), React.createElement("div", {
       className: "text-[#A7A7A7] text-[13px] mt-1"

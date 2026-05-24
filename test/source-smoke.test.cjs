@@ -73,6 +73,15 @@ test("planner logo exposes fifteen personal styles", () => {
   assert.match(app, /logoStyle:[\s\S]*%\s*15/);
 });
 
+test("brand header and loading screen share the same logo component", () => {
+  const header = fs.readFileSync("src/components/header.jsx", "utf8");
+  const app = fs.readFileSync("src/app.jsx", "utf8");
+  assert.match(header, /function BrandLogo/);
+  assert.match(header, /workspace-title-second[\s\S]*font-serif/);
+  assert.match(header, /text-\[#FFD2D7\]/);
+  assert.match(app, /<BrandLogo[\s\S]*Loading workspace logo/);
+});
+
 test("github actions verifies build and browser smoke", () => {
   const workflow = fs.readFileSync(".github/workflows/verify.yml", "utf8");
   assert.match(workflow, /npm ci/);

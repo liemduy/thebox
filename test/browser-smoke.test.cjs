@@ -91,10 +91,12 @@ test("header workspace personalization keeps a two-letter logo and account menu"
   await page.goto(`${baseURL}/?local=1#/boxes`, { waitUntil: "networkidle" });
   await expect(page.getByLabel("Change logo style")).toContainText("LP");
 
+  await page.getByLabel("Workspace name").click();
   const nameInput = page.getByLabel("Workspace name");
   await nameInput.fill("Alpha Beta Gamma");
   await nameInput.blur();
-  await expect(nameInput).toHaveValue("Alpha Beta");
+  await expect(page.getByLabel("Workspace name")).toContainText("Alpha");
+  await expect(page.locator(".workspace-title-second")).toHaveText("Beta");
   await expect(page.getByLabel("Change logo style")).toContainText("AB");
 
   await page.getByLabel("Change logo style").click();

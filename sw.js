@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v94-planner-logo-styles';
+const CACHE_NAME = 'idea-box-v95-brand-loading-logo';
 const APP_SHELL = [
   './',
   './index.html',

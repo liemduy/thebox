@@ -16,6 +16,14 @@ function workspaceInitials(name) {
   return letters.toUpperCase() || "LP";
 }
 
+function workspaceNameParts(name) {
+  const words = normalizeWorkspaceName(name || DEFAULT_WORKSPACE_NAME, { final: true }).split(" ").filter(Boolean);
+  return {
+    first: words[0] || "Liem's",
+    second: words[1] || ""
+  };
+}
+
 function logoStyleIndex(style) {
   return Math.abs(Number(style) || 0) % LOGO_STYLE_COUNT;
 }
@@ -60,10 +68,41 @@ function LogoDecoration({ style }) {
   return <><span className="absolute inset-[5px] rounded-[7px] border border-[#FFD2D7]/30" /><span className="absolute -bottom-[2px] left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-full bg-[#FFD2D7]/60 blur-[1px]" /></>;
 }
 
+function BrandLogo({ name, style, onClick, className = "w-[40px] h-[40px]", textClassName = "text-[18px]", ariaLabel = "Workspace logo", title = "Workspace logo" }) {
+  const content = (
+    <>
+      <LogoDecoration style={style} />
+      <span className={`relative z-10 font-black tracking-tighter ${textClassName}`}>{workspaceInitials(name)}</span>
+    </>
+  );
+  const classes = `relative isolate shrink-0 flex items-center justify-center transition-all ${className} ${logoStyleClass(style)}`;
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={`${classes} active:scale-95`} aria-label={ariaLabel} title={title}>
+        {content}
+      </button>
+    );
+  }
+  return (
+    <div className={classes} aria-label={ariaLabel} title={title}>
+      {content}
+    </div>
+  );
+}
+
 function Header({ workspaceName, logoStyle, onWorkspaceNameChange, onCycleLogoStyle, syncStatus, syncLabel, isSearchOpen, setIsSearchOpen, isHeaderMenuOpen, setIsHeaderMenuOpen, onSyncNow, onExport, onImportClick, onSignOut, fileInputRef, onImportFile }) {
   const displayName = normalizeWorkspaceName(workspaceName, { final: true }) || DEFAULT_WORKSPACE_NAME;
   const [draftName, setDraftName] = useState(displayName);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const titleInputRef = useRef(null);
   useEffect(() => setDraftName(displayName), [displayName]);
+  useEffect(() => {
+    if (!isEditingName) return;
+    window.setTimeout(() => {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }, 20);
+  }, [isEditingName]);
   const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
   const syncColor = syncStatus === "saved"
     ? "#FFD2D7"
@@ -76,40 +115,58 @@ function Header({ workspaceName, logoStyle, onWorkspaceNameChange, onCycleLogoSt
   function commitWorkspaceName() {
     const next = normalizeWorkspaceName(draftName, { final: true }) || DEFAULT_WORKSPACE_NAME;
     setDraftName(next);
+    setIsEditingName(false);
     if (next !== displayName) onWorkspaceNameChange?.(next);
   }
+
+  function cancelWorkspaceNameEdit() {
+    setDraftName(displayName);
+    setIsEditingName(false);
+  }
+
+  function startWorkspaceNameEdit(event) {
+    event.stopPropagation();
+    setDraftName(displayName);
+    setIsEditingName(true);
+  }
+
+  const titleParts = workspaceNameParts(displayName);
 
   return (
     <header className="app-header flex justify-between items-center p-5 border-b border-[#333333] bg-[#0a0a0a] relative z-40">
       <div className="flex items-center gap-3 min-w-0">
-        <button
-          type="button"
+        <BrandLogo
+          name={displayName}
+          style={logoStyle}
           onClick={(e) => { e.stopPropagation(); onCycleLogoStyle?.(); }}
-          className={`relative isolate w-[40px] h-[40px] shrink-0 flex items-center justify-center transition-all active:scale-95 ${logoStyleClass(logoStyle)}`}
-          aria-label="Change logo style"
+          className="w-[40px] h-[40px]"
+          textClassName="text-[18px]"
+          ariaLabel="Change logo style"
           title="Change logo style"
-        >
-          <LogoDecoration style={logoStyle} />
-          <span className="relative z-10 font-black text-[18px] tracking-tighter">{workspaceInitials(displayName)}</span>
-        </button>
+        />
         <div className="min-w-0">
-          <input
-            value={draftName}
-            onChange={(e) => setDraftName(normalizeWorkspaceName(e.target.value))}
-            onBlur={commitWorkspaceName}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
-              if (e.key === "Escape") {
-                setDraftName(displayName);
-                e.currentTarget.blur();
-              }
-            }}
-            onClick={(e) => e.stopPropagation()}
-            maxLength={21}
-            aria-label="Workspace name"
-            className="block w-full max-w-[168px] bg-transparent border-none outline-none p-0 text-white font-extrabold text-[19px] leading-tight tracking-tight truncate focus:text-[#FFD2D7]"
-          />
-          <div className="text-[#777777] italic text-[11px] leading-tight font-semibold">—thebox</div>
+          {isEditingName ? (
+            <input
+              ref={titleInputRef}
+              value={draftName}
+              onChange={(e) => setDraftName(normalizeWorkspaceName(e.target.value))}
+              onBlur={commitWorkspaceName}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") cancelWorkspaceNameEdit();
+              }}
+              onClick={(e) => e.stopPropagation()}
+              maxLength={21}
+              aria-label="Workspace name"
+              className="block w-full max-w-[168px] bg-transparent border-none outline-none p-0 text-white font-extrabold text-[19px] leading-tight tracking-tight truncate focus:text-[#FFD2D7]"
+            />
+          ) : (
+            <button type="button" onClick={startWorkspaceNameEdit} aria-label="Workspace name" className="workspace-title-display flex max-w-[168px] items-baseline gap-1.5 text-left leading-tight truncate">
+              <span className="truncate font-extrabold text-[19px] tracking-tight text-[#FFD2D7]">{titleParts.first}</span>
+              {titleParts.second ? <span className="workspace-title-second shrink-0 text-[#FFD2D7] font-medium text-[16px] italic font-serif">{titleParts.second}</span> : null}
+            </button>
+          )}
+          <div className="text-[#777777] italic text-[11px] leading-tight font-semibold">&mdash;thebox</div>
         </div>
       </div>
       <div className="flex gap-4 text-[#A7A7A7] items-center shrink-0">

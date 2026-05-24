@@ -521,7 +521,14 @@ function App() {
       <div className="min-h-screen bg-black text-white font-sans flex justify-center items-start pt-0 sm:pt-8 pb-12">
         <div className="w-full max-w-md bg-[#0a0a0a] sm:rounded-[24px] sm:border border-[#333333] min-h-screen sm:min-h-[850px] flex items-center justify-center">
           <div className="text-center">
-            <div className="mx-auto mb-4 w-[46px] h-[46px] grid place-items-center bg-[#FFD2D7] text-black rounded-[14px] font-black">LP</div>
+            <BrandLogo
+              name={db.ui.workspaceName}
+              style={db.ui.logoStyle}
+              className="mx-auto mb-4 w-[46px] h-[46px]"
+              textClassName="text-[20px]"
+              ariaLabel="Loading workspace logo"
+              title="Loading workspace logo"
+            />
             <div className="font-extrabold text-[20px]">Loading</div>
             <div className="text-[#A7A7A7] text-[13px] mt-1">Opening workspace...</div>
           </div>
