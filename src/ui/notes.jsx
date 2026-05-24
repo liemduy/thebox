@@ -1,11 +1,13 @@
 function NoteCard({ state, note, query = "", onOpen, onDelete, flashTarget }) {
   const preview = notePreview(note);
   const linked = noteIsLinked(state, note.id);
+  const boxLink = noteBoxLinkInfo(state, note.id);
+  const boxTitleClass = boxLink ? (boxLink.level > 1 ? "note-title-subbox" : "note-title-box") : "";
   return (
     <div data-note-id={note.id} className={`group bg-[#141414] border border-white/[0.04] rounded-[12px] px-4 py-3.5 ${flashTarget?.type === "note" && flashTarget.id === note.id ? "flash-target" : ""}`}>
       <div className="flex items-start gap-3">
         <button type="button" onClick={() => onOpen(note.id)} className="min-w-0 flex-1 text-left">
-          <h3 className={`font-extrabold text-[15.5px] leading-snug truncate ${linked ? "text-white not-italic" : "text-[#FFD2D7] italic"}`}>
+          <h3 className={`font-extrabold text-[15.5px] leading-snug truncate ${linked ? "text-white not-italic" : "text-[#FFD2D7] italic"} ${boxTitleClass}`}>
             <HighlightText text={noteDisplayTitle(note)} query={query} />
           </h3>
           <p className="text-[#A7A7A7] text-[13px] leading-snug mt-1 truncate">

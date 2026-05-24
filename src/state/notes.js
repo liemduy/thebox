@@ -14,6 +14,11 @@ function noteLinksFor(state, noteId) { return (state.noteLinks || []).filter(lin
 function noteIsLinked(state, noteId) { return noteLinksFor(state, noteId).length > 0; }
 function noteDisplayTitle(note) { return cleanOptionalTitle(note?.title || "") || "Untitled"; }
 function notePreview(note) { return noteBodyText(note).slice(0, 140); }
+function noteBoxLinkInfo(state, noteId) {
+  const link = noteLinksFor(state, noteId).find(item => item.linkType === "box" && item.boxNodeId);
+  const box = link ? getNode(state.boxNodes || [], link.boxNodeId) : null;
+  return box ? { link, box, level: clampLevel(box.level || (box.parentId ? 2 : 1)) } : null;
+}
 function activeNotes(state) { return (state.notes || []).filter(note => !note.deletedAt && !note.archivedAt && noteHasContent(note)); }
 function noteTagList(note) {
   return normalizeTags(note?.tags || [], note?.title || "", note?.bodyHtml || "", note?.bodyText || "");

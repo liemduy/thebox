@@ -315,7 +315,7 @@ function noteEditorChecklistPlugin(schema) {
   });
 }
 
-function noteEditorOrderedListShortcutPlugin(schema) {
+function noteEditorListShortcutPlugin(schema) {
   const pm = noteEditorPM();
   return new pm.Plugin({
     props: {
@@ -329,6 +329,14 @@ function noteEditorOrderedListShortcutPlugin(schema) {
         const blockEnd = blockStart + block.node.content.size;
         if (from !== blockEnd) return false;
         const markerText = state.doc.textBetween(blockStart, from, "\n", "\n");
+        if (markerText === "-") {
+          const wrapBullet = pm.wrapInList(schema.nodes.bullet_list, { style: "disc" });
+          if (!wrapBullet(state, null)) return false;
+          view.dispatch(state.tr.delete(blockStart, from));
+          wrapBullet(view.state, transaction => view.dispatch(transaction.scrollIntoView()), view);
+          view.focus();
+          return true;
+        }
         const match = markerText.match(/^(\d{1,3})[.)]$/);
         if (!match) return false;
         const order = Math.max(1, Math.min(999, Number(match[1]) || 1));
@@ -394,7 +402,7 @@ function createNoteEditorState(schema, html) {
       pm.history({ depth: 120 }),
       noteEditorHashtagPlugin(),
       noteEditorChecklistPlugin(schema),
-      noteEditorOrderedListShortcutPlugin(schema),
+      noteEditorListShortcutPlugin(schema),
       noteEditorTableExitPlugin(schema),
       noteEditorPlaceholderPlugin(schema),
       pm.keymap(commands),

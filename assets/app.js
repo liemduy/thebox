@@ -541,8 +541,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-24-numbered-list-shortcut-1";
-const APP_CACHE_NAME = "idea-box-v90-numbered-list-shortcut";
+const APP_BUILD_ID = "2026-05-24-note-list-shortcuts-2";
+const APP_CACHE_NAME = "idea-box-v91-note-list-shortcuts";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -2060,6 +2060,15 @@ function noteDisplayTitle(note) {
 }
 function notePreview(note) {
   return noteBodyText(note).slice(0, 140);
+}
+function noteBoxLinkInfo(state, noteId) {
+  const link = noteLinksFor(state, noteId).find(item => item.linkType === "box" && item.boxNodeId);
+  const box = link ? getNode(state.boxNodes || [], link.boxNodeId) : null;
+  return box ? {
+    link,
+    box,
+    level: clampLevel(box.level || (box.parentId ? 2 : 1))
+  } : null;
 }
 function activeNotes(state) {
   return (state.notes || []).filter(note => !note.deletedAt && !note.archivedAt && noteHasContent(note));
@@ -3622,6 +3631,8 @@ function NoteCard({
 }) {
   const preview = notePreview(note);
   const linked = noteIsLinked(state, note.id);
+  const boxLink = noteBoxLinkInfo(state, note.id);
+  const boxTitleClass = boxLink ? boxLink.level > 1 ? "note-title-subbox" : "note-title-box" : "";
   return React.createElement("div", {
     "data-note-id": note.id,
     className: `group bg-[#141414] border border-white/[0.04] rounded-[12px] px-4 py-3.5 ${flashTarget?.type === "note" && flashTarget.id === note.id ? "flash-target" : ""}`
@@ -3632,7 +3643,7 @@ function NoteCard({
     onClick: () => onOpen(note.id),
     className: "min-w-0 flex-1 text-left"
   }, React.createElement("h3", {
-    className: `font-extrabold text-[15.5px] leading-snug truncate ${linked ? "text-white not-italic" : "text-[#FFD2D7] italic"}`
+    className: `font-extrabold text-[15.5px] leading-snug truncate ${linked ? "text-white not-italic" : "text-[#FFD2D7] italic"} ${boxTitleClass}`
   }, React.createElement(HighlightText, {
     text: noteDisplayTitle(note),
     query: query
@@ -5029,7 +5040,7 @@ function noteEditorChecklistPlugin(schema) {
     }
   });
 }
-function noteEditorOrderedListShortcutPlugin(schema) {
+function noteEditorListShortcutPlugin(schema) {
   const pm = noteEditorPM();
   return new pm.Plugin({
     props: {
@@ -5043,6 +5054,16 @@ function noteEditorOrderedListShortcutPlugin(schema) {
         const blockEnd = blockStart + block.node.content.size;
         if (from !== blockEnd) return false;
         const markerText = state.doc.textBetween(blockStart, from, "\n", "\n");
+        if (markerText === "-") {
+          const wrapBullet = pm.wrapInList(schema.nodes.bullet_list, {
+            style: "disc"
+          });
+          if (!wrapBullet(state, null)) return false;
+          view.dispatch(state.tr.delete(blockStart, from));
+          wrapBullet(view.state, transaction => view.dispatch(transaction.scrollIntoView()), view);
+          view.focus();
+          return true;
+        }
         const match = markerText.match(/^(\d{1,3})[.)]$/);
         if (!match) return false;
         const order = Math.max(1, Math.min(999, Number(match[1]) || 1));
@@ -5108,7 +5129,7 @@ function createNoteEditorState(schema, html) {
     doc,
     plugins: [pm.history({
       depth: 120
-    }), noteEditorHashtagPlugin(), noteEditorChecklistPlugin(schema), noteEditorOrderedListShortcutPlugin(schema), noteEditorTableExitPlugin(schema), noteEditorPlaceholderPlugin(schema), pm.keymap(commands), pm.keymap(pm.baseKeymap)]
+    }), noteEditorHashtagPlugin(), noteEditorChecklistPlugin(schema), noteEditorListShortcutPlugin(schema), noteEditorTableExitPlugin(schema), noteEditorPlaceholderPlugin(schema), pm.keymap(commands), pm.keymap(pm.baseKeymap)]
   });
 }
 function noteEditorKeymapCommands(schema) {
@@ -6850,7 +6871,7 @@ function App() {
       ...prev,
       ui: {
         ...prev.ui,
-        notesView: "free",
+        notesView: prev.ui.notesView === "linked" ? "free" : prev.ui.notesView || "free",
         notesTagsInput: "",
         notesDatesInput: ""
       }
@@ -6882,7 +6903,7 @@ function App() {
         ...prev,
         ui: {
           ...prev.ui,
-          notesView: noteIsLinked(prev, result.noteId) ? "linked" : "free"
+          notesView: prev.ui.notesView === "all" ? "all" : noteIsLinked(prev, result.noteId) ? "linked" : "free"
         }
       }));
       flashAfterNavigation({

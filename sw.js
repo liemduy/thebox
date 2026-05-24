@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v90-numbered-list-shortcut';
+const CACHE_NAME = 'idea-box-v91-note-list-shortcuts';
 const APP_SHELL = [
   './',
   './index.html',

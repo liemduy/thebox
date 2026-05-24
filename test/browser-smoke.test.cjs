@@ -136,3 +136,69 @@ test("numbered list shortcut continues as an ordered list", async ({ page }) => 
 
   expect(runtimeErrors).toEqual([]);
 });
+
+test("dash shortcut starts a bullet list", async ({ page }) => {
+  const runtimeErrors = [];
+  page.on("pageerror", error => runtimeErrors.push(error.message));
+  page.on("console", message => {
+    if (message.type() === "error") runtimeErrors.push(message.text());
+  });
+
+  await page.goto(`${baseURL}/?local=1#/notes`, { waitUntil: "networkidle" });
+  await page.getByLabel("Create note").click();
+  await page.getByPlaceholder("Title").fill("Bullet list smoke");
+  await page.locator(".ProseMirror").click();
+  await page.keyboard.type("- First");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Second");
+
+  await expect(page.locator(".ProseMirror ul > li")).toHaveCount(2);
+  const listInfo = await page.locator(".ProseMirror ul").evaluate(ul => ({
+    style: getComputedStyle(ul).listStyleType,
+    text: Array.from(ul.querySelectorAll(":scope > li")).map(li => li.textContent.trim())
+  }));
+  expect(listInfo).toEqual({ style: "disc", text: ["First", "Second"] });
+
+  expect(runtimeErrors).toEqual([]);
+});
+
+test("creating a free note keeps All view selected", async ({ page }) => {
+  await page.goto(`${baseURL}/?local=1#/notes?view=all`, { waitUntil: "networkidle" });
+  await expect(page.locator(".filter-row").getByRole("button", { name: "All", exact: true })).toBeVisible();
+  await page.getByLabel("Create note").click();
+  await page.getByPlaceholder("Title").fill("All view stays");
+  await page.getByRole("button", { name: "Back" }).click();
+
+  await expect(page.locator(".filter-row").getByRole("button", { name: "All", exact: true })).toBeVisible();
+  await expect(page.getByText("All view stays")).toBeVisible();
+});
+
+test("box notes show root and sub-box title underline styles", async ({ page }) => {
+  const t = "2026-05-24T12:00:00.000Z";
+  const snapshot = {
+    version: 5,
+    meta: {},
+    boxNodes: [
+      { id: "root", parentId: null, level: 1, title: "Root", sort: 1, boxNoteTitle: "Root Note", boxNoteHtml: "<p>Root body</p>", archivedAt: null, doneAt: null, createdAt: t, updatedAt: t },
+      { id: "sub", parentId: "root", level: 2, title: "Sub", sort: 1, boxNoteTitle: "Sub Note", boxNoteHtml: "<p>Sub body</p>", archivedAt: null, doneAt: null, createdAt: t, updatedAt: t }
+    ],
+    actionDays: [],
+    notes: [
+      { id: "boxnote_root", title: "Root Note", bodyHtml: "<p>Root body</p>", bodyText: "Root body", noteDate: "2026-05-24", createdAt: t, updatedAt: t, clientUpdatedAt: t },
+      { id: "boxnote_sub", title: "Sub Note", bodyHtml: "<p>Sub body</p>", bodyText: "Sub body", noteDate: "2026-05-24", createdAt: t, updatedAt: t, clientUpdatedAt: t }
+    ],
+    noteLinks: [
+      { id: "link_box_root", noteId: "boxnote_root", linkType: "box", boxNodeId: "root", sort: 1, createdAt: t },
+      { id: "link_box_sub", noteId: "boxnote_sub", linkType: "box", boxNodeId: "sub", sort: 2, createdAt: t }
+    ],
+    ui: { notesView: "all" }
+  };
+  await page.addInitScript(payload => {
+    localStorage.setItem("idea-box-html-v13-action-notes:guest", JSON.stringify(payload));
+    localStorage.setItem("idea-box-html-v13-action-notes:local", JSON.stringify(payload));
+  }, snapshot);
+
+  await page.goto(`${baseURL}/?local=1#/notes?view=all`, { waitUntil: "networkidle" });
+  await expect(page.locator('[data-note-id="boxnote_root"] h3')).toHaveClass(/note-title-box/);
+  await expect(page.locator('[data-note-id="boxnote_sub"] h3')).toHaveClass(/note-title-subbox/);
+});

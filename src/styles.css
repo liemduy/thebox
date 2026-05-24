@@ -52,6 +52,8 @@
     .note-table-exit-zone { height: 1.6rem; margin: -.25rem 0 .1rem; cursor: text; }
     .rich-editor td blockquote, .rich-editor th blockquote { margin: .1rem 0; }
     .rich-editor blockquote { border-left: 1.5px solid #8b8b8b; margin: .38rem 0; padding-left: .8rem; color: #ccc; }
+    .note-title-box { text-decoration-line: underline; text-decoration-color: #FFD2D7; text-decoration-thickness: 1.5px; text-underline-offset: 4px; }
+    .note-title-subbox { text-decoration-line: underline; text-decoration-style: double; text-decoration-color: #FFD2D7; text-decoration-thickness: 1.2px; text-underline-offset: 4px; }
     .note-title-input { font-size: 32px !important; }
     .note-toolbar-scroll { scrollbar-width: none; -ms-overflow-style: none; }
     .note-toolbar-scroll::-webkit-scrollbar { display: none; }

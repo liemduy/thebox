@@ -120,3 +120,21 @@ test("repairStateIntegrity preserves valid linked notes", () => {
   assert.equal(repaired.notes.find(note => note.id === noteId).deletedAt, undefined);
   assert.deepEqual(plain(repaired.noteLinks.map(link => link.id)), [linkId]);
 });
+
+test("noteBoxLinkInfo distinguishes root and sub-box notes", () => {
+  const runtime = createRuntime();
+  const state = {
+    boxNodes: [
+      { id: "root", parentId: null, level: 1, title: "Root", sort: 1 },
+      { id: "sub", parentId: "root", level: 2, title: "Sub", sort: 1 }
+    ],
+    noteLinks: [
+      { id: "root-link", noteId: "root-note", linkType: "box", boxNodeId: "root" },
+      { id: "sub-link", noteId: "sub-note", linkType: "box", boxNodeId: "sub" }
+    ]
+  };
+
+  assert.equal(runtime.noteBoxLinkInfo(state, "root-note").level, 1);
+  assert.equal(runtime.noteBoxLinkInfo(state, "sub-note").level, 2);
+  assert.equal(runtime.noteBoxLinkInfo(state, "missing"), null);
+});

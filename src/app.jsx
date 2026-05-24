@@ -379,7 +379,7 @@ function App() {
       ...prev,
       ui: {
         ...prev.ui,
-        notesView: "free",
+        notesView: prev.ui.notesView === "linked" ? "free" : (prev.ui.notesView || "free"),
         notesTagsInput: "",
         notesDatesInput: ""
       }
@@ -402,7 +402,13 @@ function App() {
   function openSearchResult(result) {
     if (result.noteId) {
       setCurrentView("notes");
-      setDb(prev => markPendingSync({ ...prev, ui: { ...prev.ui, notesView: noteIsLinked(prev, result.noteId) ? "linked" : "free" } }));
+      setDb(prev => markPendingSync({
+        ...prev,
+        ui: {
+          ...prev.ui,
+          notesView: prev.ui.notesView === "all" ? "all" : (noteIsLinked(prev, result.noteId) ? "linked" : "free")
+        }
+      }));
       flashAfterNavigation({ type: "note", id: result.noteId });
     } else if (result.boxId) {
       setDb(prev => {
