@@ -3,6 +3,11 @@ function usePlannerHistory(setDb, syncBeforeSave) {
   const undoRef = useRef([]);
   const redoRef = useRef([]);
 
+  function pushHistory(stack, snapshot) {
+    stack.push(snapshot);
+    if (stack.length > HISTORY_LIMIT) stack.shift();
+  }
+
   function commit(label, mutator, options = {}) {
     setDb(prev => {
       const before = sanitizedState(prev);
@@ -10,8 +15,7 @@ function usePlannerHistory(setDb, syncBeforeSave) {
       const changed = mutator(next);
       if (changed === false) return prev;
       if (options.sync !== false) syncBeforeSave?.(next);
-      undoRef.current.push(before);
-      if (undoRef.current.length > HISTORY_LIMIT) undoRef.current.shift();
+      pushHistory(undoRef.current, before);
       redoRef.current = [];
       setHistoryTick(t => t + 1);
       return markPendingSync(next);
@@ -21,7 +25,7 @@ function usePlannerHistory(setDb, syncBeforeSave) {
   function undo() {
     if (!undoRef.current.length) return;
     setDb(prev => {
-      redoRef.current.push(sanitizedState(prev));
+      pushHistory(redoRef.current, sanitizedState(prev));
       const snap = undoRef.current.pop();
       setHistoryTick(t => t + 1);
       return markPendingSync(clone(snap));
@@ -31,7 +35,7 @@ function usePlannerHistory(setDb, syncBeforeSave) {
   function redo() {
     if (!redoRef.current.length) return;
     setDb(prev => {
-      undoRef.current.push(sanitizedState(prev));
+      pushHistory(undoRef.current, sanitizedState(prev));
       const snap = redoRef.current.pop();
       setHistoryTick(t => t + 1);
       return markPendingSync(clone(snap));

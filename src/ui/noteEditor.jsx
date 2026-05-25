@@ -910,6 +910,33 @@ function runNoteEditorCommand(view, commandName, options = {}) {
   return handled;
 }
 
+function scrollNoteEditorSelectionIntoView(view) {
+  if (!view || typeof window === "undefined") return;
+  const scrollEl = view.dom.closest(".note-editor-scroll");
+  if (!scrollEl) return;
+
+  let coords;
+  try {
+    coords = view.coordsAtPos(view.state.selection.head);
+  } catch {
+    return;
+  }
+
+  const viewport = window.visualViewport;
+  const viewportTop = viewport?.offsetTop || 0;
+  const viewportBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+  const scrollRect = scrollEl.getBoundingClientRect();
+  const topLimit = Math.max(scrollRect.top + 16, viewportTop + 72);
+  const bottomLimit = Math.min(scrollRect.bottom - 28, viewportBottom - 104);
+  if (bottomLimit <= topLimit) return;
+
+  if (coords.bottom > bottomLimit) {
+    scrollEl.scrollTop += coords.bottom - bottomLimit + 24;
+  } else if (coords.top < topLimit) {
+    scrollEl.scrollTop += coords.top - topLimit - 24;
+  }
+}
+
 function ProseMirrorNoteEditor({ initialHtml, className = "", onReady, onToolbarState }) {
   const hostRef = useRef(null);
   const viewRef = useRef(null);
@@ -930,10 +957,25 @@ function ProseMirrorNoteEditor({ initialHtml, className = "", onReady, onToolbar
     host.innerHTML = "";
     const view = new pm.EditorView(host, {
       state: createNoteEditorState(schema, initialHtml),
+      handleDOMEvents: {
+        focus(view) {
+          window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
+          return false;
+        },
+        pointerup(view) {
+          window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
+          return false;
+        },
+        keyup(view) {
+          window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
+          return false;
+        }
+      },
       dispatchTransaction(transaction) {
         const nextState = view.state.apply(transaction);
         view.updateState(nextState);
         toolbarRef.current?.(readNoteEditorToolbarState(view));
+        window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
       }
     });
     viewRef.current = view;
@@ -944,12 +986,14 @@ function ProseMirrorNoteEditor({ initialHtml, className = "", onReady, onToolbar
       },
       focus() {
         view.focus();
+        window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
       },
       run(commandName, options = {}) {
         view.focus();
         view.dispatch(view.state.tr.setSelection(view.state.selection));
         const handled = runNoteEditorCommand(view, commandName, options);
         toolbarRef.current?.(readNoteEditorToolbarState(view));
+        window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
         return handled;
       },
       setHtml(html) {

@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-24-brand-loading-logo";
-const APP_CACHE_NAME = "idea-box-v95-brand-loading-logo";
+const APP_BUILD_ID = "2026-05-25-delete-confirm-keyboard";
+const APP_CACHE_NAME = "idea-box-v96-delete-confirm-keyboard";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -3549,6 +3549,10 @@ function usePlannerHistory(setDb, syncBeforeSave) {
   const [historyTick, setHistoryTick] = useState(0);
   const undoRef = useRef([]);
   const redoRef = useRef([]);
+  function pushHistory(stack, snapshot) {
+    stack.push(snapshot);
+    if (stack.length > HISTORY_LIMIT) stack.shift();
+  }
   function commit(label, mutator, options = {}) {
     setDb(prev => {
       const before = sanitizedState(prev);
@@ -3556,8 +3560,7 @@ function usePlannerHistory(setDb, syncBeforeSave) {
       const changed = mutator(next);
       if (changed === false) return prev;
       if (options.sync !== false) syncBeforeSave?.(next);
-      undoRef.current.push(before);
-      if (undoRef.current.length > HISTORY_LIMIT) undoRef.current.shift();
+      pushHistory(undoRef.current, before);
       redoRef.current = [];
       setHistoryTick(t => t + 1);
       return markPendingSync(next);
@@ -3566,7 +3569,7 @@ function usePlannerHistory(setDb, syncBeforeSave) {
   function undo() {
     if (!undoRef.current.length) return;
     setDb(prev => {
-      redoRef.current.push(sanitizedState(prev));
+      pushHistory(redoRef.current, sanitizedState(prev));
       const snap = undoRef.current.pop();
       setHistoryTick(t => t + 1);
       return markPendingSync(clone(snap));
@@ -3575,7 +3578,7 @@ function usePlannerHistory(setDb, syncBeforeSave) {
   function redo() {
     if (!redoRef.current.length) return;
     setDb(prev => {
-      undoRef.current.push(sanitizedState(prev));
+      pushHistory(undoRef.current, sanitizedState(prev));
       const snap = redoRef.current.pop();
       setHistoryTick(t => t + 1);
       return markPendingSync(clone(snap));
@@ -4787,7 +4790,8 @@ function EntryRow({
     }, visibleEntryTags.map(tag => `#${tag}`).join(" ")) : null)), React.createElement("button", {
       type: "button",
       onClick: () => handlers.deleteActionNote(day.id, node.id, entry.id),
-      className: "text-[#666] hover:text-red-300 p-1"
+      className: "text-[#666] hover:text-red-300 p-1",
+      "aria-label": "Delete note"
     }, React.createElement(Trash2, {
       size: 14
     })));
@@ -4824,7 +4828,8 @@ function EntryRow({
   })), React.createElement("button", {
     type: "button",
     onClick: () => handlers.deleteEntry(day.id, node.id, entry.id),
-    className: "text-[#666] hover:text-red-300 p-1 ml-2"
+    className: "text-[#666] hover:text-red-300 p-1 ml-2",
+    "aria-label": "Delete action"
   }, React.createElement(Trash2, {
     size: 14
   })));
@@ -6139,6 +6144,29 @@ function runNoteEditorCommand(view, commandName, options = {}) {
   if (handled) view.focus();
   return handled;
 }
+function scrollNoteEditorSelectionIntoView(view) {
+  if (!view || typeof window === "undefined") return;
+  const scrollEl = view.dom.closest(".note-editor-scroll");
+  if (!scrollEl) return;
+  let coords;
+  try {
+    coords = view.coordsAtPos(view.state.selection.head);
+  } catch {
+    return;
+  }
+  const viewport = window.visualViewport;
+  const viewportTop = viewport?.offsetTop || 0;
+  const viewportBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+  const scrollRect = scrollEl.getBoundingClientRect();
+  const topLimit = Math.max(scrollRect.top + 16, viewportTop + 72);
+  const bottomLimit = Math.min(scrollRect.bottom - 28, viewportBottom - 104);
+  if (bottomLimit <= topLimit) return;
+  if (coords.bottom > bottomLimit) {
+    scrollEl.scrollTop += coords.bottom - bottomLimit + 24;
+  } else if (coords.top < topLimit) {
+    scrollEl.scrollTop += coords.top - topLimit - 24;
+  }
+}
 function ProseMirrorNoteEditor({
   initialHtml,
   className = "",
@@ -6161,10 +6189,25 @@ function ProseMirrorNoteEditor({
     host.innerHTML = "";
     const view = new pm.EditorView(host, {
       state: createNoteEditorState(schema, initialHtml),
+      handleDOMEvents: {
+        focus(view) {
+          window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
+          return false;
+        },
+        pointerup(view) {
+          window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
+          return false;
+        },
+        keyup(view) {
+          window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
+          return false;
+        }
+      },
       dispatchTransaction(transaction) {
         const nextState = view.state.apply(transaction);
         view.updateState(nextState);
         toolbarRef.current?.(readNoteEditorToolbarState(view));
+        window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
       }
     });
     viewRef.current = view;
@@ -6174,12 +6217,14 @@ function ProseMirrorNoteEditor({
       },
       focus() {
         view.focus();
+        window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
       },
       run(commandName, options = {}) {
         view.focus();
         view.dispatch(view.state.tr.setSelection(view.state.selection));
         const handled = runNoteEditorCommand(view, commandName, options);
         toolbarRef.current?.(readNoteEditorToolbarState(view));
+        window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
         return handled;
       },
       setHtml(html) {
@@ -6299,6 +6344,45 @@ function NoteTableGlyph({
     "aria-hidden": "true"
   }, React.createElement("span", null), React.createElement("span", null), React.createElement("span", null)) : null);
 }
+function readVisualViewportMetrics() {
+  if (typeof window === "undefined") return {
+    keyboardInset: 0,
+    visualHeight: 0,
+    visualTop: 0
+  };
+  const viewport = window.visualViewport;
+  const layoutHeight = window.innerHeight || 0;
+  const visualHeight = Math.round(viewport?.height || layoutHeight || 0);
+  const visualTop = Math.round(viewport?.offsetTop || 0);
+  const keyboardInset = Math.max(0, Math.round(layoutHeight - visualHeight - visualTop));
+  return {
+    keyboardInset,
+    visualHeight,
+    visualTop
+  };
+}
+function useVisualViewportMetrics() {
+  const [metrics, setMetrics] = useState(readVisualViewportMetrics);
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => setMetrics(readVisualViewportMetrics()));
+    };
+    const viewport = window.visualViewport;
+    update();
+    viewport?.addEventListener("resize", update);
+    viewport?.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      viewport?.removeEventListener("resize", update);
+      viewport?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  return metrics;
+}
 function RichNoteModal({
   modal,
   state,
@@ -6310,6 +6394,7 @@ function RichNoteModal({
   const titleRef = useRef(null);
   const editorApiRef = useRef(null);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
+  const viewportMetrics = useVisualViewportMetrics();
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
@@ -6379,13 +6464,22 @@ function RichNoteModal({
     runTableCommand,
     tablePanelButtonProps
   } = useNoteTablePanel(toolbarState, runEditorCommandAfterFocus);
+  const editorViewportStyle = {
+    "--note-keyboard-inset": `${viewportMetrics.keyboardInset}px`,
+    "--note-visual-height": `${viewportMetrics.visualHeight || 0}px`,
+    "--note-visual-top": `${viewportMetrics.visualTop || 0}px`
+  };
   const editorScreenStyle = {
     paddingTop: "calc(env(safe-area-inset-top, 0px) + 52px)"
   };
   const headerStyle = {
     paddingTop: "env(safe-area-inset-top, 0px)"
   };
-  const editorClassName = "rich-editor min-h-[calc(100dvh-180px)] w-full bg-transparent border-none outline-none px-0 pt-3 pb-16 text-[#E0E0E0] text-[17px] leading-relaxed";
+  const editorScrollStyle = {
+    paddingBottom: "calc(var(--note-keyboard-inset, 0px) + 8.5rem + env(safe-area-inset-bottom, 0px))",
+    scrollPaddingBottom: "calc(var(--note-keyboard-inset, 0px) + 9rem + env(safe-area-inset-bottom, 0px))"
+  };
+  const editorClassName = "rich-editor min-h-[calc(100dvh-180px)] w-full bg-transparent border-none outline-none px-0 pt-3 pb-28 text-[#E0E0E0] text-[17px] leading-relaxed";
   const topButtonClassName = (active = false) => `relative h-10 w-7 shrink-0 grid place-items-center disabled:opacity-35 disabled:hover:text-[#606060] transition-colors after:absolute after:left-2 after:right-2 after:bottom-1 after:h-px after:rounded-full after:transition-opacity ${active ? "text-[#FFD2D7] after:bg-[#FFD2D7] after:opacity-100" : "text-[#A7A7A7] hover:text-white after:opacity-0"}`;
   const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
   const syncColor = syncStatus === "saved" ? "#FFD2D7" : syncStatus === "error" ? "#fb7185" : syncStatus === "saving" ? "#FFD2D7" : "#666666";
@@ -6433,7 +6527,8 @@ function RichNoteModal({
     top: "calc(env(safe-area-inset-top, 0px) + 54px)"
   };
   return React.createElement("div", {
-    className: "fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden"
+    className: "fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden",
+    style: editorViewportStyle
   }, React.createElement("div", {
     className: "fixed left-0 right-0 top-0 z-[60] bg-[#0a0a0a]/95 border-b border-white/[0.035]",
     style: headerStyle
@@ -6633,7 +6728,8 @@ function RichNoteModal({
     className: "w-full max-w-md h-[100dvh] bg-[#0a0a0a] flex flex-col",
     style: editorScreenStyle
   }, React.createElement("div", {
-    className: "flex-1 min-h-0 overflow-y-auto thin-scroll px-5 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
+    className: "note-editor-scroll flex-1 min-h-0 overflow-y-auto thin-scroll px-5 pt-4",
+    style: editorScrollStyle
   }, React.createElement("input", {
     ref: titleRef,
     type: "text",
@@ -7067,8 +7163,32 @@ function App() {
   function confirmDeleteNote(onConfirm) {
     requestConfirm({
       title: "Delete note?",
-      body: "This removes the note from this workspace. You can restore only from backup.",
+      body: "Undo can restore it while it remains in the last 10 changes.",
       confirmLabel: "Delete",
+      danger: true
+    }, onConfirm);
+  }
+  function confirmDeleteAction(onConfirm) {
+    requestConfirm({
+      title: "Delete action?",
+      body: "Undo can restore it while it remains in the last 10 changes.",
+      confirmLabel: "Delete",
+      danger: true
+    }, onConfirm);
+  }
+  function confirmDeleteBox(onConfirm) {
+    requestConfirm({
+      title: "Remove box?",
+      body: "This removes the box, sub-boxes, linked notes, and scheduled entries. Undo can restore it while it remains in the last 10 changes.",
+      confirmLabel: "Remove",
+      danger: true
+    }, onConfirm);
+  }
+  function confirmClearEntries(onConfirm) {
+    requestConfirm({
+      title: "Clear entries?",
+      body: "This removes every action and note in this row. Undo can restore them while they remain in the last 10 changes.",
+      confirmLabel: "Clear",
       danger: true
     }, onConfirm);
   }
@@ -7431,6 +7551,19 @@ function App() {
       noteId
     }));
   }
+  function requestDeleteBox(boxId) {
+    confirmDeleteBox(() => deleteBox(boxId));
+  }
+  function requestDeleteEntry(dayId, nodeId, entryId) {
+    const day = db.actionDays.find(item => item.id === dayId);
+    const node = day ? getNode(day.nodes, nodeId) : null;
+    const entry = node ? entriesFor(node).find(item => item.id === entryId) : null;
+    const confirm = entry?.type === "note" ? confirmDeleteNote : confirmDeleteAction;
+    confirm(() => deleteEntry(dayId, nodeId, entryId));
+  }
+  function requestClearEntries(dayId, nodeId) {
+    confirmClearEntries(() => clearEntries(dayId, nodeId));
+  }
   function openNotesExport() {
     setModal({
       type: "notesExport"
@@ -7521,7 +7654,7 @@ function App() {
     archiveBox,
     doneBox,
     restoreBox,
-    deleteBox,
+    deleteBox: requestDeleteBox,
     openBoxNote: openBoxNotes,
     toggleBoxTimelineDay,
     openActionDate,
@@ -7549,9 +7682,9 @@ function App() {
     },
     toggleEntry,
     renameEntry,
-    deleteEntry,
+    deleteEntry: requestDeleteEntry,
     doneAllEntries,
-    clearEntries
+    clearEntries: requestClearEntries
   };
   const rootBoxes = vaultRoots(db, boxView);
   const actionRoots = selectedDay ? childrenOf(null, selectedDay.nodes).filter(root => hasVisibleAction(root, selectedDay.nodes, db.ui.actionFilter || "all")) : [];

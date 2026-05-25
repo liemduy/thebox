@@ -13,7 +13,7 @@ function EntryRow({ day, node, entry, handlers, flashTarget }) {
             {visibleEntryTags.length ? <span className="ml-2 text-[#FFD2D7]">{visibleEntryTags.map(tag => `#${tag}`).join(" ")}</span> : null}
           </span>
         </button>
-        <button type="button" onClick={() => handlers.deleteActionNote(day.id, node.id, entry.id)} className="text-[#666] hover:text-red-300 p-1"><Trash2 size={14} /></button>
+        <button type="button" onClick={() => handlers.deleteActionNote(day.id, node.id, entry.id)} className="text-[#666] hover:text-red-300 p-1" aria-label="Delete note"><Trash2 size={14} /></button>
       </div>
     );
   }
@@ -36,7 +36,7 @@ function EntryRow({ day, node, entry, handlers, flashTarget }) {
       >
         <HighlightText text={entry.text} />
       </div>
-      <button type="button" onClick={() => handlers.deleteEntry(day.id, node.id, entry.id)} className="text-[#666] hover:text-red-300 p-1 ml-2"><Trash2 size={14} /></button>
+      <button type="button" onClick={() => handlers.deleteEntry(day.id, node.id, entry.id)} className="text-[#666] hover:text-red-300 p-1 ml-2" aria-label="Delete action"><Trash2 size={14} /></button>
     </div>
   );
 }

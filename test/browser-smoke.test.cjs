@@ -111,6 +111,116 @@ test("header workspace personalization keeps a two-letter logo and account menu"
   expect(runtimeErrors).toEqual([]);
 });
 
+test("action delete requires confirm and undo redo restores the row", async ({ page }) => {
+  const t = "2026-05-25T12:00:00.000Z";
+  const snapshot = {
+    version: 5,
+    meta: {},
+    boxNodes: [
+      { id: "root", parentId: null, level: 1, title: "Root", sort: 1, boxNoteTitle: "", boxNoteHtml: "", archivedAt: null, doneAt: null, createdAt: t, updatedAt: t }
+    ],
+    actionDays: [
+      {
+        id: "day_today",
+        date: "2026-05-25",
+        createdAt: t,
+        updatedAt: t,
+        nodes: [
+          {
+            id: "action_root",
+            sourceBoxNodeId: "root",
+            parentId: null,
+            level: 1,
+            title: "Root",
+            sort: 1,
+            createdAt: t,
+            updatedAt: t,
+            entries: [
+              { id: "entry_keep", type: "action", text: "Keep me", done: false, sort: 1, createdAt: t, updatedAt: t }
+            ]
+          }
+        ]
+      }
+    ],
+    notes: [],
+    noteLinks: [],
+    ui: { selectedActionDate: "2026-05-25", actionFilter: "all" }
+  };
+  await page.addInitScript(payload => {
+    localStorage.setItem("idea-box-html-v13-action-notes:guest", JSON.stringify(payload));
+    localStorage.setItem("idea-box-html-v13-action-notes:local", JSON.stringify(payload));
+  }, snapshot);
+
+  await page.goto(`${baseURL}/?local=1#/actions?date=2026-05-25&filter=all`, { waitUntil: "networkidle" });
+  const row = page.locator('[data-action-entry-id="entry_keep"]');
+  await expect(row).toBeVisible();
+
+  await row.getByLabel("Delete action").click();
+  await expect(page.getByText("Delete action?")).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(row).toBeVisible();
+
+  await row.getByLabel("Delete action").click();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(row).toHaveCount(0);
+  await page.getByLabel("Undo").click();
+  await expect(row).toBeVisible();
+  await page.getByLabel("Redo").click();
+  await expect(row).toHaveCount(0);
+});
+
+test("box remove requires confirm and undo redo restores the box", async ({ page }) => {
+  const t = "2026-05-25T12:00:00.000Z";
+  const snapshot = {
+    version: 5,
+    meta: {},
+    boxNodes: [
+      { id: "root", parentId: null, level: 1, title: "Remove target", sort: 1, boxNoteTitle: "", boxNoteHtml: "", archivedAt: null, doneAt: null, createdAt: t, updatedAt: t }
+    ],
+    actionDays: [],
+    notes: [],
+    noteLinks: [],
+    ui: { boxView: "active", boxFilter: "all", showBoxDays: false }
+  };
+  await page.addInitScript(payload => {
+    localStorage.setItem("idea-box-html-v13-action-notes:guest", JSON.stringify(payload));
+    localStorage.setItem("idea-box-html-v13-action-notes:local", JSON.stringify(payload));
+  }, snapshot);
+
+  await page.goto(`${baseURL}/?local=1#/boxes?view=active&range=all&showDays=0`, { waitUntil: "networkidle" });
+  const box = page.locator('[data-box-node-id="root"]');
+  await expect(box).toBeVisible();
+
+  await box.getByLabel("Box menu").click();
+  await page.getByText("remove", { exact: true }).click();
+  await expect(page.getByText("Remove box?")).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(box).toBeVisible();
+
+  await box.getByLabel("Box menu").click();
+  await page.getByText("remove", { exact: true }).click();
+  await page.getByRole("button", { name: "Remove" }).click();
+  await expect(box).toHaveCount(0);
+  await page.getByLabel("Undo").click();
+  await expect(box).toBeVisible();
+  await page.getByLabel("Redo").click();
+  await expect(box).toHaveCount(0);
+});
+
+test("note editor top toolbar stays fixed while editor scrolls", async ({ page }) => {
+  await page.goto(`${baseURL}/?local=1#/notes`, { waitUntil: "networkidle" });
+  await page.getByLabel("Create note").click();
+  await page.getByPlaceholder("Title").fill("Toolbar fixed smoke");
+  await page.locator(".ProseMirror").click();
+  await page.keyboard.type(Array.from({ length: 35 }, (_, index) => `Line ${index + 1}`).join("\n"));
+
+  const before = await page.getByRole("button", { name: "Back" }).boundingBox();
+  await page.locator(".note-editor-scroll").evaluate(el => { el.scrollTop = el.scrollHeight; });
+  const after = await page.getByRole("button", { name: "Back" }).boundingBox();
+
+  expect(Math.abs((before?.y || 0) - (after?.y || 0))).toBeLessThan(1);
+});
+
 test("note table auto fit persists after save and reopen", async ({ page }) => {
   const runtimeErrors = [];
   page.on("pageerror", error => runtimeErrors.push(error.message));

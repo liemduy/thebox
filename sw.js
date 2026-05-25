@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v95-brand-loading-logo';
+const CACHE_NAME = 'idea-box-v96-delete-confirm-keyboard';
 const APP_SHELL = [
   './',
   './index.html',

@@ -114,8 +114,35 @@ function App() {
   function confirmDeleteNote(onConfirm) {
     requestConfirm({
       title: "Delete note?",
-      body: "This removes the note from this workspace. You can restore only from backup.",
+      body: "Undo can restore it while it remains in the last 10 changes.",
       confirmLabel: "Delete",
+      danger: true
+    }, onConfirm);
+  }
+
+  function confirmDeleteAction(onConfirm) {
+    requestConfirm({
+      title: "Delete action?",
+      body: "Undo can restore it while it remains in the last 10 changes.",
+      confirmLabel: "Delete",
+      danger: true
+    }, onConfirm);
+  }
+
+  function confirmDeleteBox(onConfirm) {
+    requestConfirm({
+      title: "Remove box?",
+      body: "This removes the box, sub-boxes, linked notes, and scheduled entries. Undo can restore it while it remains in the last 10 changes.",
+      confirmLabel: "Remove",
+      danger: true
+    }, onConfirm);
+  }
+
+  function confirmClearEntries(onConfirm) {
+    requestConfirm({
+      title: "Clear entries?",
+      body: "This removes every action and note in this row. Undo can restore them while they remain in the last 10 changes.",
+      confirmLabel: "Clear",
       danger: true
     }, onConfirm);
   }
@@ -469,6 +496,22 @@ function App() {
     confirmDeleteNote(() => deleteCentralNote({ noteId }));
   }
 
+  function requestDeleteBox(boxId) {
+    confirmDeleteBox(() => deleteBox(boxId));
+  }
+
+  function requestDeleteEntry(dayId, nodeId, entryId) {
+    const day = db.actionDays.find(item => item.id === dayId);
+    const node = day ? getNode(day.nodes, nodeId) : null;
+    const entry = node ? entriesFor(node).find(item => item.id === entryId) : null;
+    const confirm = entry?.type === "note" ? confirmDeleteNote : confirmDeleteAction;
+    confirm(() => deleteEntry(dayId, nodeId, entryId));
+  }
+
+  function requestClearEntries(dayId, nodeId) {
+    confirmClearEntries(() => clearEntries(dayId, nodeId));
+  }
+
   function openNotesExport() {
     setModal({ type: "notesExport" });
   }
@@ -548,7 +591,7 @@ function App() {
     archiveBox,
     doneBox,
     restoreBox,
-    deleteBox,
+    deleteBox: requestDeleteBox,
     openBoxNote: openBoxNotes,
     toggleBoxTimelineDay,
     openActionDate,
@@ -563,9 +606,9 @@ function App() {
     },
     toggleEntry,
     renameEntry,
-    deleteEntry,
+    deleteEntry: requestDeleteEntry,
     doneAllEntries,
-    clearEntries
+    clearEntries: requestClearEntries
   };
   const rootBoxes = vaultRoots(db, boxView);
   const actionRoots = selectedDay ? childrenOf(null, selectedDay.nodes).filter(root => hasVisibleAction(root, selectedDay.nodes, db.ui.actionFilter || "all")) : [];

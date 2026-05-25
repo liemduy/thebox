@@ -13,10 +13,46 @@ function NoteTableGlyph({ active = false, menuHint = false }) {
   );
 }
 
+function readVisualViewportMetrics() {
+  if (typeof window === "undefined") return { keyboardInset: 0, visualHeight: 0, visualTop: 0 };
+  const viewport = window.visualViewport;
+  const layoutHeight = window.innerHeight || 0;
+  const visualHeight = Math.round(viewport?.height || layoutHeight || 0);
+  const visualTop = Math.round(viewport?.offsetTop || 0);
+  const keyboardInset = Math.max(0, Math.round(layoutHeight - visualHeight - visualTop));
+  return { keyboardInset, visualHeight, visualTop };
+}
+
+function useVisualViewportMetrics() {
+  const [metrics, setMetrics] = useState(readVisualViewportMetrics);
+
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => setMetrics(readVisualViewportMetrics()));
+    };
+    const viewport = window.visualViewport;
+    update();
+    viewport?.addEventListener("resize", update);
+    viewport?.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      viewport?.removeEventListener("resize", update);
+      viewport?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  return metrics;
+}
+
 function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel = "", onSyncNow = () => {} }) {
   const titleRef = useRef(null);
   const editorApiRef = useRef(null);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
+  const viewportMetrics = useVisualViewportMetrics();
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
@@ -78,11 +114,20 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
     tablePanelButtonProps
   } = useNoteTablePanel(toolbarState, runEditorCommandAfterFocus);
 
+  const editorViewportStyle = {
+    "--note-keyboard-inset": `${viewportMetrics.keyboardInset}px`,
+    "--note-visual-height": `${viewportMetrics.visualHeight || 0}px`,
+    "--note-visual-top": `${viewportMetrics.visualTop || 0}px`
+  };
   const editorScreenStyle = {
     paddingTop: "calc(env(safe-area-inset-top, 0px) + 52px)"
   };
   const headerStyle = { paddingTop: "env(safe-area-inset-top, 0px)" };
-  const editorClassName = "rich-editor min-h-[calc(100dvh-180px)] w-full bg-transparent border-none outline-none px-0 pt-3 pb-16 text-[#E0E0E0] text-[17px] leading-relaxed";
+  const editorScrollStyle = {
+    paddingBottom: "calc(var(--note-keyboard-inset, 0px) + 8.5rem + env(safe-area-inset-bottom, 0px))",
+    scrollPaddingBottom: "calc(var(--note-keyboard-inset, 0px) + 9rem + env(safe-area-inset-bottom, 0px))"
+  };
+  const editorClassName = "rich-editor min-h-[calc(100dvh-180px)] w-full bg-transparent border-none outline-none px-0 pt-3 pb-28 text-[#E0E0E0] text-[17px] leading-relaxed";
   const topButtonClassName = (active = false) => `relative h-10 w-7 shrink-0 grid place-items-center disabled:opacity-35 disabled:hover:text-[#606060] transition-colors after:absolute after:left-2 after:right-2 after:bottom-1 after:h-px after:rounded-full after:transition-opacity ${active ? "text-[#FFD2D7] after:bg-[#FFD2D7] after:opacity-100" : "text-[#A7A7A7] hover:text-white after:opacity-0"}`;
   const syncText = syncStatus === "saving" ? "Saving" : syncStatus === "offline" ? "Local" : syncStatus === "error" ? "Error" : "Saved";
   const syncColor = syncStatus === "saved"
@@ -123,7 +168,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
   const tablePanelStyle = { top: "calc(env(safe-area-inset-top, 0px) + 54px)" };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden" style={editorViewportStyle}>
       <div className="fixed left-0 right-0 top-0 z-[60] bg-[#0a0a0a]/95 border-b border-white/[0.035]" style={headerStyle}>
         <div className="mx-auto w-full max-w-md h-[52px] px-1.5 flex items-center gap-0.5">
           <button type="button" onClick={save} className="h-10 min-w-8 grid place-items-center text-[#FFD2D7] hover:text-white transition-colors text-[30px] font-light leading-none" aria-label="Back">
@@ -184,7 +229,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
         </div>
       ) : null}
       <div className="w-full max-w-md h-[100dvh] bg-[#0a0a0a] flex flex-col" style={editorScreenStyle}>
-        <div className="flex-1 min-h-0 overflow-y-auto thin-scroll px-5 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]">
+        <div className="note-editor-scroll flex-1 min-h-0 overflow-y-auto thin-scroll px-5 pt-4" style={editorScrollStyle}>
           <input ref={titleRef} type="text" placeholder="Title" defaultValue={initialTitle} className="note-title-input w-full bg-transparent border-none outline-none px-0 pt-3 pb-2 text-white font-black leading-[1.04] placeholder:text-[#555555] tracking-normal" />
           <ProseMirrorNoteEditor
             key={editorKey}
