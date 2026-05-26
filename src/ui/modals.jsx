@@ -13,6 +13,15 @@ function NoteTableGlyph({ active = false, menuHint = false }) {
   );
 }
 
+function NoteColorGlyph({ color = "#ffd2d7", active = false }) {
+  const safeColor = safeNoteColor(color) || NOTE_EDITOR_DEFAULT_COLOR;
+  return (
+    <span className={`note-color-glyph ${active ? "is-active" : ""}`} aria-hidden="true">
+      <span className="note-color-glyph-fill" style={{ background: safeColor }} />
+    </span>
+  );
+}
+
 function readVisualViewportMetrics() {
   if (typeof window === "undefined") return { keyboardInset: 0, visualHeight: 0, visualTop: 0 };
   const viewport = window.visualViewport;
@@ -52,6 +61,8 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
   const titleRef = useRef(null);
   const editorApiRef = useRef(null);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
+  const [colorPanel, setColorPanel] = useState(false);
+  const [draftColor, setDraftColor] = useState(NOTE_EDITOR_DEFAULT_COLOR);
   const viewportMetrics = useVisualViewportMetrics();
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
@@ -67,8 +78,14 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
   useEffect(() => {
     setToolbarState(NOTE_EDITOR_EMPTY_TOOLBAR);
     setTablePanel(null);
+    setColorPanel(false);
+    setDraftColor(NOTE_EDITOR_DEFAULT_COLOR);
     window.setTimeout(() => titleRef.current?.focus(), 40);
   }, [editorKey]);
+
+  useEffect(() => {
+    if (!colorPanel) setDraftColor(toolbarState.color || NOTE_EDITOR_DEFAULT_COLOR);
+  }, [toolbarState.color, colorPanel]);
 
   function save() {
     const html = sanitizeHtml(editorApiRef.current?.getHtml() || "");
@@ -117,12 +134,16 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
   const editorViewportStyle = {
     "--note-keyboard-inset": `${viewportMetrics.keyboardInset}px`,
     "--note-visual-height": `${viewportMetrics.visualHeight || 0}px`,
-    "--note-visual-top": `${viewportMetrics.visualTop || 0}px`
+    "--note-visual-top": `${viewportMetrics.visualTop || 0}px`,
+    "--note-header-safe-top": "max(env(safe-area-inset-top, 0px), 12px)"
   };
   const editorScreenStyle = {
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 52px)"
+    paddingTop: "calc(var(--note-visual-top, 0px) + var(--note-header-safe-top, env(safe-area-inset-top, 0px)) + 52px)"
   };
-  const headerStyle = { paddingTop: "env(safe-area-inset-top, 0px)" };
+  const headerStyle = {
+    top: "var(--note-visual-top, 0px)",
+    paddingTop: "var(--note-header-safe-top, env(safe-area-inset-top, 0px))"
+  };
   const editorScrollStyle = {
     paddingBottom: "calc(var(--note-keyboard-inset, 0px) + 8.5rem + env(safe-area-inset-bottom, 0px))",
     scrollPaddingBottom: "calc(var(--note-keyboard-inset, 0px) + 9rem + env(safe-area-inset-bottom, 0px))"
@@ -165,7 +186,25 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
     },
     tabIndex: -1
   });
-  const tablePanelStyle = { top: "calc(env(safe-area-inset-top, 0px) + 54px)" };
+  const colorButtonColor = safeNoteColor(draftColor) || toolbarState.color || NOTE_EDITOR_DEFAULT_COLOR;
+  const tablePanelStyle = { top: "calc(var(--note-visual-top, 0px) + var(--note-header-safe-top, env(safe-area-inset-top, 0px)) + 54px)" };
+  const colorPanelStyle = tablePanelStyle;
+
+  function applyDraftColor() {
+    const color = safeNoteColor(draftColor) || NOTE_EDITOR_DEFAULT_COLOR;
+    setDraftColor(color);
+    runEditorCommand("color", { color });
+    setColorPanel(false);
+  }
+
+  function handleColorButton() {
+    setTablePanel(null);
+    if (toolbarState.selectionEmpty === false) {
+      runEditorCommand("color", { color: colorButtonColor });
+      return;
+    }
+    setColorPanel(prev => !prev);
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden" style={editorViewportStyle}>
@@ -179,6 +218,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("bold"))} className={topButtonClassName(toolbarState.bold)} aria-label="Bold"><Bold size={17} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("italic"))} className={topButtonClassName(toolbarState.italic)} aria-label="Italic"><Italic size={17} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("underline"))} className={topButtonClassName(toolbarState.underline)} aria-label="Underline"><Underline size={17} /></button>
+            <button type="button" {...toolbarButtonProps(handleColorButton)} className={topButtonClassName(colorPanel)} aria-label="Text color" title="Text color"><NoteColorGlyph color={colorButtonColor} active={colorPanel} /></button>
             <div className="h-5 w-px bg-white/[0.08] mx-1 shrink-0" />
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("indent-out"))} className={topButtonClassName(false)} aria-label="Outdent"><Indent size={17} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("indent-in"))} className={topButtonClassName(false)} aria-label="Indent"><IndentIncrease size={17} /></button>
@@ -197,6 +237,46 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
           </button>
         </div>
       </div>
+      {colorPanel ? (
+        <div className="fixed inset-0 z-[61]" onPointerDown={() => setColorPanel(false)}>
+          <div className="fixed left-0 right-0 flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150" style={colorPanelStyle}>
+            <div className="note-color-panel w-full max-w-[316px] bg-[#1A1A1A] border border-[#444444] shadow-2xl px-3 py-3" onPointerDown={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+              <div className="note-color-grid">
+                {NOTE_EDITOR_SWATCHES.map(color => (
+                  <button
+                    key={color}
+                    type="button"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      setDraftColor(color);
+                    }}
+                    className={`note-color-swatch ${normalizeNoteEditorColor(draftColor) === color ? "is-selected" : ""}`}
+                    style={{ background: color }}
+                    aria-label={`Use ${color}`}
+                  />
+                ))}
+              </div>
+              <div className="note-color-custom-row">
+                <input
+                  value={draftColor}
+                  onPointerDown={e => e.stopPropagation()}
+                  onChange={e => setDraftColor(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      applyDraftColor();
+                    }
+                  }}
+                  placeholder="#ffd2d7"
+                  aria-label="Text color hex"
+                  className="note-color-input"
+                />
+                <button type="button" {...toolbarButtonProps(applyDraftColor)} className="note-color-confirm">ok</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {tablePanel ? (
         <div className="fixed inset-0 z-[61]" onPointerDown={() => setTablePanel(null)}>
           <div className="fixed left-0 right-0 flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150" style={tablePanelStyle}>

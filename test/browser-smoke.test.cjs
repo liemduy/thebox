@@ -302,6 +302,74 @@ test("dash shortcut starts a bullet list", async ({ page }) => {
   expect(runtimeErrors).toEqual([]);
 });
 
+test("note editor color swatch applies and persists selected text color", async ({ page }) => {
+  const runtimeErrors = [];
+  page.on("pageerror", error => runtimeErrors.push(error.message));
+  page.on("console", message => {
+    if (message.type() === "error") runtimeErrors.push(message.text());
+  });
+
+  await page.goto(`${baseURL}/?local=1#/notes`, { waitUntil: "networkidle" });
+  await page.getByLabel("Create note").click();
+  await page.getByPlaceholder("Title").fill("Color smoke");
+  await page.locator(".ProseMirror").click();
+  await page.keyboard.type("Color me");
+  await page.keyboard.press("Control+A");
+  await page.getByRole("button", { name: "Text color" }).click();
+
+  await expect(page.locator(".ProseMirror span[data-note-color='#ffd2d7']")).toContainText("Color me");
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByText("Color smoke")).toBeVisible();
+  await page.getByText("Color smoke").click();
+  await expect(page.locator(".ProseMirror span[data-note-color='#ffd2d7']")).toContainText("Color me");
+
+  expect(runtimeErrors).toEqual([]);
+});
+
+test("note editor opens color picker without selection and accepts hex color", async ({ page }) => {
+  await page.goto(`${baseURL}/?local=1#/notes`, { waitUntil: "networkidle" });
+  await page.getByLabel("Create note").click();
+  await page.getByPlaceholder("Title").fill("Color picker smoke");
+  await page.locator(".ProseMirror").click();
+
+  await page.getByRole("button", { name: "Text color" }).click();
+  await expect(page.getByLabel("Text color hex")).toBeVisible();
+  await page.getByLabel("Text color hex").fill("#93c5fd");
+  await page.getByRole("button", { name: "ok" }).click();
+  await page.keyboard.type("Blue text");
+
+  await expect(page.locator(".ProseMirror span[data-note-color='#93c5fd']")).toContainText("Blue text");
+});
+
+test("note editor clears list formatting before applying Aa", async ({ page }) => {
+  await page.goto(`${baseURL}/?local=1#/notes`, { waitUntil: "networkidle" });
+  await page.getByLabel("Create note").click();
+  await page.getByPlaceholder("Title").fill("Aa list smoke");
+  await page.locator(".ProseMirror").click();
+  await page.keyboard.type("- First");
+
+  await expect(page.locator(".ProseMirror ul > li")).toHaveCount(1);
+  await page.getByRole("button", { name: /^Text style:/ }).click();
+  await expect(page.locator(".ProseMirror ul")).toHaveCount(0);
+  await expect(page.locator(".ProseMirror h1")).toContainText("First");
+});
+
+test("note editor recognizes hierarchical numbering and indent fallback", async ({ page }) => {
+  await page.goto(`${baseURL}/?local=1#/notes`, { waitUntil: "networkidle" });
+  await page.getByLabel("Create note").click();
+  await page.getByPlaceholder("Title").fill("Hierarchy smoke");
+  await page.locator(".ProseMirror").click();
+  await page.keyboard.type("1.1. Nested");
+
+  await expect(page.locator(".ProseMirror ol[data-list-depth='1'] > li")).toContainText("Nested");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("1. Top");
+  await page.getByRole("button", { name: "Indent" }).click();
+
+  await expect(page.locator(".ProseMirror ol[data-list-depth='1']")).toHaveCount(2);
+});
+
 test("creating a free note keeps All view selected", async ({ page }) => {
   await page.goto(`${baseURL}/?local=1#/notes?view=all`, { waitUntil: "networkidle" });
   await expect(page.locator(".filter-row").getByRole("button", { name: "All", exact: true })).toBeVisible();

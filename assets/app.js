@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-25-delete-confirm-keyboard";
-const APP_CACHE_NAME = "idea-box-v96-delete-confirm-keyboard";
+const APP_BUILD_ID = "2026-05-26-note-editor-polish";
+const APP_CACHE_NAME = "idea-box-v97-note-editor-polish";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -1466,6 +1466,22 @@ function cleanOptionalTitle(value) {
 function clampLevel(value) {
   return Math.max(1, Math.min(5, Number(value) || 1));
 }
+function safeNoteColor(value) {
+  const raw = String(value || "").trim();
+  const hex = raw.match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const value = hex[1].length === 3 ? hex[1].split("").map(char => char + char).join("") : hex[1];
+    return `#${value.toLowerCase()}`;
+  }
+  const rgb = raw.match(/^rgba?\(\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})(?:[\s,\/.0-9]+)?\)$/i);
+  if (!rgb) return "";
+  const parts = rgb.slice(1, 4).map(part => Math.max(0, Math.min(255, Number(part) || 0)));
+  return `#${parts.map(part => part.toString(16).padStart(2, "0")).join("")}`;
+}
+function noteColorFromStyle(value) {
+  const match = String(value || "").match(/color\s*:\s*([^;]+)/i);
+  return safeNoteColor(match?.[1] || "");
+}
 function timestampMs(value) {
   const time = Date.parse(String(value || ""));
   return Number.isFinite(time) ? time : 0;
@@ -1489,8 +1505,9 @@ function uid(prefix = "id") {
   return id;
 }
 function sanitizeHtml(input) {
-  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H1", "H2", "H3", "BLOCKQUOTE", "TABLE", "TBODY", "THEAD", "TR", "TH", "TD"]);
+  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "SPAN", "UL", "OL", "LI", "H1", "H2", "H3", "BLOCKQUOTE", "TABLE", "TBODY", "THEAD", "TR", "TH", "TD"]);
   const indentable = new Set(["DIV", "P", "H1", "H2", "H3"]);
+  const listable = new Set(["UL", "OL"]);
   const bulletStyles = new Set(["disc", "circle", "square"]);
   const orderedStyles = new Set(["decimal", "lower-alpha", "lower-roman"]);
   const template = document.createElement("template");
@@ -1513,8 +1530,29 @@ function sanitizeHtml(input) {
             if (size === "small") child.setAttribute("data-size", "small");else child.removeAttribute(attr.name);
             return;
           }
+          if (attr.name === "data-note-color" && child.tagName === "SPAN") {
+            const color = safeNoteColor(attr.value);
+            if (color) {
+              child.setAttribute("data-note-color", color);
+              child.setAttribute("style", `color: ${color}`);
+            } else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "style" && child.tagName === "SPAN") {
+            const color = noteColorFromStyle(attr.value);
+            if (color) {
+              child.setAttribute("data-note-color", color);
+              child.setAttribute("style", `color: ${color}`);
+            } else child.removeAttribute(attr.name);
+            return;
+          }
           if (attr.name === "data-type" && child.tagName === "UL") {
             if (String(attr.value || "") === "task-list") child.setAttribute("data-type", "task-list");else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-list-depth" && listable.has(child.tagName)) {
+            const depth = Math.max(0, Math.min(4, Number(attr.value) || 0));
+            if (depth > 0) child.setAttribute("data-list-depth", String(depth));else child.removeAttribute(attr.name);
             return;
           }
           if (attr.name === "data-list-style" && child.tagName === "UL") {
@@ -5146,6 +5184,8 @@ const NOTE_EDITOR_EMPTY_TOOLBAR = {
   canUndo: false,
   canRedo: false,
   indentLevel: 0,
+  selectionEmpty: true,
+  color: "#ffd2d7",
   textLevel: "body",
   listStyle: "none"
 };
@@ -5153,6 +5193,8 @@ let noteEditorSchemaCache = null;
 const NOTE_TEXT_LEVELS = ["body", "title", "heading", "subheading", "small"];
 const NOTE_BULLET_STYLES = ["disc", "circle", "square"];
 const NOTE_ORDERED_STYLES = ["decimal", "lower-alpha", "lower-roman"];
+const NOTE_EDITOR_DEFAULT_COLOR = "#ffd2d7";
+const NOTE_EDITOR_SWATCHES = ["#ffd2d7", "#ffffff", "#a7a7a7", "#fca5a5", "#fcd34d", "#86efac", "#93c5fd", "#c4b5fd"];
 function noteEditorPM() {
   return window.ProseMirrorBundle || null;
 }
@@ -5179,6 +5221,12 @@ function parseNoteParagraphSize(dom) {
 function normalizeNoteTextLevel(value) {
   return NOTE_TEXT_LEVELS.includes(value) ? value : "body";
 }
+function normalizeNoteEditorColor(value) {
+  return safeNoteColor(value) || NOTE_EDITOR_DEFAULT_COLOR;
+}
+function parseListDepth(dom) {
+  return clampNoteIndent(dom?.getAttribute?.("data-list-depth"));
+}
 function parseBulletListStyle(dom) {
   const value = String(dom?.getAttribute?.("data-list-style") || "").toLowerCase();
   return NOTE_BULLET_STYLES.includes(value) ? value : "disc";
@@ -5187,13 +5235,19 @@ function parseOrderedListStyle(dom) {
   const value = String(dom?.getAttribute?.("data-list-style") || "").toLowerCase();
   return NOTE_ORDERED_STYLES.includes(value) ? value : "decimal";
 }
-function bulletListAttrs(style) {
-  return style && style !== "disc" ? {
-    "data-list-style": style
+function listDepthAttrs(depth) {
+  const value = clampNoteIndent(depth);
+  return value > 0 ? {
+    "data-list-depth": String(value)
   } : {};
 }
-function orderedListAttrs(order, style) {
-  const attrs = {};
+function bulletListAttrs(style, depth) {
+  const attrs = listDepthAttrs(depth);
+  if (style && style !== "disc") attrs["data-list-style"] = style;
+  return attrs;
+}
+function orderedListAttrs(order, style, depth) {
+  const attrs = listDepthAttrs(depth);
   if (Number(order || 1) !== 1) attrs.start = Number(order || 1);
   if (style && style !== "decimal") attrs["data-list-style"] = style;
   return attrs;
@@ -5254,16 +5308,20 @@ function createNoteEditorSchema() {
     attrs: {
       style: {
         default: "disc"
+      },
+      depth: {
+        default: 0
       }
     },
     parseDOM: [{
       tag: "ul",
       getAttrs: dom => String(dom?.getAttribute?.("data-type") || "") === "task-list" ? false : {
-        style: parseBulletListStyle(dom)
+        style: parseBulletListStyle(dom),
+        depth: parseListDepth(dom)
       }
     }],
     toDOM(node) {
-      return ["ul", bulletListAttrs(node.attrs.style), 0];
+      return ["ul", bulletListAttrs(node.attrs.style, node.attrs.depth), 0];
     }
   });
   nodes = nodes.update("ordered_list", {
@@ -5274,17 +5332,21 @@ function createNoteEditorSchema() {
       },
       style: {
         default: "decimal"
+      },
+      depth: {
+        default: 0
       }
     },
     parseDOM: [{
       tag: "ol",
       getAttrs: dom => ({
         order: dom?.hasAttribute?.("start") ? Number(dom.getAttribute("start") || 1) : 1,
-        style: parseOrderedListStyle(dom)
+        style: parseOrderedListStyle(dom),
+        depth: parseListDepth(dom)
       })
     }],
     toDOM(node) {
-      return ["ol", orderedListAttrs(node.attrs.order, node.attrs.style), 0];
+      return ["ol", orderedListAttrs(node.attrs.order, node.attrs.style, node.attrs.depth), 0];
     }
   });
   nodes = nodes.addToEnd("task_list", {
@@ -5371,6 +5433,36 @@ function createNoteEditorSchema() {
     }],
     toDOM() {
       return ["u", 0];
+    }
+  }).addToEnd("text_color", {
+    attrs: {
+      color: {
+        default: NOTE_EDITOR_DEFAULT_COLOR
+      }
+    },
+    parseDOM: [{
+      tag: "span[data-note-color]",
+      getAttrs: dom => {
+        const color = safeNoteColor(dom?.getAttribute?.("data-note-color"));
+        return color ? {
+          color
+        } : false;
+      }
+    }, {
+      style: "color",
+      getAttrs: value => {
+        const color = safeNoteColor(value);
+        return color ? {
+          color
+        } : false;
+      }
+    }],
+    toDOM(mark) {
+      const color = normalizeNoteEditorColor(mark.attrs.color);
+      return ["span", {
+        "data-note-color": color,
+        style: `color: ${color}`
+      }, 0];
     }
   });
   noteEditorSchemaCache = new pm.Schema({
@@ -5520,6 +5612,22 @@ function noteEditorListShortcutPlugin(schema) {
           view.focus();
           return true;
         }
+        const hierarchy = markerText.match(/^\d{1,3}(?:\.\d{1,3}){1,4}\.?$/);
+        if (hierarchy) {
+          const parts = markerText.replace(/\.$/, "").split(".").map(part => Math.max(1, Math.min(999, Number(part) || 1)));
+          const depth = clampNoteIndent(parts.length - 1);
+          const order = parts[parts.length - 1] || 1;
+          const wrapOrdered = pm.wrapInList(schema.nodes.ordered_list, {
+            order,
+            style: "decimal",
+            depth
+          });
+          if (!wrapOrdered(state, null)) return false;
+          view.dispatch(state.tr.delete(blockStart, from));
+          wrapOrdered(view.state, transaction => view.dispatch(transaction.scrollIntoView()), view);
+          view.focus();
+          return true;
+        }
         const match = markerText.match(/^(\d{1,3})[.)]$/);
         if (!match) return false;
         const order = Math.max(1, Math.min(999, Number(match[1]) || 1));
@@ -5612,6 +5720,27 @@ function markIsActive(state, markType) {
   if (empty) return Boolean(markType.isInSet(state.storedMarks || $from.marks()));
   return state.doc.rangeHasMark(from, to, markType);
 }
+function currentTextColor(state, markType) {
+  if (!markType) return NOTE_EDITOR_DEFAULT_COLOR;
+  const {
+    from,
+    to,
+    empty,
+    $from
+  } = state.selection;
+  if (empty) {
+    const mark = markType.isInSet(state.storedMarks || $from.marks());
+    return normalizeNoteEditorColor(mark?.attrs?.color);
+  }
+  let found = "";
+  state.doc.nodesBetween(from, to, node => {
+    if (!node.isText || found) return true;
+    const mark = markType.isInSet(node.marks || []);
+    if (mark) found = normalizeNoteEditorColor(mark.attrs.color);
+    return !found;
+  });
+  return found || NOTE_EDITOR_DEFAULT_COLOR;
+}
 function currentTextblockWithPos(state) {
   const {
     $from
@@ -5654,27 +5783,31 @@ function currentListInfo(state) {
     kind: "checklist",
     node: task.node,
     pos: task.pos,
-    style: "checklist"
+    style: "checklist",
+    depth: 0
   };
   const bullet = findParentNodeOfType(state, schema.nodes.bullet_list);
   if (bullet) return {
     kind: "bullet",
     node: bullet.node,
     pos: bullet.pos,
-    style: bullet.node.attrs.style || "disc"
+    style: bullet.node.attrs.style || "disc",
+    depth: clampNoteIndent(bullet.node.attrs.depth)
   };
   const ordered = findParentNodeOfType(state, schema.nodes.ordered_list);
   if (ordered) return {
     kind: "ordered",
     node: ordered.node,
     pos: ordered.pos,
-    style: ordered.node.attrs.style || "decimal"
+    style: ordered.node.attrs.style || "decimal",
+    depth: clampNoteIndent(ordered.node.attrs.depth)
   };
   return {
     kind: "none",
     node: null,
     pos: null,
-    style: "none"
+    style: "none",
+    depth: 0
   };
 }
 function activeListItemType(state) {
@@ -5752,6 +5885,8 @@ function readNoteEditorToolbarState(view) {
     canUndo: pm.undo(state),
     canRedo: pm.redo(state),
     indentLevel: clampNoteIndent(textblock?.node.attrs.indent),
+    selectionEmpty: state.selection.empty,
+    color: currentTextColor(state, schema.marks.text_color),
     textLevel,
     listStyle: listInfo.style
   };
@@ -5855,12 +5990,14 @@ function cycleListCommand(schema) {
       const index = NOTE_BULLET_STYLES.indexOf(listInfo.style);
       if (index >= 0 && index < NOTE_BULLET_STYLES.length - 1) {
         return setListMarkup(state, dispatch, listInfo, schema.nodes.bullet_list, {
-          style: NOTE_BULLET_STYLES[index + 1]
+          style: NOTE_BULLET_STYLES[index + 1],
+          depth: listInfo.depth || 0
         });
       }
       return setListMarkup(state, dispatch, listInfo, schema.nodes.ordered_list, {
         order: 1,
-        style: "decimal"
+        style: "decimal",
+        depth: listInfo.depth || 0
       });
     }
     if (listInfo.kind === "ordered") {
@@ -5868,7 +6005,8 @@ function cycleListCommand(schema) {
       if (index >= 0 && index < NOTE_ORDERED_STYLES.length - 1) {
         return setListMarkup(state, dispatch, listInfo, schema.nodes.ordered_list, {
           order: listInfo.node.attrs.order || 1,
-          style: NOTE_ORDERED_STYLES[index + 1]
+          style: NOTE_ORDERED_STYLES[index + 1],
+          depth: listInfo.depth || 0
         });
       }
       return pm.liftListItem(schema.nodes.list_item)(state, dispatch);
@@ -6107,15 +6245,75 @@ function indentCommand(schema, delta) {
       const itemType = activeListItemType(state);
       if (!itemType) return false;
       const command = delta > 0 ? pm.sinkListItem(itemType) : pm.liftListItem(itemType);
-      return command(state, dispatch);
+      if (command(state, dispatch)) return true;
+      const listInfo = currentListInfo(state);
+      if (!listInfo.node || listInfo.pos == null || listInfo.kind === "checklist") return false;
+      const nextDepth = clampNoteIndent((listInfo.depth || 0) + delta);
+      if (nextDepth === (listInfo.depth || 0)) return false;
+      const attrs = listInfo.kind === "ordered" ? {
+        order: listInfo.node.attrs.order || 1,
+        style: listInfo.style || "decimal",
+        depth: nextDepth
+      } : {
+        style: listInfo.style || "disc",
+        depth: nextDepth
+      };
+      return setListMarkup(state, dispatch, listInfo, listInfo.node.type, attrs);
     }
     return updateSelectedBlockIndent(schema, delta)(state, dispatch);
   };
+}
+function setTextColorCommand(schema, color) {
+  const pm = noteEditorPM();
+  const safeColor = normalizeNoteEditorColor(color);
+  return (state, dispatch) => {
+    const markType = schema.marks.text_color;
+    if (!markType) return false;
+    const {
+      from,
+      to,
+      empty
+    } = state.selection;
+    if (dispatch) {
+      let tr = state.tr.removeMark(from, to, markType);
+      if (empty) tr = tr.addStoredMark(markType.create({
+        color: safeColor
+      }));else tr = tr.addMark(from, to, markType.create({
+        color: safeColor
+      })).scrollIntoView();
+      dispatch(tr);
+    }
+    return true;
+  };
+}
+function clearBlockEffectsForCommand(view, schema, commandName) {
+  const pm = noteEditorPM();
+  if (!view || !pm || !["heading", "quote"].includes(commandName)) return;
+  if (commandName === "quote" && findParentNodeOfType(view.state, schema.nodes.blockquote)) return;
+  for (let index = 0; index < 5 && currentListKind(view.state) !== "none"; index += 1) {
+    const itemType = activeListItemType(view.state);
+    if (!itemType) break;
+    const lifted = pm.liftListItem(itemType)(view.state, transaction => view.dispatch(transaction.scrollIntoView()), view);
+    if (!lifted) break;
+  }
+  if (findParentNodeOfType(view.state, schema.nodes.blockquote)) {
+    pm.lift(view.state, transaction => view.dispatch(transaction.scrollIntoView()), view);
+  }
+  if (commandName === "quote") {
+    const block = currentTextblockWithPos(view.state);
+    if (block?.node?.type === schema.nodes.heading) {
+      pm.setBlockType(schema.nodes.paragraph, {
+        indent: clampNoteIndent(block.node.attrs.indent),
+        size: "body"
+      })(view.state, transaction => view.dispatch(transaction.scrollIntoView()), view);
+    }
+  }
 }
 function runNoteEditorCommand(view, commandName, options = {}) {
   const pm = noteEditorPM();
   if (!view || !pm) return false;
   const schema = view.state.schema;
+  clearBlockEffectsForCommand(view, schema, commandName);
   const commands = {
     bold: pm.toggleMark(schema.marks.strong),
     italic: pm.toggleMark(schema.marks.em),
@@ -6132,6 +6330,7 @@ function runNoteEditorCommand(view, commandName, options = {}) {
     "table-delete": deleteTableCommand(schema),
     "table-autofit": toggleAutoFitTableCommand(),
     "table-after": ensureParagraphAfterTableCommand(schema, pm),
+    color: setTextColorCommand(schema, options.color || NOTE_EDITOR_DEFAULT_COLOR),
     quote: toggleQuoteCommand(schema),
     "indent-in": indentCommand(schema, 1),
     "indent-out": indentCommand(schema, -1),
@@ -6144,10 +6343,17 @@ function runNoteEditorCommand(view, commandName, options = {}) {
   if (handled) view.focus();
   return handled;
 }
-function scrollNoteEditorSelectionIntoView(view) {
+function noteEditorKeyboardInset() {
+  const viewport = window.visualViewport;
+  if (!viewport) return 0;
+  return Math.max(0, Math.round((window.innerHeight || 0) - viewport.height - (viewport.offsetTop || 0)));
+}
+function scrollNoteEditorSelectionIntoView(view, options = {}) {
   if (!view || typeof window === "undefined") return;
   const scrollEl = view.dom.closest(".note-editor-scroll");
   if (!scrollEl) return;
+  const keyboardInset = noteEditorKeyboardInset();
+  if (options.keyboardOnly && keyboardInset < 48) return;
   let coords;
   try {
     coords = view.coordsAtPos(view.state.selection.head);
@@ -6159,7 +6365,7 @@ function scrollNoteEditorSelectionIntoView(view) {
   const viewportBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
   const scrollRect = scrollEl.getBoundingClientRect();
   const topLimit = Math.max(scrollRect.top + 16, viewportTop + 72);
-  const bottomLimit = Math.min(scrollRect.bottom - 28, viewportBottom - 104);
+  const bottomLimit = Math.min(scrollRect.bottom - 28, viewportBottom - (keyboardInset > 48 ? 104 : 36));
   if (bottomLimit <= topLimit) return;
   if (coords.bottom > bottomLimit) {
     scrollEl.scrollTop += coords.bottom - bottomLimit + 24;
@@ -6191,23 +6397,24 @@ function ProseMirrorNoteEditor({
       state: createNoteEditorState(schema, initialHtml),
       handleDOMEvents: {
         focus(view) {
-          window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
-          return false;
-        },
-        pointerup(view) {
-          window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
+          window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view, {
+            keyboardOnly: true
+          }));
           return false;
         },
         keyup(view) {
-          window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
+          window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view, {
+            keyboardOnly: true
+          }));
           return false;
         }
       },
       dispatchTransaction(transaction) {
+        const shouldScroll = transaction.docChanged || transaction.getMeta("scrollIntoView");
         const nextState = view.state.apply(transaction);
         view.updateState(nextState);
         toolbarRef.current?.(readNoteEditorToolbarState(view));
-        window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
+        if (shouldScroll) window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
       }
     });
     viewRef.current = view;
@@ -6217,7 +6424,9 @@ function ProseMirrorNoteEditor({
       },
       focus() {
         view.focus();
-        window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
+        window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view, {
+          keyboardOnly: true
+        }));
       },
       run(commandName, options = {}) {
         view.focus();
@@ -6344,6 +6553,21 @@ function NoteTableGlyph({
     "aria-hidden": "true"
   }, React.createElement("span", null), React.createElement("span", null), React.createElement("span", null)) : null);
 }
+function NoteColorGlyph({
+  color = "#ffd2d7",
+  active = false
+}) {
+  const safeColor = safeNoteColor(color) || NOTE_EDITOR_DEFAULT_COLOR;
+  return React.createElement("span", {
+    className: `note-color-glyph ${active ? "is-active" : ""}`,
+    "aria-hidden": "true"
+  }, React.createElement("span", {
+    className: "note-color-glyph-fill",
+    style: {
+      background: safeColor
+    }
+  }));
+}
 function readVisualViewportMetrics() {
   if (typeof window === "undefined") return {
     keyboardInset: 0,
@@ -6394,6 +6618,8 @@ function RichNoteModal({
   const titleRef = useRef(null);
   const editorApiRef = useRef(null);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
+  const [colorPanel, setColorPanel] = useState(false);
+  const [draftColor, setDraftColor] = useState(NOTE_EDITOR_DEFAULT_COLOR);
   const viewportMetrics = useVisualViewportMetrics();
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
@@ -6408,8 +6634,13 @@ function RichNoteModal({
   useEffect(() => {
     setToolbarState(NOTE_EDITOR_EMPTY_TOOLBAR);
     setTablePanel(null);
+    setColorPanel(false);
+    setDraftColor(NOTE_EDITOR_DEFAULT_COLOR);
     window.setTimeout(() => titleRef.current?.focus(), 40);
   }, [editorKey]);
+  useEffect(() => {
+    if (!colorPanel) setDraftColor(toolbarState.color || NOTE_EDITOR_DEFAULT_COLOR);
+  }, [toolbarState.color, colorPanel]);
   function save() {
     const html = sanitizeHtml(editorApiRef.current?.getHtml() || "");
     const title = titleRef.current?.value || "";
@@ -6467,13 +6698,15 @@ function RichNoteModal({
   const editorViewportStyle = {
     "--note-keyboard-inset": `${viewportMetrics.keyboardInset}px`,
     "--note-visual-height": `${viewportMetrics.visualHeight || 0}px`,
-    "--note-visual-top": `${viewportMetrics.visualTop || 0}px`
+    "--note-visual-top": `${viewportMetrics.visualTop || 0}px`,
+    "--note-header-safe-top": "max(env(safe-area-inset-top, 0px), 12px)"
   };
   const editorScreenStyle = {
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 52px)"
+    paddingTop: "calc(var(--note-visual-top, 0px) + var(--note-header-safe-top, env(safe-area-inset-top, 0px)) + 52px)"
   };
   const headerStyle = {
-    paddingTop: "env(safe-area-inset-top, 0px)"
+    top: "var(--note-visual-top, 0px)",
+    paddingTop: "var(--note-header-safe-top, env(safe-area-inset-top, 0px))"
   };
   const editorScrollStyle = {
     paddingBottom: "calc(var(--note-keyboard-inset, 0px) + 8.5rem + env(safe-area-inset-bottom, 0px))",
@@ -6523,9 +6756,29 @@ function RichNoteModal({
     },
     tabIndex: -1
   });
+  const colorButtonColor = safeNoteColor(draftColor) || toolbarState.color || NOTE_EDITOR_DEFAULT_COLOR;
   const tablePanelStyle = {
-    top: "calc(env(safe-area-inset-top, 0px) + 54px)"
+    top: "calc(var(--note-visual-top, 0px) + var(--note-header-safe-top, env(safe-area-inset-top, 0px)) + 54px)"
   };
+  const colorPanelStyle = tablePanelStyle;
+  function applyDraftColor() {
+    const color = safeNoteColor(draftColor) || NOTE_EDITOR_DEFAULT_COLOR;
+    setDraftColor(color);
+    runEditorCommand("color", {
+      color
+    });
+    setColorPanel(false);
+  }
+  function handleColorButton() {
+    setTablePanel(null);
+    if (toolbarState.selectionEmpty === false) {
+      runEditorCommand("color", {
+        color: colorButtonColor
+      });
+      return;
+    }
+    setColorPanel(prev => !prev);
+  }
   return React.createElement("div", {
     className: "fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden",
     style: editorViewportStyle
@@ -6568,6 +6821,15 @@ function RichNoteModal({
     "aria-label": "Underline"
   }), React.createElement(Underline, {
     size: 17
+  })), React.createElement("button", _extends({
+    type: "button"
+  }, toolbarButtonProps(handleColorButton), {
+    className: topButtonClassName(colorPanel),
+    "aria-label": "Text color",
+    title: "Text color"
+  }), React.createElement(NoteColorGlyph, {
+    color: colorButtonColor,
+    active: colorPanel
   })), React.createElement("div", {
     className: "h-5 w-px bg-white/[0.08] mx-1 shrink-0"
   }), React.createElement("button", _extends({
@@ -6648,7 +6910,51 @@ function RichNoteModal({
     className: "animate-pulse"
   }) : React.createElement(Check, {
     size: 20
-  })))), tablePanel ? React.createElement("div", {
+  })))), colorPanel ? React.createElement("div", {
+    className: "fixed inset-0 z-[61]",
+    onPointerDown: () => setColorPanel(false)
+  }, React.createElement("div", {
+    className: "fixed left-0 right-0 flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150",
+    style: colorPanelStyle
+  }, React.createElement("div", {
+    className: "note-color-panel w-full max-w-[316px] bg-[#1A1A1A] border border-[#444444] shadow-2xl px-3 py-3",
+    onPointerDown: e => e.stopPropagation(),
+    onMouseDown: e => e.stopPropagation(),
+    onClick: e => e.stopPropagation()
+  }, React.createElement("div", {
+    className: "note-color-grid"
+  }, NOTE_EDITOR_SWATCHES.map(color => React.createElement("button", {
+    key: color,
+    type: "button",
+    onPointerDown: event => {
+      event.preventDefault();
+      setDraftColor(color);
+    },
+    className: `note-color-swatch ${normalizeNoteEditorColor(draftColor) === color ? "is-selected" : ""}`,
+    style: {
+      background: color
+    },
+    "aria-label": `Use ${color}`
+  }))), React.createElement("div", {
+    className: "note-color-custom-row"
+  }, React.createElement("input", {
+    value: draftColor,
+    onPointerDown: e => e.stopPropagation(),
+    onChange: e => setDraftColor(e.target.value),
+    onKeyDown: e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        applyDraftColor();
+      }
+    },
+    placeholder: "#ffd2d7",
+    "aria-label": "Text color hex",
+    className: "note-color-input"
+  }), React.createElement("button", _extends({
+    type: "button"
+  }, toolbarButtonProps(applyDraftColor), {
+    className: "note-color-confirm"
+  }), "ok"))))) : null, tablePanel ? React.createElement("div", {
     className: "fixed inset-0 z-[61]",
     onPointerDown: () => setTablePanel(null)
   }, React.createElement("div", {

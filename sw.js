@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v96-delete-confirm-keyboard';
+const CACHE_NAME = 'idea-box-v97-note-editor-polish';
 const APP_SHELL = [
   './',
   './index.html',

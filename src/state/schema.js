@@ -7,6 +7,24 @@ function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function cleanTitle(value) { return String(value || "").replace(/\s+/g, " ").trim() || "Untitled"; }
 function cleanOptionalTitle(value) { return String(value || "").replace(/\s+/g, " ").trim(); }
 function clampLevel(value) { return Math.max(1, Math.min(5, Number(value) || 1)); }
+function safeNoteColor(value) {
+  const raw = String(value || "").trim();
+  const hex = raw.match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const value = hex[1].length === 3
+      ? hex[1].split("").map(char => char + char).join("")
+      : hex[1];
+    return `#${value.toLowerCase()}`;
+  }
+  const rgb = raw.match(/^rgba?\(\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})(?:[\s,\/.0-9]+)?\)$/i);
+  if (!rgb) return "";
+  const parts = rgb.slice(1, 4).map(part => Math.max(0, Math.min(255, Number(part) || 0)));
+  return `#${parts.map(part => part.toString(16).padStart(2, "0")).join("")}`;
+}
+function noteColorFromStyle(value) {
+  const match = String(value || "").match(/color\s*:\s*([^;]+)/i);
+  return safeNoteColor(match?.[1] || "");
+}
 function timestampMs(value) {
   const time = Date.parse(String(value || ""));
   return Number.isFinite(time) ? time : 0;
@@ -30,8 +48,9 @@ function uid(prefix = "id") {
 }
 
 function sanitizeHtml(input) {
-  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "UL", "OL", "LI", "H1", "H2", "H3", "BLOCKQUOTE", "TABLE", "TBODY", "THEAD", "TR", "TH", "TD"]);
+  const allowed = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "SPAN", "UL", "OL", "LI", "H1", "H2", "H3", "BLOCKQUOTE", "TABLE", "TBODY", "THEAD", "TR", "TH", "TD"]);
   const indentable = new Set(["DIV", "P", "H1", "H2", "H3"]);
+  const listable = new Set(["UL", "OL"]);
   const bulletStyles = new Set(["disc", "circle", "square"]);
   const orderedStyles = new Set(["decimal", "lower-alpha", "lower-roman"]);
   const template = document.createElement("template");
@@ -56,8 +75,30 @@ function sanitizeHtml(input) {
             else child.removeAttribute(attr.name);
             return;
           }
+          if (attr.name === "data-note-color" && child.tagName === "SPAN") {
+            const color = safeNoteColor(attr.value);
+            if (color) {
+              child.setAttribute("data-note-color", color);
+              child.setAttribute("style", `color: ${color}`);
+            } else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "style" && child.tagName === "SPAN") {
+            const color = noteColorFromStyle(attr.value);
+            if (color) {
+              child.setAttribute("data-note-color", color);
+              child.setAttribute("style", `color: ${color}`);
+            } else child.removeAttribute(attr.name);
+            return;
+          }
           if (attr.name === "data-type" && child.tagName === "UL") {
             if (String(attr.value || "") === "task-list") child.setAttribute("data-type", "task-list");
+            else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-list-depth" && listable.has(child.tagName)) {
+            const depth = Math.max(0, Math.min(4, Number(attr.value) || 0));
+            if (depth > 0) child.setAttribute("data-list-depth", String(depth));
             else child.removeAttribute(attr.name);
             return;
           }
