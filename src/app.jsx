@@ -639,7 +639,7 @@ function App() {
         <SearchPanel isOpen={isSearchOpen} query={searchQuery} setQuery={setSearchQuery} results={searchResults} filters={searchFilters} onToggleFilter={toggleSearchFilter} onOpenResult={openSearchResult} />
 
         <main className="app-main p-5 flex-1 flex flex-col pb-24">
-          <div className="flex justify-between items-center gap-3 mb-7 mt-1">
+          <div className="view-nav-row flex justify-between items-center gap-3 mb-7 mt-1">
             <h2 className="view-title text-[1.55rem] leading-[1.1] font-extrabold tracking-tighter flex flex-nowrap items-baseline min-w-0">
               <button type="button" className={`cursor-pointer transition-colors whitespace-nowrap ${currentView === "boxes" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("boxes"); }}>Box</button>
               <span className="text-[#3E3E3E] mx-1.5 font-light">/</span>
@@ -655,7 +655,7 @@ function App() {
 
           {currentView === "boxes" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="filter-row flex flex-wrap items-center gap-2.5 mb-7 relative z-20">
+              <div className="filter-row box-filter-row flex flex-wrap items-center gap-2.5 mb-7 relative z-20">
                 <div className="relative">
                   <button type="button" onClick={(e) => { e.stopPropagation(); setIsActiveMenuOpen(!isActiveMenuOpen); setIsDateMenuOpen(false); setBoxDateCalendarTarget(null); }} className="flex items-center gap-1.5 px-6 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform">
                     {boxView === "archived" ? "Archived" : boxView === "done" ? "Done" : "Active"}
@@ -773,7 +773,7 @@ function App() {
 
           {currentView === "actions" && (
             <div className="animate-in fade-in slide-in-from-left-4 duration-300 flex-1 flex flex-col">
-              <div className="flex items-center gap-2.5 mb-8 relative z-20">
+              <div className="filter-row action-filter-row flex items-center gap-2.5 mb-8 relative z-20">
                 <div className="relative">
                   <button type="button" onClick={(e) => { e.stopPropagation(); setIsActionsMenuOpen(!isActionsMenuOpen); }} className="flex items-center gap-1.5 px-6 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform">
                     {db.ui.actionFilter === "undone" ? "Undone" : db.ui.actionFilter === "done" ? "Done" : db.ui.actionFilter === "notes" ? "Notes" : "All"}

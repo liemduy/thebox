@@ -103,6 +103,23 @@ test("main header is sticky and note format panels suppress the editor caret", (
   assert.match(css, /is-format-panel-open[\s\S]*caret-color:\s*transparent/);
 });
 
+test("compact layout spacing and fixed note undo controls are wired", () => {
+  const app = fs.readFileSync("src/app.jsx", "utf8");
+  const notes = fs.readFileSync("src/ui/notes.jsx", "utf8");
+  const modals = fs.readFileSync("src/ui/modals.jsx", "utf8");
+  const css = fs.readFileSync("src/styles.css", "utf8");
+  assert.match(app, /view-nav-row/);
+  assert.match(app, /box-filter-row/);
+  assert.match(app, /action-filter-row/);
+  assert.match(notes, /notes-filter-row/);
+  assert.match(css, /\.app-header[\s\S]*padding-bottom:\s*14px/);
+  assert.match(css, /\.view-nav-row\s*\{\s*margin-bottom:\s*25px/);
+  assert.match(css, /\.box-filter-row\s*\{\s*margin-bottom:\s*25px/);
+  assert.match(css, /\.action-filter-row\s*\{\s*margin-bottom:\s*29px/);
+  assert.match(css, /\.notes-filter-row\s*\{\s*margin-bottom:\s*18px/);
+  assert.match(modals, /note-fixed-history-actions/);
+});
+
 test("github actions verifies build and browser smoke", () => {
   const workflow = fs.readFileSync(".github/workflows/verify.yml", "utf8");
   assert.match(workflow, /npm ci/);

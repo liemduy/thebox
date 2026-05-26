@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v98-fixed-header-loading-logo';
+const CACHE_NAME = 'idea-box-v99-compact-layout-note-history';
 const APP_SHELL = [
   './',
   './index.html',

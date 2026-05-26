@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-26-fixed-header-loading-logo";
-const APP_CACHE_NAME = "idea-box-v98-fixed-header-loading-logo";
+const APP_BUILD_ID = "2026-05-26-compact-layout-note-history";
+const APP_CACHE_NAME = "idea-box-v99-compact-layout-note-history";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -4091,7 +4091,7 @@ function NotesPanel({
   return React.createElement("div", {
     className: "animate-in fade-in slide-in-from-bottom-4 duration-300 flex-1 flex flex-col"
   }, React.createElement("div", {
-    className: "filter-row flex flex-wrap items-center gap-2.5 mb-5 relative z-20"
+    className: "filter-row notes-filter-row flex flex-wrap items-center gap-2.5 mb-5 relative z-20"
   }, React.createElement("div", {
     className: "relative"
   }, React.createElement("button", {
@@ -4179,7 +4179,7 @@ function NotesPanel({
   }, React.createElement(Download, {
     size: 15
   }))), hasViewBy && React.createElement("div", {
-    className: "-mt-2 mb-5 flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold"
+    className: "-mt-2 mb-[18px] flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold"
   }, selectedTags.slice(0, 3).map(tag => React.createElement("span", {
     key: tag,
     className: "px-2 py-1 rounded-full bg-[#FFD2D7]/[0.08] text-[#FFD2D7]"
@@ -6915,9 +6915,9 @@ function RichNoteModal({
     "aria-label": listLabel
   }), React.createElement("span", {
     className: "text-[15px] font-extrabold leading-none"
-  }, listButtonText)), React.createElement("div", {
-    className: "h-5 w-px bg-white/[0.08] mx-1 shrink-0"
-  }), React.createElement("button", _extends({
+  }, listButtonText))), React.createElement("div", {
+    className: "note-fixed-history-actions flex items-center gap-0.5 shrink-0"
+  }, React.createElement("button", _extends({
     type: "button",
     disabled: !toolbarState.canUndo
   }, toolbarButtonProps(() => runEditorCommand("undo")), {
@@ -6941,7 +6941,7 @@ function RichNoteModal({
     },
     title: syncLabel || syncText,
     "aria-label": syncLabel || syncText,
-    className: "h-10 min-w-8 grid place-items-center transition-transform hover:scale-110 active:scale-95",
+    className: "note-sync-button h-10 min-w-8 grid place-items-center transition-transform hover:scale-110 active:scale-95",
     style: {
       color: syncColor
     }
@@ -8068,7 +8068,7 @@ function App() {
   }), React.createElement("main", {
     className: "app-main p-5 flex-1 flex flex-col pb-24"
   }, React.createElement("div", {
-    className: "flex justify-between items-center gap-3 mb-7 mt-1"
+    className: "view-nav-row flex justify-between items-center gap-3 mb-7 mt-1"
   }, React.createElement("h2", {
     className: "view-title text-[1.55rem] leading-[1.1] font-extrabold tracking-tighter flex flex-nowrap items-baseline min-w-0"
   }, React.createElement("button", {
@@ -8123,7 +8123,7 @@ function App() {
   })))), currentView === "boxes" && React.createElement("div", {
     className: "animate-in fade-in slide-in-from-right-4 duration-300"
   }, React.createElement("div", {
-    className: "filter-row flex flex-wrap items-center gap-2.5 mb-7 relative z-20"
+    className: "filter-row box-filter-row flex flex-wrap items-center gap-2.5 mb-7 relative z-20"
   }, React.createElement("div", {
     className: "relative"
   }, React.createElement("button", {
@@ -8335,7 +8335,7 @@ function App() {
   }), " Create box")))), currentView === "actions" && React.createElement("div", {
     className: "animate-in fade-in slide-in-from-left-4 duration-300 flex-1 flex flex-col"
   }, React.createElement("div", {
-    className: "flex items-center gap-2.5 mb-8 relative z-20"
+    className: "filter-row action-filter-row flex items-center gap-2.5 mb-8 relative z-20"
   }, React.createElement("div", {
     className: "relative"
   }, React.createElement("button", {

@@ -45,7 +45,7 @@ function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isV
   const emptyAction = hasViewBy ? "Clear filters" : "Create note";
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 flex-1 flex flex-col">
-      <div className="filter-row flex flex-wrap items-center gap-2.5 mb-5 relative z-20">
+      <div className="filter-row notes-filter-row flex flex-wrap items-center gap-2.5 mb-5 relative z-20">
         <div className="relative">
           <button type="button" onClick={(e) => { e.stopPropagation(); setIsViewMenuOpen(!isViewMenuOpen); }} className="flex items-center gap-1.5 px-6 py-2 bg-[#FFD2D7] hover:scale-105 active:scale-95 text-black text-[13px] font-bold rounded-full transition-transform">
             {viewLabel}
@@ -96,7 +96,7 @@ function NotesPanel({ state, notes, tags, isViewMenuOpen, setIsViewMenuOpen, isV
         </button>
       </div>
       {hasViewBy && (
-        <div className="-mt-2 mb-5 flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold">
+        <div className="-mt-2 mb-[18px] flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold">
           {selectedTags.slice(0, 3).map(tag => <span key={tag} className="px-2 py-1 rounded-full bg-[#FFD2D7]/[0.08] text-[#FFD2D7]">#{tag}</span>)}
           {selectedTags.length > 3 ? <span className="px-2 py-1 rounded-full bg-[#111111] text-[#A7A7A7]">+{selectedTags.length - 3}</span> : null}
           {dateFilterLabel ? <span className={`px-2 py-1 rounded-full bg-[#111111] ${dateFilters.length ? "text-[#A7A7A7]" : "text-red-300"}`}>{dateFilterLabel}</span> : null}

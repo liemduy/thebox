@@ -238,11 +238,12 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("list"))} className={topButtonClassName(toolbarState.bullet || toolbarState.ordered)} aria-label={listLabel}>
               <span className="text-[15px] font-extrabold leading-none">{listButtonText}</span>
             </button>
-            <div className="h-5 w-px bg-white/[0.08] mx-1 shrink-0" />
+          </div>
+          <div className="note-fixed-history-actions flex items-center gap-0.5 shrink-0">
             <button type="button" disabled={!toolbarState.canUndo} {...toolbarButtonProps(() => runEditorCommand("undo"))} className={topButtonClassName(false)} aria-label="Undo note edit"><Undo2 size={17} /></button>
             <button type="button" disabled={!toolbarState.canRedo} {...toolbarButtonProps(() => runEditorCommand("redo"))} className={topButtonClassName(false)} aria-label="Redo note edit"><Redo2 size={17} /></button>
           </div>
-          <button type="button" onClick={(e) => { e.stopPropagation(); onSyncNow(); }} title={syncLabel || syncText} aria-label={syncLabel || syncText} className="h-10 min-w-8 grid place-items-center transition-transform hover:scale-110 active:scale-95" style={{ color: syncColor }}>
+          <button type="button" onClick={(e) => { e.stopPropagation(); onSyncNow(); }} title={syncLabel || syncText} aria-label={syncLabel || syncText} className="note-sync-button h-10 min-w-8 grid place-items-center transition-transform hover:scale-110 active:scale-95" style={{ color: syncColor }}>
             {syncStatus === "saving" ? <MoreHorizontal size={20} className="animate-pulse" /> : <Check size={20} />}
           </button>
         </div>

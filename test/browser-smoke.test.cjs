@@ -261,8 +261,13 @@ test("note editor top toolbar stays fixed while editor scrolls", async ({ page }
   const before = await page.getByRole("button", { name: "Back" }).boundingBox();
   await page.locator(".note-editor-scroll").evaluate(el => { el.scrollTop = el.scrollHeight; });
   const after = await page.getByRole("button", { name: "Back" }).boundingBox();
+  const historyActions = await page.locator(".note-fixed-history-actions").boundingBox();
+  const syncButton = await page.locator(".note-sync-button").boundingBox();
 
   expect(Math.abs((before?.y || 0) - (after?.y || 0))).toBeLessThan(1);
+  expect(historyActions).not.toBeNull();
+  expect(syncButton).not.toBeNull();
+  expect(Math.abs((historyActions?.y || 0) - (syncButton?.y || 0))).toBeLessThan(3);
 });
 
 test("note table auto fit persists after save and reopen", async ({ page }) => {
