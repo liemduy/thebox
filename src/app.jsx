@@ -1,7 +1,7 @@
 function App() {
   const initialRouteRef = useRef(null);
   if (!initialRouteRef.current) initialRouteRef.current = parseRouteHash();
-  const [db, setDb] = useState(() => normalizeState(applyRouteToState(loadLocalForUser(null) || loadLegacyLocal() || seed(), initialRouteRef.current)));
+  const [db, setDb] = useState(() => normalizeState(applyRouteToState(loadLocalPreviewState() || seed(), initialRouteRef.current)));
   const [booting, setBooting] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
   const [currentView, setCurrentView] = useState(() => routeView(initialRouteRef.current));

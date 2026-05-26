@@ -82,6 +82,27 @@ test("brand header and loading screen share the same logo component", () => {
   assert.match(app, /<BrandLogo[\s\S]*Loading workspace logo/);
 });
 
+test("boot state previews the latest local logo before auth hydration", () => {
+  const localStore = fs.readFileSync("src/sync/localStore.js", "utf8");
+  const app = fs.readFileSync("src/app.jsx", "utf8");
+  assert.match(localStore, /function loadLocalPreviewState/);
+  assert.match(localStore, /startsWith\(`\$\{STORAGE_KEY\}:`\)/);
+  assert.match(app, /loadLocalPreviewState\(\)\s*\|\|\s*seed\(\)/);
+});
+
+test("main header is sticky and note format panels suppress the editor caret", () => {
+  const header = fs.readFileSync("src/components/header.jsx", "utf8");
+  const modals = fs.readFileSync("src/ui/modals.jsx", "utf8");
+  const editor = fs.readFileSync("src/ui/noteEditor.jsx", "utf8");
+  const css = fs.readFileSync("src/styles.css", "utf8");
+  assert.match(header, /app-header[\s\S]*sticky top-0/);
+  assert.match(css, /\.app-header[\s\S]*position:\s*sticky/);
+  assert.match(css, /safe-area-inset-top/);
+  assert.match(modals, /is-format-panel-open/);
+  assert.match(editor, /blur\(\)[\s\S]*view\.dom\.blur\(\)/);
+  assert.match(css, /is-format-panel-open[\s\S]*caret-color:\s*transparent/);
+});
+
 test("github actions verifies build and browser smoke", () => {
   const workflow = fs.readFileSync(".github/workflows/verify.yml", "utf8");
   assert.match(workflow, /npm ci/);

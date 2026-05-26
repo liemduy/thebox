@@ -203,11 +203,21 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
       runEditorCommand("color", { color: colorButtonColor });
       return;
     }
-    setColorPanel(prev => !prev);
+    setColorPanel(prev => {
+      const next = !prev;
+      if (next) editorApiRef.current?.blur?.();
+      return next;
+    });
+  }
+
+  function openTablePanelFromToolbar() {
+    setColorPanel(false);
+    editorApiRef.current?.blur?.();
+    openTablePanel();
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden" style={editorViewportStyle}>
+    <div className={`fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden ${colorPanel || tablePanel ? "is-format-panel-open" : ""}`} style={editorViewportStyle}>
       <div className="fixed left-0 right-0 top-0 z-[60] bg-[#0a0a0a]/95 border-b border-white/[0.035]" style={headerStyle}>
         <div className="mx-auto w-full max-w-md h-[52px] px-1.5 flex items-center gap-0.5">
           <button type="button" onClick={save} className="h-10 min-w-8 grid place-items-center text-[#FFD2D7] hover:text-white transition-colors text-[30px] font-light leading-none" aria-label="Back">
@@ -224,7 +234,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("indent-in"))} className={topButtonClassName(false)} aria-label="Indent"><IndentIncrease size={17} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("quote"))} className={topButtonClassName(toolbarState.quote)} aria-label="Quote"><Quote size={16} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("checklist"))} className={topButtonClassName(toolbarState.checklist)} aria-label="Checklist"><CheckSquare size={16} /></button>
-            <button type="button" {...toolbarButtonProps(openTablePanel)} className={topButtonClassName(toolbarState.table || tablePanel)} aria-label={toolbarState.table ? "Table options" : "Insert table"}><NoteTableGlyph active={toolbarState.table || Boolean(tablePanel)} menuHint={toolbarState.table} /></button>
+            <button type="button" {...toolbarButtonProps(openTablePanelFromToolbar)} className={topButtonClassName(toolbarState.table || tablePanel)} aria-label={toolbarState.table ? "Table options" : "Insert table"}><NoteTableGlyph active={toolbarState.table || Boolean(tablePanel)} menuHint={toolbarState.table} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("list"))} className={topButtonClassName(toolbarState.bullet || toolbarState.ordered)} aria-label={listLabel}>
               <span className="text-[15px] font-extrabold leading-none">{listButtonText}</span>
             </button>

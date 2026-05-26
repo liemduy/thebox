@@ -111,6 +111,50 @@ test("header workspace personalization keeps a two-letter logo and account menu"
   expect(runtimeErrors).toEqual([]);
 });
 
+test("main header stays fixed while scrolling a long box list", async ({ page }) => {
+  const t = "2026-05-25T12:00:00.000Z";
+  const snapshot = {
+    version: 5,
+    meta: {},
+    boxNodes: Array.from({ length: 34 }, (_, index) => ({
+      id: `root_${index}`,
+      parentId: null,
+      level: 1,
+      title: `Scroll box ${index + 1}`,
+      sort: index + 1,
+      boxNoteTitle: "",
+      boxNoteHtml: "",
+      archivedAt: null,
+      doneAt: null,
+      createdAt: t,
+      updatedAt: t
+    })),
+    actionDays: [],
+    notes: [],
+    noteLinks: [],
+    ui: { boxView: "active", boxFilter: "all", showBoxDays: false }
+  };
+  await page.addInitScript(payload => {
+    localStorage.setItem("idea-box-html-v13-action-notes:guest", JSON.stringify(payload));
+    localStorage.setItem("idea-box-html-v13-action-notes:local", JSON.stringify(payload));
+  }, snapshot);
+
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.goto(`${baseURL}/?local=1#/boxes?view=active&range=all&showDays=0`, { waitUntil: "networkidle" });
+  await expect(page.getByText("Scroll box 34")).toBeVisible();
+  const before = await page.locator(".app-header").boundingBox();
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(80);
+  const after = await page.locator(".app-header").boundingBox();
+  const logoBox = await page.getByLabel("Change logo style").boundingBox();
+
+  expect(before).not.toBeNull();
+  expect(after).not.toBeNull();
+  expect(Math.abs(after.y - before.y)).toBeLessThan(1);
+  expect(after.y).toBeGreaterThanOrEqual(0);
+  expect(logoBox.y).toBeGreaterThanOrEqual(after.y + 12);
+});
+
 test("action delete requires confirm and undo redo restores the row", async ({ page }) => {
   const t = "2026-05-25T12:00:00.000Z";
   const snapshot = {
@@ -334,6 +378,9 @@ test("note editor opens color picker without selection and accepts hex color", a
 
   await page.getByRole("button", { name: "Text color" }).click();
   await expect(page.getByLabel("Text color hex")).toBeVisible();
+  await expect(page.locator(".is-format-panel-open")).toBeVisible();
+  const caretColor = await page.locator(".ProseMirror").evaluate(node => getComputedStyle(node).caretColor);
+  expect(caretColor === "transparent" || caretColor === "rgba(0, 0, 0, 0)").toBeTruthy();
   await page.getByLabel("Text color hex").fill("#93c5fd");
   await page.getByRole("button", { name: "ok" }).click();
   await page.keyboard.type("Blue text");

@@ -133,7 +133,7 @@ function Header({ workspaceName, logoStyle, onWorkspaceNameChange, onCycleLogoSt
   const titleParts = workspaceNameParts(displayName);
 
   return (
-    <header className="app-header flex justify-between items-center p-5 border-b border-[#333333] bg-[#0a0a0a] relative z-40">
+    <header className="app-header flex justify-between items-center p-5 border-b border-[#333333] bg-[#0a0a0a] sticky top-0 z-40">
       <div className="flex items-center gap-3 min-w-0">
         <BrandLogo
           name={displayName}

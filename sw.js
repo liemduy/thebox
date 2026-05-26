@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v97-note-editor-polish';
+const CACHE_NAME = 'idea-box-v98-fixed-header-loading-logo';
 const APP_SHELL = [
   './',
   './index.html',

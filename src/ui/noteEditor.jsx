@@ -1117,6 +1117,9 @@ function ProseMirrorNoteEditor({ initialHtml, className = "", onReady, onToolbar
         view.focus();
         window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view, { keyboardOnly: true }));
       },
+      blur() {
+        view.dom.blur();
+      },
       run(commandName, options = {}) {
         view.focus();
         view.dispatch(view.state.tr.setSelection(view.state.selection));

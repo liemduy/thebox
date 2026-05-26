@@ -5,6 +5,38 @@ function loadLocalForUser(userId) {
     return raw ? normalizeState(JSON.parse(raw)) : null;
   } catch { return null; }
 }
+
+function loadLocalPreviewState() {
+  const candidates = [];
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !key.startsWith(`${STORAGE_KEY}:`)) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") continue;
+      candidates.push(normalizeState(parsed));
+    }
+  } catch {}
+  const legacy = loadLegacyLocal();
+  if (legacy) candidates.push(legacy);
+  if (!candidates.length) return null;
+  const customScore = state => {
+    const ui = state?.ui || {};
+    const hasCustomLogo = ui.workspaceName && ui.workspaceName !== DEFAULT_WORKSPACE_NAME;
+    const hasCustomStyle = Number(ui.logoStyle || 0) !== 0;
+    return hasCustomLogo || hasCustomStyle ? 1 : 0;
+  };
+  return candidates
+    .filter(Boolean)
+    .sort((a, b) => {
+      const bTime = timestampMs(b.meta?.localUpdatedAt || b.meta?.lastSyncedAt || b.meta?.cloudUpdatedAt);
+      const aTime = timestampMs(a.meta?.localUpdatedAt || a.meta?.lastSyncedAt || a.meta?.cloudUpdatedAt);
+      return (bTime - aTime) || (customScore(b) - customScore(a));
+    })[0] || null;
+}
+
 function loadLegacyLocal() {
   for (const key of LEGACY_KEYS) {
     try {

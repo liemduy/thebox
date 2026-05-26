@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-26-note-editor-polish";
-const APP_CACHE_NAME = "idea-box-v97-note-editor-polish";
+const APP_BUILD_ID = "2026-05-26-fixed-header-loading-logo";
+const APP_CACHE_NAME = "idea-box-v98-fixed-header-loading-logo";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -1300,7 +1300,7 @@ function Header({
   }
   const titleParts = workspaceNameParts(displayName);
   return React.createElement("header", {
-    className: "app-header flex justify-between items-center p-5 border-b border-[#333333] bg-[#0a0a0a] relative z-40"
+    className: "app-header flex justify-between items-center p-5 border-b border-[#333333] bg-[#0a0a0a] sticky top-0 z-40"
   }, React.createElement("div", {
     className: "flex items-center gap-3 min-w-0"
   }, React.createElement(BrandLogo, {
@@ -2147,6 +2147,34 @@ function loadLocalForUser(userId) {
   } catch {
     return null;
   }
+}
+function loadLocalPreviewState() {
+  const candidates = [];
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !key.startsWith(`${STORAGE_KEY}:`)) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") continue;
+      candidates.push(normalizeState(parsed));
+    }
+  } catch {}
+  const legacy = loadLegacyLocal();
+  if (legacy) candidates.push(legacy);
+  if (!candidates.length) return null;
+  const customScore = state => {
+    const ui = state?.ui || {};
+    const hasCustomLogo = ui.workspaceName && ui.workspaceName !== DEFAULT_WORKSPACE_NAME;
+    const hasCustomStyle = Number(ui.logoStyle || 0) !== 0;
+    return hasCustomLogo || hasCustomStyle ? 1 : 0;
+  };
+  return candidates.filter(Boolean).sort((a, b) => {
+    const bTime = timestampMs(b.meta?.localUpdatedAt || b.meta?.lastSyncedAt || b.meta?.cloudUpdatedAt);
+    const aTime = timestampMs(a.meta?.localUpdatedAt || a.meta?.lastSyncedAt || a.meta?.cloudUpdatedAt);
+    return bTime - aTime || customScore(b) - customScore(a);
+  })[0] || null;
 }
 function loadLegacyLocal() {
   for (const key of LEGACY_KEYS) {
@@ -6428,6 +6456,9 @@ function ProseMirrorNoteEditor({
           keyboardOnly: true
         }));
       },
+      blur() {
+        view.dom.blur();
+      },
       run(commandName, options = {}) {
         view.focus();
         view.dispatch(view.state.tr.setSelection(view.state.selection));
@@ -6777,10 +6808,19 @@ function RichNoteModal({
       });
       return;
     }
-    setColorPanel(prev => !prev);
+    setColorPanel(prev => {
+      const next = !prev;
+      if (next) editorApiRef.current?.blur?.();
+      return next;
+    });
+  }
+  function openTablePanelFromToolbar() {
+    setColorPanel(false);
+    editorApiRef.current?.blur?.();
+    openTablePanel();
   }
   return React.createElement("div", {
-    className: "fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden",
+    className: `fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden ${colorPanel || tablePanel ? "is-format-panel-open" : ""}`,
     style: editorViewportStyle
   }, React.createElement("div", {
     className: "fixed left-0 right-0 top-0 z-[60] bg-[#0a0a0a]/95 border-b border-white/[0.035]",
@@ -6862,7 +6902,7 @@ function RichNoteModal({
     size: 16
   })), React.createElement("button", _extends({
     type: "button"
-  }, toolbarButtonProps(openTablePanel), {
+  }, toolbarButtonProps(openTablePanelFromToolbar), {
     className: topButtonClassName(toolbarState.table || tablePanel),
     "aria-label": toolbarState.table ? "Table options" : "Insert table"
   }), React.createElement(NoteTableGlyph, {
@@ -7321,7 +7361,7 @@ function AuthScreen({
 function App() {
   const initialRouteRef = useRef(null);
   if (!initialRouteRef.current) initialRouteRef.current = parseRouteHash();
-  const [db, setDb] = useState(() => normalizeState(applyRouteToState(loadLocalForUser(null) || loadLegacyLocal() || seed(), initialRouteRef.current)));
+  const [db, setDb] = useState(() => normalizeState(applyRouteToState(loadLocalPreviewState() || seed(), initialRouteRef.current)));
   const [booting, setBooting] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
   const [currentView, setCurrentView] = useState(() => routeView(initialRouteRef.current));

@@ -18,6 +18,25 @@
     .rich-editor .ProseMirror:focus,
     .rich-editor .ProseMirror *:focus,
     .rich-editor .ProseMirror-selectednode { outline: none !important; box-shadow: none !important; }
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 45;
+      background: rgba(10, 10, 10, .96);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+    @supports (padding: max(0px)) {
+      .app-header { padding-top: max(20px, calc(16px + env(safe-area-inset-top, 0px))) !important; }
+    }
+    .is-format-panel-open .rich-editor .ProseMirror,
+    .is-format-panel-open .rich-editor .ProseMirror * {
+      caret-color: transparent !important;
+    }
+    .is-format-panel-open .rich-editor .ProseMirror ::selection {
+      background: transparent;
+      color: inherit;
+    }
     .rich-editor p { min-height: 1.45em; margin: .18rem 0; }
     .rich-editor p[data-size="small"] { font-size: .92rem; line-height: 1.45; color: #bdbdbd; }
     .rich-editor .is-editor-empty:first-child::before { content: attr(data-placeholder); color: #555; float: left; height: 0; pointer-events: none; }
@@ -142,8 +161,16 @@
       html, body, #root { min-height: 100dvh; }
       body { overflow-x: hidden; }
       input, textarea, select, [contenteditable="true"] { font-size: max(16px, 1em) !important; }
-      .app-shell { max-width: none !important; min-height: 100dvh !important; }
-      .app-header { padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 16px !important; }
+      .app-shell { max-width: none !important; min-height: 100dvh !important; padding-top: calc(76px + env(safe-area-inset-top, 0px)) !important; }
+      .app-header {
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: 0;
+        width: 100%;
+        max-width: none;
+        padding: max(20px, calc(16px + env(safe-area-inset-top, 0px))) 16px 16px !important;
+      }
       .app-main { padding: 16px 16px calc(92px + env(safe-area-inset-bottom, 0px)) !important; }
       .view-title { font-size: 2.12rem !important; line-height: 1.04 !important; }
       .filter-row { gap: .55rem !important; margin-bottom: 1.35rem !important; }
