@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-27-action-rest-days";
-const APP_CACHE_NAME = "idea-box-v100-action-rest-days";
+const APP_BUILD_ID = "2026-05-27-rest-day-icon-toggle";
+const APP_CACHE_NAME = "idea-box-v101-rest-day-icon-toggle";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -912,6 +912,19 @@ const iconPaths = {
   }), React.createElement("path", {
     d: "M9 9h.01M15 9h.01"
   })),
+  SleepFace: React.createElement(React.Fragment, null, React.createElement("circle", {
+    cx: "12",
+    cy: "12",
+    r: "10"
+  }), React.createElement("path", {
+    d: "M8.5 9.5h2"
+  }), React.createElement("path", {
+    d: "M13.5 9.5h2"
+  }), React.createElement("path", {
+    d: "M9.5 15c1.4 1 3.6 1 5 0"
+  }), React.createElement("path", {
+    d: "M17 5h3l-3 3h3"
+  })),
   ClipboardList: React.createElement(React.Fragment, null, React.createElement("rect", {
     width: "8",
     height: "4",
@@ -1091,6 +1104,7 @@ const Trash2 = makeIcon("Trash2");
 const X = makeIcon("X");
 const CalendarDays = makeIcon("CalendarDays");
 const Smile = makeIcon("Smile");
+const SleepFace = makeIcon("SleepFace");
 const ClipboardList = makeIcon("ClipboardList");
 const CheckSquare = makeIcon("CheckSquare");
 const Table2 = makeIcon("Table2");
@@ -8470,14 +8484,19 @@ function App() {
       selectActionDate(date);
       setIsActionCalendarOpen(false);
     }
-  })), selectedDay && React.createElement("label", {
-    className: `action-rest-toggle shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-full border text-[12px] font-extrabold cursor-pointer select-none transition-all ${selectedRestDay ? "border-[#86efac] bg-[#86efac]/15 text-[#bbf7d0]" : "border-[#444444] text-[#A7A7A7] hover:text-white hover:border-[#86efac]"}`
-  }, React.createElement("input", {
-    type: "checkbox",
-    checked: selectedRestDay,
-    onChange: e => setActionRestDay(selectedDate, e.target.checked),
-    className: "h-3.5 w-3.5 accent-[#86efac]"
-  }), "rest")), selectedRestDay ? React.createElement("div", {
+  })), selectedDay && React.createElement("button", {
+    type: "button",
+    onClick: () => setActionRestDay(selectedDate, !selectedRestDay),
+    className: `action-rest-toggle shrink-0 h-9 w-9 grid place-items-center rounded-full border transition-all active:scale-95 ${selectedRestDay ? "border-[#86efac] bg-[#86efac]/15 text-[#86efac] shadow-[0_0_16px_rgba(134,239,172,0.14)]" : "border-[#444444] text-[#FFD2D7] hover:border-[#FFD2D7] hover:bg-[#FFD2D7]/10"}`,
+    "aria-label": selectedRestDay ? "Cancel rest day" : "Mark as rest day",
+    title: selectedRestDay ? "Cancel rest day" : "Mark as rest day"
+  }, selectedRestDay ? React.createElement(SleepFace, {
+    size: 18,
+    strokeWidth: 2.2
+  }) : React.createElement(Smile, {
+    size: 18,
+    strokeWidth: 2.2
+  }))), selectedRestDay ? React.createElement("div", {
     className: "rest-day-empty flex-1 flex flex-col items-center justify-center pb-20 animate-in fade-in duration-300 text-center"
   }, React.createElement("div", {
     className: "w-20 h-20 bg-[#86efac]/10 border border-[#86efac]/40 rounded-full flex items-center justify-center mb-6"

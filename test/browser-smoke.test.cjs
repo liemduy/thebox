@@ -255,7 +255,7 @@ test("actions open on today and rest day toggles preserve created actions", asyn
 
   await page.getByRole("button", { name: /Create actions/i }).click();
   await expect(page.getByText("Root")).toBeVisible();
-  await page.locator(".action-rest-toggle input").check();
+  await page.locator(".action-rest-toggle").click();
   await expect(page.getByRole("heading", { name: "Rest day" })).toBeVisible();
   await page.getByText("Cancel rest day").click();
   await expect(page.getByText("Root")).toBeVisible();

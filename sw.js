@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v100-action-rest-days';
+const CACHE_NAME = 'idea-box-v101-rest-day-icon-toggle';
 const APP_SHELL = [
   './',
   './index.html',

@@ -134,6 +134,7 @@ test("action rest day state and controls are wired", () => {
   assert.match(actions, /actionDayHasCalendarMarker/);
   assert.match(actions, /#86efac/);
   assert.match(icons, /Smile/);
+  assert.match(icons, /SleepFace/);
 });
 
 test("github actions verifies build and browser smoke", () => {

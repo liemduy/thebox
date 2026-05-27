@@ -815,10 +815,15 @@ function App() {
                   )}
                 </div>
                 {selectedDay && (
-                  <label className={`action-rest-toggle shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-full border text-[12px] font-extrabold cursor-pointer select-none transition-all ${selectedRestDay ? "border-[#86efac] bg-[#86efac]/15 text-[#bbf7d0]" : "border-[#444444] text-[#A7A7A7] hover:text-white hover:border-[#86efac]"}`}>
-                    <input type="checkbox" checked={selectedRestDay} onChange={(e) => setActionRestDay(selectedDate, e.target.checked)} className="h-3.5 w-3.5 accent-[#86efac]" />
-                    rest
-                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setActionRestDay(selectedDate, !selectedRestDay)}
+                    className={`action-rest-toggle shrink-0 h-9 w-9 grid place-items-center rounded-full border transition-all active:scale-95 ${selectedRestDay ? "border-[#86efac] bg-[#86efac]/15 text-[#86efac] shadow-[0_0_16px_rgba(134,239,172,0.14)]" : "border-[#444444] text-[#FFD2D7] hover:border-[#FFD2D7] hover:bg-[#FFD2D7]/10"}`}
+                    aria-label={selectedRestDay ? "Cancel rest day" : "Mark as rest day"}
+                    title={selectedRestDay ? "Cancel rest day" : "Mark as rest day"}
+                  >
+                    {selectedRestDay ? <SleepFace size={18} strokeWidth={2.2} /> : <Smile size={18} strokeWidth={2.2} />}
+                  </button>
                 )}
               </div>
 

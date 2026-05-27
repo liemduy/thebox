@@ -6,8 +6,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-27-action-rest-days";
-const APP_CACHE_NAME = "idea-box-v100-action-rest-days";
+const APP_BUILD_ID = "2026-05-27-rest-day-icon-toggle";
+const APP_CACHE_NAME = "idea-box-v101-rest-day-icon-toggle";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = [
   "idea-box-html-v12-stable-ids",
