@@ -22,10 +22,6 @@ function NoteColorGlyph({ color = "#ffd2d7", active = false }) {
   );
 }
 
-function normalizeMusicPanelNumber(value, fallback, max) {
-  return Math.max(1, Math.min(max, Number(String(value || "").replace(/\D/g, "")) || fallback));
-}
-
 function readVisualViewportMetrics() {
   if (typeof window === "undefined") return { keyboardInset: 0, visualHeight: 0, visualTop: 0 };
   const viewport = window.visualViewport;
@@ -66,9 +62,6 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
   const editorApiRef = useRef(null);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
   const [colorPanel, setColorPanel] = useState(false);
-  const [musicPanel, setMusicPanel] = useState(false);
-  const [musicBars, setMusicBars] = useState("16");
-  const [musicPerLine, setMusicPerLine] = useState("4");
   const [draftColor, setDraftColor] = useState(NOTE_EDITOR_DEFAULT_COLOR);
   const viewportMetrics = useVisualViewportMetrics();
   const isBoxNote = modal.type === "boxNote";
@@ -86,9 +79,6 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
     setToolbarState(NOTE_EDITOR_EMPTY_TOOLBAR);
     setTablePanel(null);
     setColorPanel(false);
-    setMusicPanel(false);
-    setMusicBars("16");
-    setMusicPerLine("4");
     setDraftColor(NOTE_EDITOR_DEFAULT_COLOR);
     window.setTimeout(() => titleRef.current?.focus(), 40);
   }, [editorKey]);
@@ -199,7 +189,6 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
   const colorButtonColor = safeNoteColor(draftColor) || toolbarState.color || NOTE_EDITOR_DEFAULT_COLOR;
   const tablePanelStyle = { top: "calc(var(--note-visual-top, 0px) + var(--note-header-safe-top, env(safe-area-inset-top, 0px)) + 54px)" };
   const colorPanelStyle = tablePanelStyle;
-  const musicPanelStyle = tablePanelStyle;
 
   function applyDraftColor() {
     const color = safeNoteColor(draftColor) || NOTE_EDITOR_DEFAULT_COLOR;
@@ -210,7 +199,6 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
 
   function handleColorButton() {
     setTablePanel(null);
-    setMusicPanel(false);
     if (toolbarState.selectionEmpty === false) {
       runEditorCommand("color", { color: colorButtonColor });
       return;
@@ -224,44 +212,12 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
 
   function openTablePanelFromToolbar() {
     setColorPanel(false);
-    setMusicPanel(false);
     editorApiRef.current?.blur?.();
     openTablePanel();
   }
 
-  function updateMusicDimension(setter) {
-    return (event) => {
-      setter(String(event.target.value || "").replace(/\D/g, "").slice(0, 3));
-    };
-  }
-
-  function settleMusicDimension(setter, value, fallback, max) {
-    setter(String(normalizeMusicPanelNumber(value, fallback, max)));
-  }
-
-  function insertMusicStaff() {
-    const totalBars = normalizeMusicPanelNumber(musicBars, 16, 256);
-    const barsPerLine = normalizeMusicPanelNumber(musicPerLine, 4, 12);
-    setMusicBars(String(totalBars));
-    setMusicPerLine(String(barsPerLine));
-    setMusicPanel(false);
-    runEditorCommandAfterFocus("insert-music-staff", { totalBars, barsPerLine });
-  }
-
-  function submitMusicStaff(event) {
-    event.preventDefault();
-    insertMusicStaff();
-  }
-
-  function openMusicPanelFromToolbar() {
-    setColorPanel(false);
-    setTablePanel(null);
-    setMusicPanel(prev => !prev);
-    editorApiRef.current?.blur?.();
-  }
-
   return (
-    <div className={`fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden ${colorPanel || tablePanel || musicPanel ? "is-format-panel-open" : ""}`} style={editorViewportStyle}>
+    <div className={`fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden ${colorPanel || tablePanel ? "is-format-panel-open" : ""}`} style={editorViewportStyle}>
       <div className="fixed left-0 right-0 top-0 z-[60] bg-[#0a0a0a]/95 border-b border-white/[0.035]" style={headerStyle}>
         <div className="mx-auto w-full max-w-md h-[52px] px-1.5 flex items-center gap-0.5">
           <button type="button" onClick={save} className="h-10 min-w-8 grid place-items-center text-[#FFD2D7] hover:text-white transition-colors text-[30px] font-light leading-none" aria-label="Back">
@@ -279,7 +235,6 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("quote"))} className={topButtonClassName(toolbarState.quote)} aria-label="Quote"><Quote size={16} /></button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("checklist"))} className={topButtonClassName(toolbarState.checklist)} aria-label="Checklist"><CheckSquare size={16} /></button>
             <button type="button" {...toolbarButtonProps(openTablePanelFromToolbar)} className={topButtonClassName(toolbarState.table || tablePanel)} aria-label={toolbarState.table ? "Table options" : "Insert table"}><NoteTableGlyph active={toolbarState.table || Boolean(tablePanel)} menuHint={toolbarState.table} /></button>
-            <button type="button" {...toolbarButtonProps(openMusicPanelFromToolbar)} className={`${topButtonClassName(musicPanel)} w-8 text-[18px] font-black leading-none`} aria-label="Insert music staff" title="Insert music staff">𝄞</button>
             <button type="button" {...toolbarButtonProps(() => runEditorCommand("list"))} className={topButtonClassName(toolbarState.bullet || toolbarState.ordered)} aria-label={listLabel}>
               <span className="text-[15px] font-extrabold leading-none">{listButtonText}</span>
             </button>
@@ -360,30 +315,6 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
                   <button type="button" {...tablePanelButtonProps(() => runTableCommand("table-delete"))} className="table-menu-action table-menu-danger">Delete</button>
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      ) : null}
-      {musicPanel ? (
-        <div className="fixed inset-0 z-[61]" onPointerDown={() => setMusicPanel(false)}>
-          <div className="fixed left-0 right-0 flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150" style={musicPanelStyle}>
-            <div className="music-staff-panel w-full max-w-[360px] bg-[#1A1A1A] border border-[#444444] shadow-2xl px-3 py-3" onPointerDown={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
-              <form className="music-staff-panel-form" onSubmit={submitMusicStaff}>
-                <div className="table-dimension-row">
-                  <span className="table-dimension-label">Bars</span>
-                  <input type="text" inputMode="numeric" pattern="[0-9]*" aria-label="Total bars" value={musicBars} onFocus={e => e.currentTarget.select()} onChange={updateMusicDimension(setMusicBars)} onBlur={() => settleMusicDimension(setMusicBars, musicBars, 16, 256)} className="table-dimension-input" />
-                  <span className="table-dimension-label">Line</span>
-                  <input type="text" inputMode="numeric" pattern="[0-9]*" aria-label="Bars per line" value={musicPerLine} onFocus={e => e.currentTarget.select()} onChange={updateMusicDimension(setMusicPerLine)} onBlur={() => settleMusicDimension(setMusicPerLine, musicPerLine, 4, 12)} className="table-dimension-input" />
-                </div>
-                <div className="music-staff-preview" aria-hidden="true">
-                  <span>1</span>
-                  <i />
-                </div>
-                <div className="table-panel-footer">
-                  <button type="button" {...toolbarButtonProps(() => setMusicPanel(false))} className="table-panel-link table-panel-muted">Cancel</button>
-                  <button type="submit" {...toolbarButtonProps(insertMusicStaff)} className="table-panel-link table-panel-accent">Insert</button>
-                </div>
-              </form>
             </div>
           </div>
         </div>

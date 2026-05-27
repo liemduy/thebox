@@ -352,36 +352,6 @@ test("note table auto fit persists after save and reopen", async ({ page }) => {
   expect(runtimeErrors).toEqual([]);
 });
 
-test("note editor inserts a music staff with measure numbers", async ({ page }) => {
-  const runtimeErrors = [];
-  page.on("pageerror", error => runtimeErrors.push(error.message));
-  page.on("console", message => {
-    if (message.type() === "error") runtimeErrors.push(message.text());
-  });
-
-  await page.goto(`${baseURL}/?local=1#/notes`, { waitUntil: "networkidle" });
-  await page.getByLabel("Create note").click();
-  await page.getByPlaceholder("Title").fill("Music staff smoke");
-
-  await page.getByRole("button", { name: "Insert music staff" }).click();
-  await expect(page.getByLabel("Total bars")).toBeVisible();
-  await page.getByLabel("Total bars").fill("9");
-  await page.getByLabel("Bars per line").fill("4");
-  await page.locator(".music-staff-panel-form").getByRole("button", { name: "Insert", exact: true }).click();
-
-  const staff = page.locator(".ProseMirror [data-note-music-staff]");
-  await expect(staff).toBeVisible();
-  await expect(staff.locator("[data-note-music-system]")).toHaveCount(3);
-  await expect(staff.locator("[data-note-music-measure-number]")).toHaveText(["1", "5", "9"]);
-
-  await page.getByRole("button", { name: "Back" }).click();
-  await expect(page.getByText("Music staff smoke")).toBeVisible();
-  await page.getByText("Music staff smoke").click();
-  await expect(page.locator(".ProseMirror [data-note-music-staff] [data-note-music-measure-number]")).toHaveText(["1", "5", "9"]);
-
-  expect(runtimeErrors).toEqual([]);
-});
-
 test("numbered list shortcut continues as an ordered list", async ({ page }) => {
   const runtimeErrors = [];
   page.on("pageerror", error => runtimeErrors.push(error.message));

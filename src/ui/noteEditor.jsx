@@ -23,7 +23,6 @@ const NOTE_BULLET_STYLES = ["disc", "circle", "square"];
 const NOTE_ORDERED_STYLES = ["decimal", "lower-alpha", "lower-roman"];
 const NOTE_EDITOR_DEFAULT_COLOR = "#ffd2d7";
 const NOTE_EDITOR_SWATCHES = ["#ffd2d7", "#ffffff", "#a7a7a7", "#fca5a5", "#fcd34d", "#86efac", "#93c5fd", "#c4b5fd"];
-const NOTE_MUSIC_STAFF_ATTR = "data-note-music-staff";
 
 function noteEditorPM() {
   return window.ProseMirrorBundle || null;
@@ -58,44 +57,6 @@ function normalizeNoteTextLevel(value) {
 
 function normalizeNoteEditorColor(value) {
   return safeNoteColor(value) || NOTE_EDITOR_DEFAULT_COLOR;
-}
-
-function clampMusicTotalBars(value) {
-  return Math.max(1, Math.min(256, Number(value) || 16));
-}
-
-function clampMusicBarsPerLine(value) {
-  return Math.max(1, Math.min(12, Number(value) || 4));
-}
-
-function musicStaffAttrs(totalBars, barsPerLine) {
-  return {
-    [NOTE_MUSIC_STAFF_ATTR]: "true",
-    "data-total-bars": String(clampMusicTotalBars(totalBars)),
-    "data-bars-per-line": String(clampMusicBarsPerLine(barsPerLine)),
-    contenteditable: "false"
-  };
-}
-
-function musicStaffDomSpec(totalBars, barsPerLine) {
-  const safeTotal = clampMusicTotalBars(totalBars);
-  const safePerLine = clampMusicBarsPerLine(barsPerLine);
-  const systems = [];
-  for (let start = 1; start <= safeTotal; start += safePerLine) {
-    const count = Math.min(safePerLine, safeTotal - start + 1);
-    const bars = [];
-    for (let index = 0; index <= count; index += 1) {
-      bars.push(["span", {
-        "data-note-music-bar": "true",
-        style: `left:${(index / count) * 100}%`
-      }]);
-    }
-    systems.push(["div", { "data-note-music-system": "true" },
-      ["span", { "data-note-music-measure-number": "true" }, String(start)],
-      ["span", { "data-note-music-lines": "true" }, ...bars]
-    ]);
-  }
-  return ["div", musicStaffAttrs(safeTotal, safePerLine), ...systems];
 }
 
 function parseListDepth(dom) {
@@ -232,23 +193,6 @@ function createNoteEditorSchema() {
     }
   });
 
-  nodes = nodes.addToEnd("music_staff", {
-    group: "block",
-    atom: true,
-    selectable: true,
-    attrs: { totalBars: { default: 16 }, barsPerLine: { default: 4 } },
-    parseDOM: [{
-      tag: `div[${NOTE_MUSIC_STAFF_ATTR}]`,
-      getAttrs: dom => ({
-        totalBars: clampMusicTotalBars(dom?.getAttribute?.("data-total-bars")),
-        barsPerLine: clampMusicBarsPerLine(dom?.getAttribute?.("data-bars-per-line"))
-      })
-    }],
-    toDOM(node) {
-      return musicStaffDomSpec(node.attrs.totalBars, node.attrs.barsPerLine);
-    }
-  });
-
   nodes = nodes.addToEnd("task_item", {
     content: "paragraph block*",
     defining: true,
@@ -305,14 +249,13 @@ function normalizeHtmlForNoteEditor(html) {
   const wrapper = document.createElement("div");
   wrapper.innerHTML = sanitizeHtml(html || "");
   wrapper.querySelectorAll("div").forEach(div => {
-    if (div.closest(`[${NOTE_MUSIC_STAFF_ATTR}]`)) return;
     const p = document.createElement("p");
     if (div.hasAttribute("data-indent")) p.setAttribute("data-indent", div.getAttribute("data-indent"));
     if (div.getAttribute("data-size") === "small") p.setAttribute("data-size", "small");
     p.innerHTML = div.innerHTML || "<br>";
     div.replaceWith(p);
   });
-  if (!wrapper.textContent.trim() && !wrapper.querySelector(`br, ul, ol, blockquote, table, h1, h2, h3, [${NOTE_MUSIC_STAFF_ATTR}]`)) {
+  if (!wrapper.textContent.trim() && !wrapper.querySelector("br, ul, ol, blockquote, table, h1, h2, h3")) {
     wrapper.innerHTML = "<p></p>";
   }
   return wrapper.innerHTML;
@@ -980,24 +923,6 @@ function insertTableCommand(schema, options = {}) {
   };
 }
 
-function insertMusicStaffCommand(schema, options = {}) {
-  const pm = noteEditorPM();
-  return (state, dispatch) => {
-    const staff = schema.nodes.music_staff.create({
-      totalBars: clampMusicTotalBars(options.totalBars),
-      barsPerLine: clampMusicBarsPerLine(options.barsPerLine)
-    });
-    if (dispatch) {
-      let tr = state.tr.replaceSelectionWith(staff);
-      const after = Math.min(tr.doc.content.size, tr.selection.to + 1);
-      if (!tr.doc.nodeAt(after)) tr = tr.insert(tr.doc.content.size, schema.nodes.paragraph.create());
-      tr = selectNearPosition(pm, tr, Math.min(tr.doc.content.size - 1, after + 1)).scrollIntoView();
-      dispatch(tr);
-    }
-    return true;
-  };
-}
-
 function toggleQuoteCommand(schema) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
@@ -1088,7 +1013,6 @@ function runNoteEditorCommand(view, commandName, options = {}) {
     checklist: toggleChecklistCommand(schema),
     table: insertTableCommand(schema, options),
     "insert-table": insertTableCommand(schema, options),
-    "insert-music-staff": insertMusicStaffCommand(schema, options),
     "table-row-add": addTableRowCommand(schema),
     "table-row-delete": deleteTableRowCommand(schema),
     "table-col-add": addTableColumnCommand(schema),
