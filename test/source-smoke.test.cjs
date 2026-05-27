@@ -66,6 +66,19 @@ test("note editor no longer relies on execCommand", () => {
   assert.equal(/execCommand/.test(editor + modals), false);
 });
 
+test("note editor supports music staff measure numbers", () => {
+  const editor = fs.readFileSync("src/ui/noteEditor.jsx", "utf8");
+  const modals = fs.readFileSync("src/ui/modals.jsx", "utf8");
+  const schema = fs.readFileSync("src/state/schema.js", "utf8");
+  const css = fs.readFileSync("src/styles.css", "utf8");
+  assert.match(editor, /music_staff/);
+  assert.match(editor, /insert-music-staff/);
+  assert.match(editor, /data-note-music-measure-number/);
+  assert.match(modals, /Insert music staff/);
+  assert.match(schema, /data-note-music-staff/);
+  assert.match(css, /data-note-music-lines/);
+});
+
 test("planner logo exposes fifteen personal styles", () => {
   const header = fs.readFileSync("src/components/header.jsx", "utf8");
   const app = fs.readFileSync("src/app.jsx", "utf8");

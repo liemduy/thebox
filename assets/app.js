@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-27-rest-calendar-zz";
-const APP_CACHE_NAME = "idea-box-v103-rest-calendar-zz";
+const APP_BUILD_ID = "2026-05-27-note-music-staff";
+const APP_CACHE_NAME = "idea-box-v104-note-music-staff";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -1547,6 +1547,15 @@ function sanitizeHtml(input) {
           if (attr.name === "data-indent" && indentable.has(child.tagName)) {
             const level = Math.max(0, Math.min(4, Number(attr.value) || 0));
             if (level > 0) child.setAttribute("data-indent", String(level));else child.removeAttribute(attr.name);
+            return;
+          }
+          if (attr.name === "data-note-music-staff" && child.tagName === "DIV") {
+            if (String(attr.value || "") === "true") child.setAttribute("data-note-music-staff", "true");else child.removeAttribute(attr.name);
+            return;
+          }
+          if ((attr.name === "data-total-bars" || attr.name === "data-bars-per-line") && child.tagName === "DIV" && child.hasAttribute("data-note-music-staff")) {
+            const value = Math.max(1, Math.min(attr.name === "data-total-bars" ? 256 : 12, Number(attr.value) || (attr.name === "data-total-bars" ? 16 : 4)));
+            child.setAttribute(attr.name, String(value));
             return;
           }
           if (attr.name === "data-size" && child.tagName === "P") {
@@ -5292,6 +5301,7 @@ const NOTE_BULLET_STYLES = ["disc", "circle", "square"];
 const NOTE_ORDERED_STYLES = ["decimal", "lower-alpha", "lower-roman"];
 const NOTE_EDITOR_DEFAULT_COLOR = "#ffd2d7";
 const NOTE_EDITOR_SWATCHES = ["#ffd2d7", "#ffffff", "#a7a7a7", "#fca5a5", "#fcd34d", "#86efac", "#93c5fd", "#c4b5fd"];
+const NOTE_MUSIC_STAFF_ATTR = "data-note-music-staff";
 function noteEditorPM() {
   return window.ProseMirrorBundle || null;
 }
@@ -5320,6 +5330,43 @@ function normalizeNoteTextLevel(value) {
 }
 function normalizeNoteEditorColor(value) {
   return safeNoteColor(value) || NOTE_EDITOR_DEFAULT_COLOR;
+}
+function clampMusicTotalBars(value) {
+  return Math.max(1, Math.min(256, Number(value) || 16));
+}
+function clampMusicBarsPerLine(value) {
+  return Math.max(1, Math.min(12, Number(value) || 4));
+}
+function musicStaffAttrs(totalBars, barsPerLine) {
+  return {
+    [NOTE_MUSIC_STAFF_ATTR]: "true",
+    "data-total-bars": String(clampMusicTotalBars(totalBars)),
+    "data-bars-per-line": String(clampMusicBarsPerLine(barsPerLine)),
+    contenteditable: "false"
+  };
+}
+function musicStaffDomSpec(totalBars, barsPerLine) {
+  const safeTotal = clampMusicTotalBars(totalBars);
+  const safePerLine = clampMusicBarsPerLine(barsPerLine);
+  const systems = [];
+  for (let start = 1; start <= safeTotal; start += safePerLine) {
+    const count = Math.min(safePerLine, safeTotal - start + 1);
+    const bars = [];
+    for (let index = 0; index <= count; index += 1) {
+      bars.push(["span", {
+        "data-note-music-bar": "true",
+        style: `left:${index / count * 100}%`
+      }]);
+    }
+    systems.push(["div", {
+      "data-note-music-system": "true"
+    }, ["span", {
+      "data-note-music-measure-number": "true"
+    }, String(start)], ["span", {
+      "data-note-music-lines": "true"
+    }, ...bars]]);
+  }
+  return ["div", musicStaffAttrs(safeTotal, safePerLine), ...systems];
 }
 function parseListDepth(dom) {
   return clampNoteIndent(dom?.getAttribute?.("data-list-depth"));
@@ -5500,6 +5547,29 @@ function createNoteEditorSchema() {
       return ["td", 0];
     }
   });
+  nodes = nodes.addToEnd("music_staff", {
+    group: "block",
+    atom: true,
+    selectable: true,
+    attrs: {
+      totalBars: {
+        default: 16
+      },
+      barsPerLine: {
+        default: 4
+      }
+    },
+    parseDOM: [{
+      tag: `div[${NOTE_MUSIC_STAFF_ATTR}]`,
+      getAttrs: dom => ({
+        totalBars: clampMusicTotalBars(dom?.getAttribute?.("data-total-bars")),
+        barsPerLine: clampMusicBarsPerLine(dom?.getAttribute?.("data-bars-per-line"))
+      })
+    }],
+    toDOM(node) {
+      return musicStaffDomSpec(node.attrs.totalBars, node.attrs.barsPerLine);
+    }
+  });
   nodes = nodes.addToEnd("task_item", {
     content: "paragraph block*",
     defining: true,
@@ -5572,13 +5642,14 @@ function normalizeHtmlForNoteEditor(html) {
   const wrapper = document.createElement("div");
   wrapper.innerHTML = sanitizeHtml(html || "");
   wrapper.querySelectorAll("div").forEach(div => {
+    if (div.closest(`[${NOTE_MUSIC_STAFF_ATTR}]`)) return;
     const p = document.createElement("p");
     if (div.hasAttribute("data-indent")) p.setAttribute("data-indent", div.getAttribute("data-indent"));
     if (div.getAttribute("data-size") === "small") p.setAttribute("data-size", "small");
     p.innerHTML = div.innerHTML || "<br>";
     div.replaceWith(p);
   });
-  if (!wrapper.textContent.trim() && !wrapper.querySelector("br, ul, ol, blockquote, table, h1, h2, h3")) {
+  if (!wrapper.textContent.trim() && !wrapper.querySelector(`br, ul, ol, blockquote, table, h1, h2, h3, [${NOTE_MUSIC_STAFF_ATTR}]`)) {
     wrapper.innerHTML = "<p></p>";
   }
   return wrapper.innerHTML;
@@ -6322,6 +6393,23 @@ function insertTableCommand(schema, options = {}) {
     return true;
   };
 }
+function insertMusicStaffCommand(schema, options = {}) {
+  const pm = noteEditorPM();
+  return (state, dispatch) => {
+    const staff = schema.nodes.music_staff.create({
+      totalBars: clampMusicTotalBars(options.totalBars),
+      barsPerLine: clampMusicBarsPerLine(options.barsPerLine)
+    });
+    if (dispatch) {
+      let tr = state.tr.replaceSelectionWith(staff);
+      const after = Math.min(tr.doc.content.size, tr.selection.to + 1);
+      if (!tr.doc.nodeAt(after)) tr = tr.insert(tr.doc.content.size, schema.nodes.paragraph.create());
+      tr = selectNearPosition(pm, tr, Math.min(tr.doc.content.size - 1, after + 1)).scrollIntoView();
+      dispatch(tr);
+    }
+    return true;
+  };
+}
 function toggleQuoteCommand(schema) {
   const pm = noteEditorPM();
   return (state, dispatch) => {
@@ -6420,6 +6508,7 @@ function runNoteEditorCommand(view, commandName, options = {}) {
     checklist: toggleChecklistCommand(schema),
     table: insertTableCommand(schema, options),
     "insert-table": insertTableCommand(schema, options),
+    "insert-music-staff": insertMusicStaffCommand(schema, options),
     "table-row-add": addTableRowCommand(schema),
     "table-row-delete": deleteTableRowCommand(schema),
     "table-col-add": addTableColumnCommand(schema),
@@ -6668,6 +6757,9 @@ function NoteColorGlyph({
     }
   }));
 }
+function normalizeMusicPanelNumber(value, fallback, max) {
+  return Math.max(1, Math.min(max, Number(String(value || "").replace(/\D/g, "")) || fallback));
+}
 function readVisualViewportMetrics() {
   if (typeof window === "undefined") return {
     keyboardInset: 0,
@@ -6719,6 +6811,9 @@ function RichNoteModal({
   const editorApiRef = useRef(null);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
   const [colorPanel, setColorPanel] = useState(false);
+  const [musicPanel, setMusicPanel] = useState(false);
+  const [musicBars, setMusicBars] = useState("16");
+  const [musicPerLine, setMusicPerLine] = useState("4");
   const [draftColor, setDraftColor] = useState(NOTE_EDITOR_DEFAULT_COLOR);
   const viewportMetrics = useVisualViewportMetrics();
   const isBoxNote = modal.type === "boxNote";
@@ -6735,6 +6830,9 @@ function RichNoteModal({
     setToolbarState(NOTE_EDITOR_EMPTY_TOOLBAR);
     setTablePanel(null);
     setColorPanel(false);
+    setMusicPanel(false);
+    setMusicBars("16");
+    setMusicPerLine("4");
     setDraftColor(NOTE_EDITOR_DEFAULT_COLOR);
     window.setTimeout(() => titleRef.current?.focus(), 40);
   }, [editorKey]);
@@ -6861,6 +6959,7 @@ function RichNoteModal({
     top: "calc(var(--note-visual-top, 0px) + var(--note-header-safe-top, env(safe-area-inset-top, 0px)) + 54px)"
   };
   const colorPanelStyle = tablePanelStyle;
+  const musicPanelStyle = tablePanelStyle;
   function applyDraftColor() {
     const color = safeNoteColor(draftColor) || NOTE_EDITOR_DEFAULT_COLOR;
     setDraftColor(color);
@@ -6871,6 +6970,7 @@ function RichNoteModal({
   }
   function handleColorButton() {
     setTablePanel(null);
+    setMusicPanel(false);
     if (toolbarState.selectionEmpty === false) {
       runEditorCommand("color", {
         color: colorButtonColor
@@ -6885,11 +6985,41 @@ function RichNoteModal({
   }
   function openTablePanelFromToolbar() {
     setColorPanel(false);
+    setMusicPanel(false);
     editorApiRef.current?.blur?.();
     openTablePanel();
   }
+  function updateMusicDimension(setter) {
+    return event => {
+      setter(String(event.target.value || "").replace(/\D/g, "").slice(0, 3));
+    };
+  }
+  function settleMusicDimension(setter, value, fallback, max) {
+    setter(String(normalizeMusicPanelNumber(value, fallback, max)));
+  }
+  function insertMusicStaff() {
+    const totalBars = normalizeMusicPanelNumber(musicBars, 16, 256);
+    const barsPerLine = normalizeMusicPanelNumber(musicPerLine, 4, 12);
+    setMusicBars(String(totalBars));
+    setMusicPerLine(String(barsPerLine));
+    setMusicPanel(false);
+    runEditorCommandAfterFocus("insert-music-staff", {
+      totalBars,
+      barsPerLine
+    });
+  }
+  function submitMusicStaff(event) {
+    event.preventDefault();
+    insertMusicStaff();
+  }
+  function openMusicPanelFromToolbar() {
+    setColorPanel(false);
+    setTablePanel(null);
+    setMusicPanel(prev => !prev);
+    editorApiRef.current?.blur?.();
+  }
   return React.createElement("div", {
-    className: `fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden ${colorPanel || tablePanel ? "is-format-panel-open" : ""}`,
+    className: `fixed inset-0 z-50 bg-[#0a0a0a] text-white animate-in fade-in duration-150 flex justify-center overflow-hidden ${colorPanel || tablePanel || musicPanel ? "is-format-panel-open" : ""}`,
     style: editorViewportStyle
   }, React.createElement("div", {
     className: "fixed left-0 right-0 top-0 z-[60] bg-[#0a0a0a]/95 border-b border-white/[0.035]",
@@ -6978,6 +7108,12 @@ function RichNoteModal({
     active: toolbarState.table || Boolean(tablePanel),
     menuHint: toolbarState.table
   })), React.createElement("button", _extends({
+    type: "button"
+  }, toolbarButtonProps(openMusicPanelFromToolbar), {
+    className: `${topButtonClassName(musicPanel)} w-8 text-[18px] font-black leading-none`,
+    "aria-label": "Insert music staff",
+    title: "Insert music staff"
+  }), "\uD834\uDD1E"), React.createElement("button", _extends({
     type: "button"
   }, toolbarButtonProps(() => runEditorCommand("list")), {
     className: topButtonClassName(toolbarState.bullet || toolbarState.ordered),
@@ -7139,7 +7275,60 @@ function RichNoteModal({
     type: "button"
   }, tablePanelButtonProps(() => runTableCommand("table-delete")), {
     className: "table-menu-action table-menu-danger"
-  }), "Delete"))))) : null, React.createElement("div", {
+  }), "Delete"))))) : null, musicPanel ? React.createElement("div", {
+    className: "fixed inset-0 z-[61]",
+    onPointerDown: () => setMusicPanel(false)
+  }, React.createElement("div", {
+    className: "fixed left-0 right-0 flex justify-center px-3 animate-in fade-in slide-in-from-bottom-4 duration-150",
+    style: musicPanelStyle
+  }, React.createElement("div", {
+    className: "music-staff-panel w-full max-w-[360px] bg-[#1A1A1A] border border-[#444444] shadow-2xl px-3 py-3",
+    onPointerDown: e => e.stopPropagation(),
+    onMouseDown: e => e.stopPropagation(),
+    onClick: e => e.stopPropagation()
+  }, React.createElement("form", {
+    className: "music-staff-panel-form",
+    onSubmit: submitMusicStaff
+  }, React.createElement("div", {
+    className: "table-dimension-row"
+  }, React.createElement("span", {
+    className: "table-dimension-label"
+  }, "Bars"), React.createElement("input", {
+    type: "text",
+    inputMode: "numeric",
+    pattern: "[0-9]*",
+    "aria-label": "Total bars",
+    value: musicBars,
+    onFocus: e => e.currentTarget.select(),
+    onChange: updateMusicDimension(setMusicBars),
+    onBlur: () => settleMusicDimension(setMusicBars, musicBars, 16, 256),
+    className: "table-dimension-input"
+  }), React.createElement("span", {
+    className: "table-dimension-label"
+  }, "Line"), React.createElement("input", {
+    type: "text",
+    inputMode: "numeric",
+    pattern: "[0-9]*",
+    "aria-label": "Bars per line",
+    value: musicPerLine,
+    onFocus: e => e.currentTarget.select(),
+    onChange: updateMusicDimension(setMusicPerLine),
+    onBlur: () => settleMusicDimension(setMusicPerLine, musicPerLine, 4, 12),
+    className: "table-dimension-input"
+  })), React.createElement("div", {
+    className: "music-staff-preview",
+    "aria-hidden": "true"
+  }, React.createElement("span", null, "1"), React.createElement("i", null)), React.createElement("div", {
+    className: "table-panel-footer"
+  }, React.createElement("button", _extends({
+    type: "button"
+  }, toolbarButtonProps(() => setMusicPanel(false)), {
+    className: "table-panel-link table-panel-muted"
+  }), "Cancel"), React.createElement("button", _extends({
+    type: "submit"
+  }, toolbarButtonProps(insertMusicStaff), {
+    className: "table-panel-link table-panel-accent"
+  }), "Insert")))))) : null, React.createElement("div", {
     className: "w-full max-w-md h-[100dvh] bg-[#0a0a0a] flex flex-col",
     style: editorScreenStyle
   }, React.createElement("div", {

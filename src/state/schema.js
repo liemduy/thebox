@@ -69,6 +69,16 @@ function sanitizeHtml(input) {
             else child.removeAttribute(attr.name);
             return;
           }
+          if (attr.name === "data-note-music-staff" && child.tagName === "DIV") {
+            if (String(attr.value || "") === "true") child.setAttribute("data-note-music-staff", "true");
+            else child.removeAttribute(attr.name);
+            return;
+          }
+          if ((attr.name === "data-total-bars" || attr.name === "data-bars-per-line") && child.tagName === "DIV" && child.hasAttribute("data-note-music-staff")) {
+            const value = Math.max(1, Math.min(attr.name === "data-total-bars" ? 256 : 12, Number(attr.value) || (attr.name === "data-total-bars" ? 16 : 4)));
+            child.setAttribute(attr.name, String(value));
+            return;
+          }
           if (attr.name === "data-size" && child.tagName === "P") {
             const size = String(attr.value || "").toLowerCase();
             if (size === "small") child.setAttribute("data-size", "small");
