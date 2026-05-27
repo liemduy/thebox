@@ -78,7 +78,7 @@
     const ui = {};
     const date = params.get("date");
     const filter = params.get("filter");
-    if (validYMD(date)) ui.selectedActionDate = date;
+    ui.selectedActionDate = validYMD(date) ? date : todayYMD();
     if (ACTION_FILTER_VALUES.has(filter)) ui.actionFilter = filter;
     return ui;
   }

@@ -120,6 +120,22 @@ test("compact layout spacing and fixed note undo controls are wired", () => {
   assert.match(modals, /note-fixed-history-actions/);
 });
 
+test("action rest day state and controls are wired", () => {
+  const app = fs.readFileSync("src/app.jsx", "utf8");
+  const actions = fs.readFileSync("src/ui/actions.jsx", "utf8");
+  const schema = fs.readFileSync("src/state/schema.js", "utf8");
+  const actionEntries = fs.readFileSync("src/state/useActionEntries.jsx", "utf8");
+  const icons = fs.readFileSync("src/ui/icons.jsx", "utf8");
+  assert.match(schema, /restDay:\s*Boolean/);
+  assert.match(actionEntries, /function setActionRestDay/);
+  assert.match(app, /Mark as rest day/);
+  assert.match(app, /Cancel rest day/);
+  assert.match(app, /action-rest-toggle/);
+  assert.match(actions, /actionDayHasCalendarMarker/);
+  assert.match(actions, /#86efac/);
+  assert.match(icons, /Smile/);
+});
+
 test("github actions verifies build and browser smoke", () => {
   const workflow = fs.readFileSync(".github/workflows/verify.yml", "utf8");
   assert.match(workflow, /npm ci/);

@@ -75,6 +75,7 @@ function App() {
   const {
     createActionsForDate,
     selectActionDate,
+    setActionRestDay,
     toggleActionOpen,
     openActionDate,
     addActionEntries,
@@ -612,7 +613,9 @@ function App() {
   };
   const rootBoxes = vaultRoots(db, boxView);
   const actionRoots = selectedDay ? childrenOf(null, selectedDay.nodes).filter(root => hasVisibleAction(root, selectedDay.nodes, db.ui.actionFilter || "all")) : [];
-  const actionProgress = selectedDay ? progressForNodes(selectedDay.nodes) : null;
+  const selectedRestDay = Boolean(selectedDay?.restDay);
+  const visibleActionRoots = selectedDay && !selectedRestDay ? actionRoots : [];
+  const actionProgress = selectedDay && !selectedRestDay ? progressForNodes(selectedDay.nodes) : null;
 
   return (
     <div className="min-h-screen bg-black text-white font-sans flex justify-center items-start pt-0 sm:pt-8 pb-12 selection:bg-[#FFD2D7] selection:text-black relative" onClick={closeFloating}>
@@ -643,7 +646,7 @@ function App() {
             <h2 className="view-title text-[1.55rem] leading-[1.1] font-extrabold tracking-tighter flex flex-nowrap items-baseline min-w-0">
               <button type="button" className={`cursor-pointer transition-colors whitespace-nowrap ${currentView === "boxes" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("boxes"); }}>Box</button>
               <span className="text-[#3E3E3E] mx-1.5 font-light">/</span>
-              <button type="button" className={`cursor-pointer transition-colors whitespace-nowrap ${currentView === "actions" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("actions"); }}>Act</button>
+              <button type="button" className={`cursor-pointer transition-colors whitespace-nowrap ${currentView === "actions" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); setCurrentView("actions"); selectActionDate(todayYMD()); }}>Act</button>
               <span className="text-[#3E3E3E] mx-1.5 font-light">/</span>
               <button type="button" className={`cursor-pointer transition-colors whitespace-nowrap ${currentView === "notes" || currentView === "boxNotes" ? "text-white" : "text-[#555555]"}`} onClick={(e) => { e.stopPropagation(); openNotesTab(); }}>Note</button>
             </h2>
@@ -787,15 +790,16 @@ function App() {
                   )}
                 </div>
 
-                <div className="relative flex items-center justify-between bg-transparent border border-[#555555] rounded-full px-4 py-1.5 hover:border-white transition-colors group flex-1">
+                <div className="relative flex items-center justify-between bg-transparent border border-[#555555] rounded-full px-3 py-1.5 hover:border-white transition-colors group flex-1 min-w-0">
                   <button type="button" onClick={() => selectActionDate(addDaysYMD(selectedDate, -1))} className="text-[#A7A7A7] group-hover:text-white transition-colors"><ChevronLeft size={16} /></button>
                   <div className="flex items-center justify-center gap-1.5 min-w-0">
                     <DateTextInput
                       value={selectedDate}
                       ariaLabel="Action date"
                       onCommit={(date) => { selectActionDate(date); setIsActionCalendarOpen(false); }}
-                      inputClassName="w-[92px] text-center text-[16px] font-bold leading-none"
+                      inputClassName="w-[82px] text-center text-[16px] font-bold leading-none"
                     />
+                    <button type="button" onClick={(e) => { e.stopPropagation(); selectActionDate(todayYMD()); }} className={`px-2 py-[2px] rounded-full text-[11px] font-extrabold transition-colors ${selectedDate === todayYMD() ? "bg-[#FFD2D7] text-black" : "text-[#A7A7A7] hover:text-white hover:bg-[#333333]"}`} aria-label="Go to today">Today</button>
                     {actionProgress ? <span className="text-[#A7A7A7] font-semibold text-[12px] whitespace-nowrap">{actionProgress.done}/{actionProgress.total}</span> : null}
                     <button type="button" aria-label="Open action date calendar" onClick={(e) => { e.stopPropagation(); setIsActionCalendarOpen(!isActionCalendarOpen); setIsActionsMenuOpen(false); }} className="h-8 w-8 shrink-0 grid place-items-center rounded-full text-[#FFD2D7] hover:text-white hover:bg-[#333333] transition-colors">
                       <CalendarDays size={14} />
@@ -810,21 +814,43 @@ function App() {
                     />
                   )}
                 </div>
+                {selectedDay && (
+                  <label className={`action-rest-toggle shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-full border text-[12px] font-extrabold cursor-pointer select-none transition-all ${selectedRestDay ? "border-[#86efac] bg-[#86efac]/15 text-[#bbf7d0]" : "border-[#444444] text-[#A7A7A7] hover:text-white hover:border-[#86efac]"}`}>
+                    <input type="checkbox" checked={selectedRestDay} onChange={(e) => setActionRestDay(selectedDate, e.target.checked)} className="h-3.5 w-3.5 accent-[#86efac]" />
+                    rest
+                  </label>
+                )}
               </div>
 
-              {!selectedDay ? (
+              {selectedRestDay ? (
+                <div className="rest-day-empty flex-1 flex flex-col items-center justify-center pb-20 animate-in fade-in duration-300 text-center">
+                  <div className="w-20 h-20 bg-[#86efac]/10 border border-[#86efac]/40 rounded-full flex items-center justify-center mb-6">
+                    <Smile size={38} className="text-[#86efac]" />
+                  </div>
+                  <h3 className="text-[#bbf7d0] font-extrabold text-[20px] mb-2">Rest day</h3>
+                  <p className="text-[#A7A7A7] text-[13px] leading-relaxed max-w-[260px] mb-5">No actions scheduled. Keep the day light.</p>
+                  <button type="button" onClick={() => setActionRestDay(selectedDate, false)} className="text-[#86efac] hover:text-white active:scale-95 text-[14px] font-bold underline underline-offset-4 decoration-[#86efac] transition-all">
+                    Cancel rest day
+                  </button>
+                </div>
+              ) : !selectedDay ? (
                 <div className="flex-1 flex flex-col items-center justify-center pb-20 animate-in fade-in duration-300">
                   <div className="w-20 h-20 bg-[#1E1E1E] rounded-full flex items-center justify-center mb-6">
                     <CalendarDays size={36} className="text-[#A7A7A7]" />
                   </div>
                   <h3 className="text-white font-bold text-[18px] mb-2">No scheduled actions yet</h3>
-                  <button type="button" onClick={() => createActionsForDate(selectedDate)} className="bg-[#FFD2D7] hover:scale-105 active:scale-95 transition-transform text-black font-bold px-7 py-3 rounded-full flex items-center gap-2">
-                    <Plus size={18} strokeWidth={2.5} /> Create actions
-                  </button>
+                  <div className="mt-4 flex flex-col items-center gap-3">
+                    <button type="button" onClick={() => createActionsForDate(selectedDate)} className="bg-[#FFD2D7] hover:scale-105 active:scale-95 transition-transform text-black font-bold px-7 py-3 rounded-full flex items-center gap-2">
+                      <Plus size={18} strokeWidth={2.5} /> Create actions
+                    </button>
+                    <button type="button" onClick={() => setActionRestDay(selectedDate, true)} className="text-[#86efac] hover:text-white active:scale-95 text-[14px] font-bold underline underline-offset-4 decoration-[#86efac] transition-all">
+                      Mark as rest day
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                  {actionRoots.length ? actionRoots.map(item => (
+                  {visibleActionRoots.length ? visibleActionRoots.map(item => (
                     <div key={item.id} className="bg-[#141414] rounded-[12px] border border-white/[0.03]">
                       <ActionTreeItem state={db} day={selectedDay} node={item} level={0} menuOpenId={activeMenu} setMenuOpenId={setActiveMenu} menuPlacements={menuPlacements} openNodeMenu={openNodeMenu} handlers={actionHandlers} flashTarget={flashTarget} />
                     </div>

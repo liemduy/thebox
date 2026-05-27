@@ -18,6 +18,7 @@ function useActionEntries({
         day = { id: uid("day"), date: ymd, createdAt: t, updatedAt: t, nodes: [] };
         state.actionDays.push(day);
       }
+      day.restDay = false;
       syncActionDayWithBox(state, day);
     }, { sync: false });
   }
@@ -30,6 +31,32 @@ function useActionEntries({
       syncSelectedActionDayWithBox(next);
       return markPendingSync(next);
     });
+  }
+
+  function setActionRestDay(date = selectedDate, restDay = true) {
+    const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) ? date : todayYMD();
+    commit(restDay ? "Mark rest day" : "Cancel rest day", state => {
+      state.ui.selectedActionDate = ymd;
+      state.ui.actionFilter = "all";
+      let day = state.actionDays.find(item => item.date === ymd);
+      const t = now();
+      if (restDay) {
+        if (!day) {
+          day = { id: uid("day"), date: ymd, restDay: true, createdAt: t, updatedAt: t, nodes: [] };
+          state.actionDays.push(day);
+        } else {
+          day.restDay = true;
+          day.updatedAt = t;
+        }
+        return;
+      }
+      if (!day) return false;
+      day.restDay = false;
+      day.updatedAt = t;
+      if (!Array.isArray(day.nodes) || !day.nodes.length) {
+        state.actionDays = state.actionDays.filter(item => item.id !== day.id);
+      }
+    }, { sync: false });
   }
 
   function toggleActionOpen(id) {
@@ -229,6 +256,7 @@ function useActionEntries({
   return {
     createActionsForDate,
     selectActionDate,
+    setActionRestDay,
     toggleActionOpen,
     openActionDate,
     addActionEntries,

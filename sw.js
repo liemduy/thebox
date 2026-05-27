@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v99-compact-layout-note-history';
+const CACHE_NAME = 'idea-box-v100-action-rest-days';
 const APP_SHELL = [
   './',
   './index.html',

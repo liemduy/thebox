@@ -21,6 +21,7 @@ const iconPaths = {
   Trash2: (<><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></>),
   X: (<path d="M18 6 6 18M6 6l12 12"/>),
   CalendarDays: (<><path d="M8 2v4M16 2v4M3 10h18"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></>),
+  Smile: (<><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></>),
   ClipboardList: (<><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/></>),
   CheckSquare: (<><path d="M8 12.5 10.5 15 16 9"/><rect x="3.5" y="3.5" width="17" height="17" rx="3"/></>),
   Table2: (<><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 9.5h17M3.5 14.5h17M10 4.5v15M16 4.5v15"/></>),
@@ -68,6 +69,7 @@ const CheckCircle = makeIcon("CheckCircle");
 const Trash2 = makeIcon("Trash2");
 const X = makeIcon("X");
 const CalendarDays = makeIcon("CalendarDays");
+const Smile = makeIcon("Smile");
 const ClipboardList = makeIcon("ClipboardList");
 const CheckSquare = makeIcon("CheckSquare");
 const Table2 = makeIcon("Table2");

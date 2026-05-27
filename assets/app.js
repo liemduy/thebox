@@ -78,7 +78,7 @@
     const ui = {};
     const date = params.get("date");
     const filter = params.get("filter");
-    if (validYMD(date)) ui.selectedActionDate = date;
+    ui.selectedActionDate = validYMD(date) ? date : todayYMD();
     if (ACTION_FILTER_VALUES.has(filter)) ui.actionFilter = filter;
     return ui;
   }
@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-26-compact-layout-note-history";
-const APP_CACHE_NAME = "idea-box-v99-compact-layout-note-history";
+const APP_BUILD_ID = "2026-05-27-action-rest-days";
+const APP_CACHE_NAME = "idea-box-v100-action-rest-days";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -903,6 +903,15 @@ const iconPaths = {
   }), React.createElement("path", {
     d: "M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"
   })),
+  Smile: React.createElement(React.Fragment, null, React.createElement("circle", {
+    cx: "12",
+    cy: "12",
+    r: "10"
+  }), React.createElement("path", {
+    d: "M8 14s1.5 2 4 2 4-2 4-2"
+  }), React.createElement("path", {
+    d: "M9 9h.01M15 9h.01"
+  })),
   ClipboardList: React.createElement(React.Fragment, null, React.createElement("rect", {
     width: "8",
     height: "4",
@@ -1081,6 +1090,7 @@ const CheckCircle = makeIcon("CheckCircle");
 const Trash2 = makeIcon("Trash2");
 const X = makeIcon("X");
 const CalendarDays = makeIcon("CalendarDays");
+const Smile = makeIcon("Smile");
 const ClipboardList = makeIcon("ClipboardList");
 const CheckSquare = makeIcon("CheckSquare");
 const Table2 = makeIcon("Table2");
@@ -2010,6 +2020,7 @@ function normalizeState(parsed) {
   const actionDays = Array.isArray(parsed.actionDays) ? parsed.actionDays.map(day => ({
     id: rememberId(day.id || uid("day")),
     date: /^\d{4}-\d{2}-\d{2}$/.test(String(day.date || "")) ? day.date : todayYMD(),
+    restDay: Boolean(day.restDay || day.isRestDay || day.rest),
     createdAt: day.createdAt || now(),
     updatedAt: day.updatedAt || now(),
     nodes: Array.isArray(day.nodes) ? day.nodes.map((n, i) => ({
@@ -3058,6 +3069,7 @@ function useActionEntries({
         };
         state.actionDays.push(day);
       }
+      day.restDay = false;
       syncActionDayWithBox(state, day);
     }, {
       sync: false
@@ -3070,6 +3082,40 @@ function useActionEntries({
       next.ui.selectedActionDate = date;
       syncSelectedActionDayWithBox(next);
       return markPendingSync(next);
+    });
+  }
+  function setActionRestDay(date = selectedDate, restDay = true) {
+    const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) ? date : todayYMD();
+    commit(restDay ? "Mark rest day" : "Cancel rest day", state => {
+      state.ui.selectedActionDate = ymd;
+      state.ui.actionFilter = "all";
+      let day = state.actionDays.find(item => item.date === ymd);
+      const t = now();
+      if (restDay) {
+        if (!day) {
+          day = {
+            id: uid("day"),
+            date: ymd,
+            restDay: true,
+            createdAt: t,
+            updatedAt: t,
+            nodes: []
+          };
+          state.actionDays.push(day);
+        } else {
+          day.restDay = true;
+          day.updatedAt = t;
+        }
+        return;
+      }
+      if (!day) return false;
+      day.restDay = false;
+      day.updatedAt = t;
+      if (!Array.isArray(day.nodes) || !day.nodes.length) {
+        state.actionDays = state.actionDays.filter(item => item.id !== day.id);
+      }
+    }, {
+      sync: false
     });
   }
   function toggleActionOpen(id) {
@@ -3313,6 +3359,7 @@ function useActionEntries({
   return {
     createActionsForDate,
     selectActionDate,
+    setActionRestDay,
     toggleActionOpen,
     openActionDate,
     addActionEntries,
@@ -5099,11 +5146,15 @@ function DateTextInput({
 function actionDayHasEntries(day) {
   return (day.nodes || []).some(node => entriesFor(node).length > 0);
 }
+function actionDayHasCalendarMarker(day) {
+  return Boolean(day?.restDay) || actionDayHasEntries(day);
+}
 function actionDayCalendarMeta(day) {
   const entries = (day?.nodes || []).flatMap(node => entriesFor(node));
   const actions = entries.filter(entry => entry.type === "action");
   const done = actions.filter(entry => entry.done).length;
   return {
+    restDay: Boolean(day?.restDay),
     hasEntries: entries.length > 0,
     total: actions.length,
     done,
@@ -5126,7 +5177,7 @@ function ActionDatePickerPanel({
   const firstDay = new Date(year, monthNumber - 1, 1);
   const startOffset = (firstDay.getDay() + 6) % 7;
   const selectedMonth = new Date(year, monthNumber - 1, 1);
-  const dayMeta = new Map((actionDays || []).filter(actionDayHasEntries).map(day => [day.date, actionDayCalendarMeta(day)]));
+  const dayMeta = new Map((actionDays || []).filter(actionDayHasCalendarMarker).map(day => [day.date, actionDayCalendarMeta(day)]));
   const cells = Array.from({
     length: 42
   }, (_, index) => {
@@ -5175,20 +5226,21 @@ function ActionDatePickerPanel({
   }, cells.map(date => {
     const inMonth = date.slice(0, 7) === month;
     const meta = dayMeta.get(date);
+    const restDay = Boolean(meta?.restDay);
     const hasEntries = Boolean(meta?.hasEntries);
     const progress = meta?.progress || 0;
     const selected = date === selectedDate;
     const today = date === todayYMD();
     const dayNumber = Number(date.slice(-2));
-    const className = selected ? "bg-transparent border-[#FFD2D7] text-white shadow-[0_0_18px_rgba(255,210,215,0.18)] [text-shadow:0_1px_4px_rgba(0,0,0,0.75)]" : hasEntries ? "bg-transparent border-[#FFD2D7] text-[#FFD2D7] [text-shadow:0_1px_4px_rgba(0,0,0,0.75)]" : today ? "bg-transparent border-[#555555] text-white" : "bg-transparent border-transparent text-[#A7A7A7] hover:border-[#555555] hover:text-white";
+    const className = restDay ? selected ? "bg-[#86efac]/15 border-[#86efac] text-[#bbf7d0] shadow-[0_0_18px_rgba(134,239,172,0.18)]" : "bg-[#86efac]/10 border-[#86efac] text-[#bbf7d0]" : selected ? "bg-transparent border-[#FFD2D7] text-white shadow-[0_0_18px_rgba(255,210,215,0.18)] [text-shadow:0_1px_4px_rgba(0,0,0,0.75)]" : hasEntries ? "bg-transparent border-[#FFD2D7] text-[#FFD2D7] [text-shadow:0_1px_4px_rgba(0,0,0,0.75)]" : today ? "bg-transparent border-[#555555] text-white" : "bg-transparent border-transparent text-[#A7A7A7] hover:border-[#555555] hover:text-white";
     return React.createElement("button", {
       key: date,
       type: "button",
       onClick: () => onSelect(date),
       className: `relative h-8 overflow-hidden rounded-[9px] border text-[12px] font-extrabold transition-all ${className} ${inMonth ? "" : "opacity-35"}`,
       "aria-label": displayDate(date),
-      title: hasEntries ? meta.total ? `${meta.done}/${meta.total} actions done` : "Has notes" : displayDate(date)
-    }, progress > 0 && React.createElement("span", {
+      title: restDay ? "Rest day" : hasEntries ? meta.total ? `${meta.done}/${meta.total} actions done` : "Has notes" : displayDate(date)
+    }, !restDay && progress > 0 && React.createElement("span", {
       "aria-hidden": "true",
       className: "absolute bottom-0 left-0 right-0 bg-[#FFD2D7]",
       style: {
@@ -7473,6 +7525,7 @@ function App() {
   const {
     createActionsForDate,
     selectActionDate,
+    setActionRestDay,
     toggleActionOpen,
     openActionDate,
     addActionEntries,
@@ -8034,7 +8087,9 @@ function App() {
   };
   const rootBoxes = vaultRoots(db, boxView);
   const actionRoots = selectedDay ? childrenOf(null, selectedDay.nodes).filter(root => hasVisibleAction(root, selectedDay.nodes, db.ui.actionFilter || "all")) : [];
-  const actionProgress = selectedDay ? progressForNodes(selectedDay.nodes) : null;
+  const selectedRestDay = Boolean(selectedDay?.restDay);
+  const visibleActionRoots = selectedDay && !selectedRestDay ? actionRoots : [];
+  const actionProgress = selectedDay && !selectedRestDay ? progressForNodes(selectedDay.nodes) : null;
   return React.createElement("div", {
     className: "min-h-screen bg-black text-white font-sans flex justify-center items-start pt-0 sm:pt-8 pb-12 selection:bg-[#FFD2D7] selection:text-black relative",
     onClick: closeFloating
@@ -8086,6 +8141,7 @@ function App() {
     onClick: e => {
       e.stopPropagation();
       setCurrentView("actions");
+      selectActionDate(todayYMD());
     }
   }, "Act"), React.createElement("span", {
     className: "text-[#3E3E3E] mx-1.5 font-light"
@@ -8363,7 +8419,7 @@ function App() {
     },
     className: "px-4 py-2.5 text-[14px] font-medium text-left text-white hover:bg-[#3E3E3E] transition-colors capitalize"
   }, opt)))), React.createElement("div", {
-    className: "relative flex items-center justify-between bg-transparent border border-[#555555] rounded-full px-4 py-1.5 hover:border-white transition-colors group flex-1"
+    className: "relative flex items-center justify-between bg-transparent border border-[#555555] rounded-full px-3 py-1.5 hover:border-white transition-colors group flex-1 min-w-0"
   }, React.createElement("button", {
     type: "button",
     onClick: () => selectActionDate(addDaysYMD(selectedDate, -1)),
@@ -8379,8 +8435,16 @@ function App() {
       selectActionDate(date);
       setIsActionCalendarOpen(false);
     },
-    inputClassName: "w-[92px] text-center text-[16px] font-bold leading-none"
-  }), actionProgress ? React.createElement("span", {
+    inputClassName: "w-[82px] text-center text-[16px] font-bold leading-none"
+  }), React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      selectActionDate(todayYMD());
+    },
+    className: `px-2 py-[2px] rounded-full text-[11px] font-extrabold transition-colors ${selectedDate === todayYMD() ? "bg-[#FFD2D7] text-black" : "text-[#A7A7A7] hover:text-white hover:bg-[#333333]"}`,
+    "aria-label": "Go to today"
+  }, "Today"), actionProgress ? React.createElement("span", {
     className: "text-[#A7A7A7] font-semibold text-[12px] whitespace-nowrap"
   }, actionProgress.done, "/", actionProgress.total) : null, React.createElement("button", {
     type: "button",
@@ -8406,7 +8470,29 @@ function App() {
       selectActionDate(date);
       setIsActionCalendarOpen(false);
     }
-  }))), !selectedDay ? React.createElement("div", {
+  })), selectedDay && React.createElement("label", {
+    className: `action-rest-toggle shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-full border text-[12px] font-extrabold cursor-pointer select-none transition-all ${selectedRestDay ? "border-[#86efac] bg-[#86efac]/15 text-[#bbf7d0]" : "border-[#444444] text-[#A7A7A7] hover:text-white hover:border-[#86efac]"}`
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: selectedRestDay,
+    onChange: e => setActionRestDay(selectedDate, e.target.checked),
+    className: "h-3.5 w-3.5 accent-[#86efac]"
+  }), "rest")), selectedRestDay ? React.createElement("div", {
+    className: "rest-day-empty flex-1 flex flex-col items-center justify-center pb-20 animate-in fade-in duration-300 text-center"
+  }, React.createElement("div", {
+    className: "w-20 h-20 bg-[#86efac]/10 border border-[#86efac]/40 rounded-full flex items-center justify-center mb-6"
+  }, React.createElement(Smile, {
+    size: 38,
+    className: "text-[#86efac]"
+  })), React.createElement("h3", {
+    className: "text-[#bbf7d0] font-extrabold text-[20px] mb-2"
+  }, "Rest day"), React.createElement("p", {
+    className: "text-[#A7A7A7] text-[13px] leading-relaxed max-w-[260px] mb-5"
+  }, "No actions scheduled. Keep the day light."), React.createElement("button", {
+    type: "button",
+    onClick: () => setActionRestDay(selectedDate, false),
+    className: "text-[#86efac] hover:text-white active:scale-95 text-[14px] font-bold underline underline-offset-4 decoration-[#86efac] transition-all"
+  }, "Cancel rest day")) : !selectedDay ? React.createElement("div", {
     className: "flex-1 flex flex-col items-center justify-center pb-20 animate-in fade-in duration-300"
   }, React.createElement("div", {
     className: "w-20 h-20 bg-[#1E1E1E] rounded-full flex items-center justify-center mb-6"
@@ -8415,16 +8501,22 @@ function App() {
     className: "text-[#A7A7A7]"
   })), React.createElement("h3", {
     className: "text-white font-bold text-[18px] mb-2"
-  }, "No scheduled actions yet"), React.createElement("button", {
+  }, "No scheduled actions yet"), React.createElement("div", {
+    className: "mt-4 flex flex-col items-center gap-3"
+  }, React.createElement("button", {
     type: "button",
     onClick: () => createActionsForDate(selectedDate),
     className: "bg-[#FFD2D7] hover:scale-105 active:scale-95 transition-transform text-black font-bold px-7 py-3 rounded-full flex items-center gap-2"
   }, React.createElement(Plus, {
     size: 18,
     strokeWidth: 2.5
-  }), " Create actions")) : React.createElement("div", {
+  }), " Create actions"), React.createElement("button", {
+    type: "button",
+    onClick: () => setActionRestDay(selectedDate, true),
+    className: "text-[#86efac] hover:text-white active:scale-95 text-[14px] font-bold underline underline-offset-4 decoration-[#86efac] transition-all"
+  }, "Mark as rest day"))) : React.createElement("div", {
     className: "space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300"
-  }, actionRoots.length ? actionRoots.map(item => React.createElement("div", {
+  }, visibleActionRoots.length ? visibleActionRoots.map(item => React.createElement("div", {
     key: item.id,
     className: "bg-[#141414] rounded-[12px] border border-white/[0.03]"
   }, React.createElement(ActionTreeItem, {

@@ -25,6 +25,8 @@ test("parses box route filters and showDays toggle", () => {
 });
 
 test("builds action and search hashes with stable params", () => {
+  const actionRoute = core.parseRouteHash("#/actions");
+  assert.equal(actionRoute.ui.selectedActionDate, core.todayYMD());
   assert.equal(
     core.buildAppHash({
       currentView: "actions",

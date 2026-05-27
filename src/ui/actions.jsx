@@ -185,11 +185,16 @@ function actionDayHasEntries(day) {
   return (day.nodes || []).some(node => entriesFor(node).length > 0);
 }
 
+function actionDayHasCalendarMarker(day) {
+  return Boolean(day?.restDay) || actionDayHasEntries(day);
+}
+
 function actionDayCalendarMeta(day) {
   const entries = (day?.nodes || []).flatMap(node => entriesFor(node));
   const actions = entries.filter(entry => entry.type === "action");
   const done = actions.filter(entry => entry.done).length;
   return {
+    restDay: Boolean(day?.restDay),
     hasEntries: entries.length > 0,
     total: actions.length,
     done,
@@ -205,7 +210,7 @@ function ActionDatePickerPanel({ selectedDate, actionDays, onSelect, align = "ri
   const startOffset = (firstDay.getDay() + 6) % 7;
   const selectedMonth = new Date(year, monthNumber - 1, 1);
   const dayMeta = new Map((actionDays || [])
-    .filter(actionDayHasEntries)
+    .filter(actionDayHasCalendarMarker)
     .map(day => [day.date, actionDayCalendarMeta(day)]));
   const cells = Array.from({ length: 42 }, (_, index) => {
     const date = new Date(year, monthNumber - 1, index - startOffset + 1);
@@ -242,13 +247,18 @@ function ActionDatePickerPanel({ selectedDate, actionDays, onSelect, align = "ri
         {cells.map(date => {
           const inMonth = date.slice(0, 7) === month;
           const meta = dayMeta.get(date);
+          const restDay = Boolean(meta?.restDay);
           const hasEntries = Boolean(meta?.hasEntries);
           const progress = meta?.progress || 0;
           const selected = date === selectedDate;
           const today = date === todayYMD();
           const dayNumber = Number(date.slice(-2));
-          const className = selected
-            ? "bg-transparent border-[#FFD2D7] text-white shadow-[0_0_18px_rgba(255,210,215,0.18)] [text-shadow:0_1px_4px_rgba(0,0,0,0.75)]"
+          const className = restDay
+            ? (selected
+              ? "bg-[#86efac]/15 border-[#86efac] text-[#bbf7d0] shadow-[0_0_18px_rgba(134,239,172,0.18)]"
+              : "bg-[#86efac]/10 border-[#86efac] text-[#bbf7d0]")
+            : selected
+              ? "bg-transparent border-[#FFD2D7] text-white shadow-[0_0_18px_rgba(255,210,215,0.18)] [text-shadow:0_1px_4px_rgba(0,0,0,0.75)]"
             : hasEntries
               ? "bg-transparent border-[#FFD2D7] text-[#FFD2D7] [text-shadow:0_1px_4px_rgba(0,0,0,0.75)]"
               : today
@@ -261,9 +271,9 @@ function ActionDatePickerPanel({ selectedDate, actionDays, onSelect, align = "ri
               onClick={() => onSelect(date)}
               className={`relative h-8 overflow-hidden rounded-[9px] border text-[12px] font-extrabold transition-all ${className} ${inMonth ? "" : "opacity-35"}`}
               aria-label={displayDate(date)}
-              title={hasEntries ? (meta.total ? `${meta.done}/${meta.total} actions done` : "Has notes") : displayDate(date)}
+              title={restDay ? "Rest day" : hasEntries ? (meta.total ? `${meta.done}/${meta.total} actions done` : "Has notes") : displayDate(date)}
             >
-              {progress > 0 && (
+              {!restDay && progress > 0 && (
                 <span
                   aria-hidden="true"
                   className="absolute bottom-0 left-0 right-0 bg-[#FFD2D7]"

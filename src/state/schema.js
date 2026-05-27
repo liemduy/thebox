@@ -507,6 +507,7 @@ function normalizeState(parsed) {
   const actionDays = Array.isArray(parsed.actionDays) ? parsed.actionDays.map(day => ({
     id: rememberId(day.id || uid("day")),
     date: /^\d{4}-\d{2}-\d{2}$/.test(String(day.date || "")) ? day.date : todayYMD(),
+    restDay: Boolean(day.restDay || day.isRestDay || day.rest),
     createdAt: day.createdAt || now(),
     updatedAt: day.updatedAt || now(),
     nodes: Array.isArray(day.nodes) ? day.nodes.map((n, i) => ({

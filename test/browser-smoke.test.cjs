@@ -16,6 +16,15 @@ const MIME = {
 let server;
 let baseURL;
 
+function testTodayYMD(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function compactDateLabel(ymd) {
+  const [year, month, day] = ymd.split("-");
+  return `${day}/${month}/${year}`;
+}
+
 async function serveFile(request, response) {
   const url = new URL(request.url, "http://127.0.0.1");
   const cleanPath = decodeURIComponent(url.pathname).replace(/^\/+/, "") || "index.html";
@@ -211,6 +220,45 @@ test("action delete requires confirm and undo redo restores the row", async ({ p
   await expect(row).toBeVisible();
   await page.getByLabel("Redo").click();
   await expect(row).toHaveCount(0);
+});
+
+test("actions open on today and rest day toggles preserve created actions", async ({ page }) => {
+  const t = "2026-05-25T12:00:00.000Z";
+  const today = testTodayYMD();
+  const snapshot = {
+    version: 5,
+    meta: {},
+    boxNodes: [
+      { id: "root", parentId: null, level: 1, title: "Root", sort: 1, boxNoteTitle: "", boxNoteHtml: "", archivedAt: null, doneAt: null, createdAt: t, updatedAt: t }
+    ],
+    actionDays: [],
+    notes: [],
+    noteLinks: [],
+    ui: { selectedActionDate: "2026-05-01", actionFilter: "all" }
+  };
+  await page.addInitScript(payload => {
+    localStorage.setItem("idea-box-html-v13-action-notes:guest", JSON.stringify(payload));
+    localStorage.setItem("idea-box-html-v13-action-notes:local", JSON.stringify(payload));
+  }, snapshot);
+
+  await page.goto(`${baseURL}/?local=1#/boxes`, { waitUntil: "networkidle" });
+  await page.locator(".view-title").getByRole("button", { name: /^Act$/ }).click();
+  await expect(page.getByRole("textbox", { name: "Action date" })).toHaveValue(compactDateLabel(today));
+  await expect(page.getByRole("button", { name: "Go to today" })).toBeVisible();
+
+  await page.getByText("Mark as rest day").click();
+  await expect(page.getByRole("heading", { name: "Rest day" })).toBeVisible();
+  await page.getByLabel("Open action date calendar").click();
+  await expect(page.locator('button[title="Rest day"]')).toBeVisible();
+  await page.getByText("Cancel rest day").click();
+  await expect(page.getByText("No scheduled actions yet")).toBeVisible();
+
+  await page.getByRole("button", { name: /Create actions/i }).click();
+  await expect(page.getByText("Root")).toBeVisible();
+  await page.locator(".action-rest-toggle input").check();
+  await expect(page.getByRole("heading", { name: "Rest day" })).toBeVisible();
+  await page.getByText("Cancel rest day").click();
+  await expect(page.getByText("Root")).toBeVisible();
 });
 
 test("box remove requires confirm and undo redo restores the box", async ({ page }) => {
