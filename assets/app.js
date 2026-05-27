@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-27-compact-action-date-rest-icon";
-const APP_CACHE_NAME = "idea-box-v102-compact-action-date-rest-icon";
+const APP_BUILD_ID = "2026-05-27-rest-calendar-zz";
+const APP_CACHE_NAME = "idea-box-v103-rest-calendar-zz";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -5260,7 +5260,10 @@ function ActionDatePickerPanel({
       style: {
         height: `${progress}%`
       }
-    }), React.createElement("span", {
+    }), restDay && React.createElement("span", {
+      "aria-hidden": "true",
+      className: "calendar-rest-zz"
+    }, "zz"), React.createElement("span", {
       className: "relative z-10"
     }, dayNumber));
   })));

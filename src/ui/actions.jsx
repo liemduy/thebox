@@ -280,6 +280,7 @@ function ActionDatePickerPanel({ selectedDate, actionDays, onSelect, align = "ri
                   style={{ height: `${progress}%` }}
                 />
               )}
+              {restDay && <span aria-hidden="true" className="calendar-rest-zz">zz</span>}
               <span className="relative z-10">{dayNumber}</span>
             </button>
           );

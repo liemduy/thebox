@@ -134,6 +134,7 @@ test("action rest day state and controls are wired", () => {
   assert.doesNotMatch(app, /Go to today/);
   assert.match(app, /action-date-today/);
   assert.match(actions, /actionDayHasCalendarMarker/);
+  assert.match(actions, /calendar-rest-zz/);
   assert.match(actions, /#86efac/);
   assert.match(icons, /Smile/);
   assert.match(icons, /SleepFace/);

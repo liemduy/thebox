@@ -252,6 +252,7 @@ test("actions open on today and rest day toggles preserve created actions", asyn
   await expect(page.getByRole("heading", { name: "Rest day" })).toBeVisible();
   await page.getByLabel("Open action date calendar").click();
   await expect(page.locator('button[title="Rest day"]')).toBeVisible();
+  await expect(page.locator('button[title="Rest day"] .calendar-rest-zz')).toContainText("zz");
   await page.getByText("Cancel rest day").click();
   await expect(page.getByText("No scheduled actions yet")).toBeVisible();
 
