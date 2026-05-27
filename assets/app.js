@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-27-rest-day-icon-toggle";
-const APP_CACHE_NAME = "idea-box-v101-rest-day-icon-toggle";
+const APP_BUILD_ID = "2026-05-27-compact-action-date-rest-icon";
+const APP_CACHE_NAME = "idea-box-v102-compact-action-date-rest-icon";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -8449,16 +8449,8 @@ function App() {
       selectActionDate(date);
       setIsActionCalendarOpen(false);
     },
-    inputClassName: "w-[82px] text-center text-[16px] font-bold leading-none"
-  }), React.createElement("button", {
-    type: "button",
-    onClick: e => {
-      e.stopPropagation();
-      selectActionDate(todayYMD());
-    },
-    className: `px-2 py-[2px] rounded-full text-[11px] font-extrabold transition-colors ${selectedDate === todayYMD() ? "bg-[#FFD2D7] text-black" : "text-[#A7A7A7] hover:text-white hover:bg-[#333333]"}`,
-    "aria-label": "Go to today"
-  }, "Today"), actionProgress ? React.createElement("span", {
+    inputClassName: `w-[92px] text-center text-[16px] font-bold leading-none ${selectedDate === todayYMD() ? "action-date-today" : ""}`
+  }), actionProgress ? React.createElement("span", {
     className: "text-[#A7A7A7] font-semibold text-[12px] whitespace-nowrap"
   }, actionProgress.done, "/", actionProgress.total) : null, React.createElement("button", {
     type: "button",
@@ -8487,15 +8479,15 @@ function App() {
   })), selectedDay && React.createElement("button", {
     type: "button",
     onClick: () => setActionRestDay(selectedDate, !selectedRestDay),
-    className: `action-rest-toggle shrink-0 h-9 w-9 grid place-items-center rounded-full border transition-all active:scale-95 ${selectedRestDay ? "border-[#86efac] bg-[#86efac]/15 text-[#86efac] shadow-[0_0_16px_rgba(134,239,172,0.14)]" : "border-[#444444] text-[#FFD2D7] hover:border-[#FFD2D7] hover:bg-[#FFD2D7]/10"}`,
+    className: `action-rest-toggle shrink-0 h-9 w-9 grid place-items-center transition-all active:scale-95 ${selectedRestDay ? "text-[#86efac] hover:text-[#bbf7d0]" : "text-[#FFD2D7] hover:text-white"}`,
     "aria-label": selectedRestDay ? "Cancel rest day" : "Mark as rest day",
     title: selectedRestDay ? "Cancel rest day" : "Mark as rest day"
   }, selectedRestDay ? React.createElement(SleepFace, {
-    size: 18,
-    strokeWidth: 2.2
+    size: 32,
+    strokeWidth: 1.9
   }) : React.createElement(Smile, {
-    size: 18,
-    strokeWidth: 2.2
+    size: 32,
+    strokeWidth: 1.9
   }))), selectedRestDay ? React.createElement("div", {
     className: "rest-day-empty flex-1 flex flex-col items-center justify-center pb-20 animate-in fade-in duration-300 text-center"
   }, React.createElement("div", {

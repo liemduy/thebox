@@ -797,9 +797,8 @@ function App() {
                       value={selectedDate}
                       ariaLabel="Action date"
                       onCommit={(date) => { selectActionDate(date); setIsActionCalendarOpen(false); }}
-                      inputClassName="w-[82px] text-center text-[16px] font-bold leading-none"
+                      inputClassName={`w-[92px] text-center text-[16px] font-bold leading-none ${selectedDate === todayYMD() ? "action-date-today" : ""}`}
                     />
-                    <button type="button" onClick={(e) => { e.stopPropagation(); selectActionDate(todayYMD()); }} className={`px-2 py-[2px] rounded-full text-[11px] font-extrabold transition-colors ${selectedDate === todayYMD() ? "bg-[#FFD2D7] text-black" : "text-[#A7A7A7] hover:text-white hover:bg-[#333333]"}`} aria-label="Go to today">Today</button>
                     {actionProgress ? <span className="text-[#A7A7A7] font-semibold text-[12px] whitespace-nowrap">{actionProgress.done}/{actionProgress.total}</span> : null}
                     <button type="button" aria-label="Open action date calendar" onClick={(e) => { e.stopPropagation(); setIsActionCalendarOpen(!isActionCalendarOpen); setIsActionsMenuOpen(false); }} className="h-8 w-8 shrink-0 grid place-items-center rounded-full text-[#FFD2D7] hover:text-white hover:bg-[#333333] transition-colors">
                       <CalendarDays size={14} />
@@ -818,11 +817,11 @@ function App() {
                   <button
                     type="button"
                     onClick={() => setActionRestDay(selectedDate, !selectedRestDay)}
-                    className={`action-rest-toggle shrink-0 h-9 w-9 grid place-items-center rounded-full border transition-all active:scale-95 ${selectedRestDay ? "border-[#86efac] bg-[#86efac]/15 text-[#86efac] shadow-[0_0_16px_rgba(134,239,172,0.14)]" : "border-[#444444] text-[#FFD2D7] hover:border-[#FFD2D7] hover:bg-[#FFD2D7]/10"}`}
+                    className={`action-rest-toggle shrink-0 h-9 w-9 grid place-items-center transition-all active:scale-95 ${selectedRestDay ? "text-[#86efac] hover:text-[#bbf7d0]" : "text-[#FFD2D7] hover:text-white"}`}
                     aria-label={selectedRestDay ? "Cancel rest day" : "Mark as rest day"}
                     title={selectedRestDay ? "Cancel rest day" : "Mark as rest day"}
                   >
-                    {selectedRestDay ? <SleepFace size={18} strokeWidth={2.2} /> : <Smile size={18} strokeWidth={2.2} />}
+                    {selectedRestDay ? <SleepFace size={32} strokeWidth={1.9} /> : <Smile size={32} strokeWidth={1.9} />}
                   </button>
                 )}
               </div>

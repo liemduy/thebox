@@ -243,8 +243,10 @@ test("actions open on today and rest day toggles preserve created actions", asyn
 
   await page.goto(`${baseURL}/?local=1#/boxes`, { waitUntil: "networkidle" });
   await page.locator(".view-title").getByRole("button", { name: /^Act$/ }).click();
-  await expect(page.getByRole("textbox", { name: "Action date" })).toHaveValue(compactDateLabel(today));
-  await expect(page.getByRole("button", { name: "Go to today" })).toBeVisible();
+  const actionDate = page.getByRole("textbox", { name: "Action date" });
+  await expect(actionDate).toHaveValue(compactDateLabel(today));
+  await expect(actionDate).toHaveClass(/action-date-today/);
+  await expect(page.getByRole("button", { name: "Go to today" })).toHaveCount(0);
 
   await page.getByText("Mark as rest day").click();
   await expect(page.getByRole("heading", { name: "Rest day" })).toBeVisible();

@@ -86,6 +86,7 @@
     .box-filter-row { margin-bottom: 25px !important; }
     .action-filter-row { margin-bottom: 29px !important; }
     .notes-filter-row { margin-bottom: 18px !important; }
+    .action-date-today { color: #FFD2D7; text-decoration: underline; text-decoration-thickness: 1.2px; text-underline-offset: 4px; }
     .note-fixed-history-actions { border-left: 1px solid rgba(255, 255, 255, .08); padding-left: .25rem; }
     .note-color-glyph { width: 18px; height: 18px; display: inline-grid; place-items: center; border: 1.5px solid currentColor; border-radius: 5px; padding: 2px; }
     .note-color-glyph-fill { width: 100%; height: 100%; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); }
