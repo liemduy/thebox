@@ -472,13 +472,13 @@ function markCloudSynced(state, timestamp = now()) {
 function shouldPreferLocal(localState, cloudState, cloudUpdatedAt = "") {
   if (!localState) return false;
   if (!cloudState) return true;
-  if (localState.meta?.pendingSync) return true;
   const localTime = timestampMs(localState.meta?.localUpdatedAt);
   const cloudTime = Math.max(
     timestampMs(cloudUpdatedAt),
     timestampMs(cloudState.meta?.cloudUpdatedAt),
     timestampMs(cloudState.meta?.lastSyncedAt)
   );
+  if (localState.meta?.pendingSync) return !cloudTime || localTime >= cloudTime;
   return localTime > cloudTime;
 }
 

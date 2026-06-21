@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v103-rest-calendar-zz';
+const CACHE_NAME = 'idea-box-v104-note-save-hardening';
 const APP_SHELL = [
   './',
   './index.html',

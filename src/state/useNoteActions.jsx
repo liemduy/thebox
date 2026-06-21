@@ -19,13 +19,14 @@ function useNoteActions({ db, commit, setModal, flashAfterNavigation, notesForVi
     return id;
   }
 
-  function saveCentralNote({ noteId, title, bodyHtml, noteDate, link }) {
+  function saveCentralNote({ noteId, title, bodyHtml, noteDate, link, keepOpen = false }) {
     let savedId = noteId;
     commit("Save note", state => {
       savedId = upsertCentralNote(state, { noteId, title, bodyHtml, noteDate, link });
       syncNoteToLinkedLegacy(state, savedId);
       state.ui.notesView = link ? "linked" : (state.ui.notesView || "free");
-    }, { sync: false });
+    }, { sync: false, history: !keepOpen });
+    if (keepOpen) return;
     setModal(null);
     if (savedId) flashAfterNavigation({ type: "note", id: savedId });
   }
@@ -44,7 +45,7 @@ function useNoteActions({ db, commit, setModal, flashAfterNavigation, notesForVi
     setModal(null);
   }
 
-  function saveBoxNote({ boxId, title, bodyHtml }) {
+  function saveBoxNote({ boxId, title, bodyHtml, keepOpen = false }) {
     commit("Save box note", state => {
       const node = getNode(state.boxNodes, boxId);
       if (!node) return false;
@@ -59,8 +60,8 @@ function useNoteActions({ db, commit, setModal, flashAfterNavigation, notesForVi
         noteDate: String(t).slice(0, 10),
         link: { id: boxNoteLinkId(boxId), linkType: "box", boxNodeId: boxId }
       });
-    });
-    setModal(null);
+    }, { history: !keepOpen });
+    if (!keepOpen) setModal(null);
   }
 
   function deleteBoxNote({ boxId }) {

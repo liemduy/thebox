@@ -115,7 +115,8 @@ function useActionEntries({
     setModal(null);
   }
 
-  function saveActionNote({ dayId, nodeId, entryId, title, bodyHtml }) {
+  function saveActionNote({ dayId, nodeId, entryId, title, bodyHtml, keepOpen = false }) {
+    let savedEntryId = entryId || null;
     commit("Save action note", state => {
       const day = state.actionDays.find(d => d.id === dayId);
       const node = day ? getNode(day.nodes, nodeId) : null;
@@ -123,7 +124,7 @@ function useActionEntries({
       const t = now();
       node.entries = normalizeEntries(node);
       const entry = entryId ? node.entries.find(e => e.id === entryId) : null;
-      let savedEntryId = entry?.id || null;
+      savedEntryId = entry?.id || null;
       if (entry) {
         entry.title = cleanTitle(title || "Note");
         entry.bodyHtml = sanitizeHtml(bodyHtml || "");
@@ -154,7 +155,11 @@ function useActionEntries({
       }
       state.ui.actionFilter = "all";
       state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => id !== nodeId);
-    }, { sync: false });
+    }, { sync: false, history: !keepOpen });
+    if (keepOpen) {
+      setModal(prev => prev?.type === "actionNote" ? { ...prev, entryId: savedEntryId || prev.entryId } : prev);
+      return;
+    }
     setModal(null);
   }
 

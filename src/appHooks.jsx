@@ -15,9 +15,11 @@ function usePlannerHistory(setDb, syncBeforeSave) {
       const changed = mutator(next);
       if (changed === false) return prev;
       if (options.sync !== false) syncBeforeSave?.(next);
-      pushHistory(undoRef.current, before);
-      redoRef.current = [];
-      setHistoryTick(t => t + 1);
+      if (options.history !== false) {
+        pushHistory(undoRef.current, before);
+        redoRef.current = [];
+        setHistoryTick(t => t + 1);
+      }
       return markPendingSync(next);
     });
   }

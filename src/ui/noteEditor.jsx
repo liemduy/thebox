@@ -1069,16 +1069,18 @@ function scrollNoteEditorSelectionIntoView(view, options = {}) {
   }
 }
 
-function ProseMirrorNoteEditor({ initialHtml, className = "", onReady, onToolbarState }) {
+function ProseMirrorNoteEditor({ initialHtml, className = "", onReady, onToolbarState, onChange }) {
   const hostRef = useRef(null);
   const viewRef = useRef(null);
   const readyRef = useRef(onReady);
   const toolbarRef = useRef(onToolbarState);
+  const changeRef = useRef(onChange);
 
   useEffect(() => {
     readyRef.current = onReady;
     toolbarRef.current = onToolbarState;
-  }, [onReady, onToolbarState]);
+    changeRef.current = onChange;
+  }, [onReady, onToolbarState, onChange]);
 
   useEffect(() => {
     const pm = noteEditorPM();
@@ -1104,6 +1106,7 @@ function ProseMirrorNoteEditor({ initialHtml, className = "", onReady, onToolbar
         const nextState = view.state.apply(transaction);
         view.updateState(nextState);
         toolbarRef.current?.(readNoteEditorToolbarState(view));
+        if (transaction.docChanged) changeRef.current?.(serializeNoteEditorDoc(schema, view.state.doc));
         if (shouldScroll) window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
       }
     });

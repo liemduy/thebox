@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-05-27-rest-calendar-zz";
-const APP_CACHE_NAME = "idea-box-v103-rest-calendar-zz";
+const APP_BUILD_ID = "2026-06-21-note-save-hardening";
+const APP_CACHE_NAME = "idea-box-v104-note-save-hardening";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -2001,9 +2001,9 @@ function markCloudSynced(state, timestamp = now()) {
 function shouldPreferLocal(localState, cloudState, cloudUpdatedAt = "") {
   if (!localState) return false;
   if (!cloudState) return true;
-  if (localState.meta?.pendingSync) return true;
   const localTime = timestampMs(localState.meta?.localUpdatedAt);
   const cloudTime = Math.max(timestampMs(cloudUpdatedAt), timestampMs(cloudState.meta?.cloudUpdatedAt), timestampMs(cloudState.meta?.lastSyncedAt));
+  if (localState.meta?.pendingSync) return !cloudTime || localTime >= cloudTime;
   return localTime > cloudTime;
 }
 function normalizeState(parsed) {
@@ -2931,7 +2931,8 @@ function useNoteActions({
     title,
     bodyHtml,
     noteDate,
-    link
+    link,
+    keepOpen = false
   }) {
     let savedId = noteId;
     commit("Save note", state => {
@@ -2945,8 +2946,10 @@ function useNoteActions({
       syncNoteToLinkedLegacy(state, savedId);
       state.ui.notesView = link ? "linked" : state.ui.notesView || "free";
     }, {
-      sync: false
+      sync: false,
+      history: !keepOpen
     });
+    if (keepOpen) return;
     setModal(null);
     if (savedId) flashAfterNavigation({
       type: "note",
@@ -2976,7 +2979,8 @@ function useNoteActions({
   function saveBoxNote({
     boxId,
     title,
-    bodyHtml
+    bodyHtml,
+    keepOpen = false
   }) {
     commit("Save box note", state => {
       const node = getNode(state.boxNodes, boxId);
@@ -2996,8 +3000,10 @@ function useNoteActions({
           boxNodeId: boxId
         }
       });
+    }, {
+      history: !keepOpen
     });
-    setModal(null);
+    if (!keepOpen) setModal(null);
   }
   function deleteBoxNote({
     boxId
@@ -3208,8 +3214,10 @@ function useActionEntries({
     nodeId,
     entryId,
     title,
-    bodyHtml
+    bodyHtml,
+    keepOpen = false
   }) {
+    let savedEntryId = entryId || null;
     commit("Save action note", state => {
       const day = state.actionDays.find(d => d.id === dayId);
       const node = day ? getNode(day.nodes, nodeId) : null;
@@ -3217,7 +3225,7 @@ function useActionEntries({
       const t = now();
       node.entries = normalizeEntries(node);
       const entry = entryId ? node.entries.find(e => e.id === entryId) : null;
-      let savedEntryId = entry?.id || null;
+      savedEntryId = entry?.id || null;
       if (entry) {
         entry.title = cleanTitle(title || "Note");
         entry.bodyHtml = sanitizeHtml(bodyHtml || "");
@@ -3255,8 +3263,16 @@ function useActionEntries({
       state.ui.actionFilter = "all";
       state.ui.collapsedActionNodes = (state.ui.collapsedActionNodes || []).filter(id => id !== nodeId);
     }, {
-      sync: false
+      sync: false,
+      history: !keepOpen
     });
+    if (keepOpen) {
+      setModal(prev => prev?.type === "actionNote" ? {
+        ...prev,
+        entryId: savedEntryId || prev.entryId
+      } : prev);
+      return;
+    }
     setModal(null);
   }
   function deleteActionNoteMirror(state, entryId) {
@@ -3687,9 +3703,11 @@ function usePlannerHistory(setDb, syncBeforeSave) {
       const changed = mutator(next);
       if (changed === false) return prev;
       if (options.sync !== false) syncBeforeSave?.(next);
-      pushHistory(undoRef.current, before);
-      redoRef.current = [];
-      setHistoryTick(t => t + 1);
+      if (options.history !== false) {
+        pushHistory(undoRef.current, before);
+        redoRef.current = [];
+        setHistoryTick(t => t + 1);
+      }
       return markPendingSync(next);
     });
   }
@@ -6474,16 +6492,19 @@ function ProseMirrorNoteEditor({
   initialHtml,
   className = "",
   onReady,
-  onToolbarState
+  onToolbarState,
+  onChange
 }) {
   const hostRef = useRef(null);
   const viewRef = useRef(null);
   const readyRef = useRef(onReady);
   const toolbarRef = useRef(onToolbarState);
+  const changeRef = useRef(onChange);
   useEffect(() => {
     readyRef.current = onReady;
     toolbarRef.current = onToolbarState;
-  }, [onReady, onToolbarState]);
+    changeRef.current = onChange;
+  }, [onReady, onToolbarState, onChange]);
   useEffect(() => {
     const pm = noteEditorPM();
     const schema = createNoteEditorSchema();
@@ -6511,6 +6532,7 @@ function ProseMirrorNoteEditor({
         const nextState = view.state.apply(transaction);
         view.updateState(nextState);
         toolbarRef.current?.(readNoteEditorToolbarState(view));
+        if (transaction.docChanged) changeRef.current?.(serializeNoteEditorDoc(schema, view.state.doc));
         if (shouldScroll) window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view));
       }
     });
@@ -6717,6 +6739,9 @@ function RichNoteModal({
 }) {
   const titleRef = useRef(null);
   const editorApiRef = useRef(null);
+  const autosaveTimerRef = useRef(null);
+  const draftDirtyRef = useRef(false);
+  const draftCentralNoteIdRef = useRef(null);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
   const [colorPanel, setColorPanel] = useState(false);
   const [draftColor, setDraftColor] = useState(NOTE_EDITOR_DEFAULT_COLOR);
@@ -6732,6 +6757,9 @@ function RichNoteModal({
   const initialTitle = isCentralNote ? centralNote?.title || "" : isBoxNote ? box?.boxNoteTitle || "" : entry?.title || "";
   const editorKey = `${modal.type}-${modal.noteId || modal.boxId || ""}-${modal.dayId || ""}-${modal.nodeId || ""}-${modal.entryId || "new"}`;
   useEffect(() => {
+    draftCentralNoteIdRef.current = isCentralNote ? modal.noteId || uid("note") : null;
+    draftDirtyRef.current = false;
+    clearTimeout(autosaveTimerRef.current);
     setToolbarState(NOTE_EDITOR_EMPTY_TOOLBAR);
     setTablePanel(null);
     setColorPanel(false);
@@ -6741,27 +6769,80 @@ function RichNoteModal({
   useEffect(() => {
     if (!colorPanel) setDraftColor(toolbarState.color || NOTE_EDITOR_DEFAULT_COLOR);
   }, [toolbarState.color, colorPanel]);
-  function save() {
+  function draftPayload(options = {}) {
     const html = sanitizeHtml(editorApiRef.current?.getHtml() || "");
     const title = titleRef.current?.value || "";
-    if (isCentralNote) onSave({
-      noteId: modal.noteId || null,
+    const keepOpen = Boolean(options.keepOpen);
+    if (isCentralNote) return {
+      noteId: modal.noteId || draftCentralNoteIdRef.current || null,
       title,
       bodyHtml: html,
       noteDate: modal.noteDate || centralNote?.noteDate || todayYMD(),
-      link: modal.link || null
-    });else if (isBoxNote) onSave({
+      link: modal.link || null,
+      keepOpen
+    };
+    if (isBoxNote) return {
       boxId: modal.boxId,
       title,
-      bodyHtml: html
-    });else onSave({
+      bodyHtml: html,
+      keepOpen
+    };
+    return {
       dayId: modal.dayId,
       nodeId: modal.nodeId,
       entryId: modal.entryId || null,
       title: title || "Note",
-      bodyHtml: html
+      bodyHtml: html,
+      keepOpen
+    };
+  }
+  function draftHasContent(payload) {
+    return Boolean(cleanOptionalTitle(payload?.title || "") || htmlToText(payload?.bodyHtml || ""));
+  }
+  function persistDraft(options = {}) {
+    const payload = draftPayload(options);
+    const existingTarget = Boolean(modal.noteId || modal.entryId || isBoxNote);
+    if (options.keepOpen && !existingTarget && !draftHasContent(payload)) return false;
+    onSave(payload);
+    draftDirtyRef.current = false;
+    return true;
+  }
+  function save() {
+    clearTimeout(autosaveTimerRef.current);
+    persistDraft({
+      keepOpen: false
     });
   }
+  function scheduleDraftAutosave() {
+    draftDirtyRef.current = true;
+    clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = window.setTimeout(() => persistDraft({
+      keepOpen: true
+    }), 1400);
+  }
+  function saveDraftInPlace() {
+    clearTimeout(autosaveTimerRef.current);
+    persistDraft({
+      keepOpen: true
+    });
+  }
+  useEffect(() => {
+    const flushDraft = () => {
+      if (draftDirtyRef.current) saveDraftInPlace();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushDraft();
+    };
+    window.addEventListener("pagehide", flushDraft);
+    window.addEventListener("beforeunload", flushDraft);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearTimeout(autosaveTimerRef.current);
+      window.removeEventListener("pagehide", flushDraft);
+      window.removeEventListener("beforeunload", flushDraft);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [editorKey]);
   function runEditorCommand(command, options = {}) {
     const api = editorApiRef.current;
     if (!api) {
@@ -7006,7 +7087,7 @@ function RichNoteModal({
     type: "button",
     onClick: e => {
       e.stopPropagation();
-      onSyncNow();
+      saveDraftInPlace();
     },
     title: syncLabel || syncText,
     "aria-label": syncLabel || syncText,
@@ -7150,6 +7231,8 @@ function RichNoteModal({
     type: "text",
     placeholder: "Title",
     defaultValue: initialTitle,
+    onInput: scheduleDraftAutosave,
+    onBlur: saveDraftInPlace,
     className: "note-title-input w-full bg-transparent border-none outline-none px-0 pt-3 pb-2 text-white font-black leading-[1.04] placeholder:text-[#555555] tracking-normal"
   }), React.createElement(ProseMirrorNoteEditor, {
     key: editorKey,
@@ -7158,7 +7241,8 @@ function RichNoteModal({
     onReady: api => {
       editorApiRef.current = api;
     },
-    onToolbarState: setToolbarState
+    onToolbarState: setToolbarState,
+    onChange: scheduleDraftAutosave
   }))));
 }
 function ConfirmModal({

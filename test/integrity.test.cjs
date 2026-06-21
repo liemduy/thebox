@@ -138,3 +138,27 @@ test("noteBoxLinkInfo distinguishes root and sub-box notes", () => {
   assert.equal(runtime.noteBoxLinkInfo(state, "sub-note").level, 2);
   assert.equal(runtime.noteBoxLinkInfo(state, "missing"), null);
 });
+
+test("cloud newer snapshot is not overwritten by stale pending local state", () => {
+  const runtime = createRuntime();
+  const local = {
+    meta: {
+      pendingSync: true,
+      localUpdatedAt: "2026-05-22T10:00:00.000Z"
+    }
+  };
+  const cloud = {
+    meta: {
+      cloudUpdatedAt: "2026-05-22T11:00:00.000Z",
+      lastSyncedAt: "2026-05-22T11:00:00.000Z"
+    }
+  };
+
+  assert.equal(runtime.shouldPreferLocal(local, cloud, "2026-05-22T11:00:00.000Z"), false);
+  assert.equal(runtime.shouldPreferLocal({
+    meta: {
+      pendingSync: true,
+      localUpdatedAt: "2026-05-22T12:00:00.000Z"
+    }
+  }, cloud, "2026-05-22T11:00:00.000Z"), true);
+});

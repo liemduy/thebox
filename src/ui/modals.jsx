@@ -60,6 +60,9 @@ function useVisualViewportMetrics() {
 function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel = "", onSyncNow = () => {} }) {
   const titleRef = useRef(null);
   const editorApiRef = useRef(null);
+  const autosaveTimerRef = useRef(null);
+  const draftDirtyRef = useRef(false);
+  const draftCentralNoteIdRef = useRef(null);
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
   const [colorPanel, setColorPanel] = useState(false);
   const [draftColor, setDraftColor] = useState(NOTE_EDITOR_DEFAULT_COLOR);
@@ -76,6 +79,9 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
   const editorKey = `${modal.type}-${modal.noteId || modal.boxId || ""}-${modal.dayId || ""}-${modal.nodeId || ""}-${modal.entryId || "new"}`;
 
   useEffect(() => {
+    draftCentralNoteIdRef.current = isCentralNote ? (modal.noteId || uid("note")) : null;
+    draftDirtyRef.current = false;
+    clearTimeout(autosaveTimerRef.current);
     setToolbarState(NOTE_EDITOR_EMPTY_TOOLBAR);
     setTablePanel(null);
     setColorPanel(false);
@@ -87,13 +93,61 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
     if (!colorPanel) setDraftColor(toolbarState.color || NOTE_EDITOR_DEFAULT_COLOR);
   }, [toolbarState.color, colorPanel]);
 
-  function save() {
+  function draftPayload(options = {}) {
     const html = sanitizeHtml(editorApiRef.current?.getHtml() || "");
     const title = titleRef.current?.value || "";
-    if (isCentralNote) onSave({ noteId: modal.noteId || null, title, bodyHtml: html, noteDate: modal.noteDate || centralNote?.noteDate || todayYMD(), link: modal.link || null });
-    else if (isBoxNote) onSave({ boxId: modal.boxId, title, bodyHtml: html });
-    else onSave({ dayId: modal.dayId, nodeId: modal.nodeId, entryId: modal.entryId || null, title: title || "Note", bodyHtml: html });
+    const keepOpen = Boolean(options.keepOpen);
+    if (isCentralNote) return { noteId: modal.noteId || draftCentralNoteIdRef.current || null, title, bodyHtml: html, noteDate: modal.noteDate || centralNote?.noteDate || todayYMD(), link: modal.link || null, keepOpen };
+    if (isBoxNote) return { boxId: modal.boxId, title, bodyHtml: html, keepOpen };
+    return { dayId: modal.dayId, nodeId: modal.nodeId, entryId: modal.entryId || null, title: title || "Note", bodyHtml: html, keepOpen };
   }
+
+  function draftHasContent(payload) {
+    return Boolean(cleanOptionalTitle(payload?.title || "") || htmlToText(payload?.bodyHtml || ""));
+  }
+
+  function persistDraft(options = {}) {
+    const payload = draftPayload(options);
+    const existingTarget = Boolean(modal.noteId || modal.entryId || isBoxNote);
+    if (options.keepOpen && !existingTarget && !draftHasContent(payload)) return false;
+    onSave(payload);
+    draftDirtyRef.current = false;
+    return true;
+  }
+
+  function save() {
+    clearTimeout(autosaveTimerRef.current);
+    persistDraft({ keepOpen: false });
+  }
+
+  function scheduleDraftAutosave() {
+    draftDirtyRef.current = true;
+    clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = window.setTimeout(() => persistDraft({ keepOpen: true }), 1400);
+  }
+
+  function saveDraftInPlace() {
+    clearTimeout(autosaveTimerRef.current);
+    persistDraft({ keepOpen: true });
+  }
+
+  useEffect(() => {
+    const flushDraft = () => {
+      if (draftDirtyRef.current) saveDraftInPlace();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushDraft();
+    };
+    window.addEventListener("pagehide", flushDraft);
+    window.addEventListener("beforeunload", flushDraft);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearTimeout(autosaveTimerRef.current);
+      window.removeEventListener("pagehide", flushDraft);
+      window.removeEventListener("beforeunload", flushDraft);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [editorKey]);
 
   function runEditorCommand(command, options = {}) {
     const api = editorApiRef.current;
@@ -243,7 +297,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
             <button type="button" disabled={!toolbarState.canUndo} {...toolbarButtonProps(() => runEditorCommand("undo"))} className={topButtonClassName(false)} aria-label="Undo note edit"><Undo2 size={17} /></button>
             <button type="button" disabled={!toolbarState.canRedo} {...toolbarButtonProps(() => runEditorCommand("redo"))} className={topButtonClassName(false)} aria-label="Redo note edit"><Redo2 size={17} /></button>
           </div>
-          <button type="button" onClick={(e) => { e.stopPropagation(); onSyncNow(); }} title={syncLabel || syncText} aria-label={syncLabel || syncText} className="note-sync-button h-10 min-w-8 grid place-items-center transition-transform hover:scale-110 active:scale-95" style={{ color: syncColor }}>
+          <button type="button" onClick={(e) => { e.stopPropagation(); saveDraftInPlace(); }} title={syncLabel || syncText} aria-label={syncLabel || syncText} className="note-sync-button h-10 min-w-8 grid place-items-center transition-transform hover:scale-110 active:scale-95" style={{ color: syncColor }}>
             {syncStatus === "saving" ? <MoreHorizontal size={20} className="animate-pulse" /> : <Check size={20} />}
           </button>
         </div>
@@ -321,7 +375,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
       ) : null}
       <div className="w-full max-w-md h-[100dvh] bg-[#0a0a0a] flex flex-col" style={editorScreenStyle}>
         <div className="note-editor-scroll flex-1 min-h-0 overflow-y-auto thin-scroll px-5 pt-4" style={editorScrollStyle}>
-          <input ref={titleRef} type="text" placeholder="Title" defaultValue={initialTitle} className="note-title-input w-full bg-transparent border-none outline-none px-0 pt-3 pb-2 text-white font-black leading-[1.04] placeholder:text-[#555555] tracking-normal" />
+          <input ref={titleRef} type="text" placeholder="Title" defaultValue={initialTitle} onInput={scheduleDraftAutosave} onBlur={saveDraftInPlace} className="note-title-input w-full bg-transparent border-none outline-none px-0 pt-3 pb-2 text-white font-black leading-[1.04] placeholder:text-[#555555] tracking-normal" />
           <ProseMirrorNoteEditor
             key={editorKey}
             initialHtml={initialHtml}
@@ -330,6 +384,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
               editorApiRef.current = api;
             }}
             onToolbarState={setToolbarState}
+            onChange={scheduleDraftAutosave}
           />
         </div>
       </div>

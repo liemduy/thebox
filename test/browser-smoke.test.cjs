@@ -321,6 +321,29 @@ test("note editor top toolbar stays fixed while editor scrolls", async ({ page }
   expect(Math.abs((historyActions?.y || 0) - (syncButton?.y || 0))).toBeLessThan(3);
 });
 
+test("note editor status tick persists the active draft before reload", async ({ page }) => {
+  const runtimeErrors = [];
+  page.on("pageerror", error => runtimeErrors.push(error.message));
+  page.on("console", message => {
+    if (message.type() === "error") runtimeErrors.push(message.text());
+  });
+
+  await page.goto(`${baseURL}/?local=1#/notes`, { waitUntil: "networkidle" });
+  await page.getByLabel("Create note").click();
+  await page.getByPlaceholder("Title").fill("Draft sync smoke");
+  await page.locator(".ProseMirror").click();
+  await page.keyboard.type("Saved through the status tick");
+  await page.locator(".note-sync-button").click();
+  await page.waitForTimeout(1800);
+
+  await page.reload({ waitUntil: "networkidle" });
+  await expect(page.getByText("Draft sync smoke")).toBeVisible();
+  await page.getByText("Draft sync smoke").click();
+  await expect(page.locator(".ProseMirror")).toContainText("Saved through the status tick");
+
+  expect(runtimeErrors).toEqual([]);
+});
+
 test("note table auto fit persists after save and reopen", async ({ page }) => {
   const runtimeErrors = [];
   page.on("pageerror", error => runtimeErrors.push(error.message));
@@ -339,7 +362,7 @@ test("note table auto fit persists after save and reopen", async ({ page }) => {
   await page.waitForTimeout(600);
   await page.getByRole("button", { name: "Table options" }).click();
   await page.waitForTimeout(600);
-  await page.getByRole("button", { name: "Auto fit" }).click();
+  await page.locator(".table-action-panel").getByRole("button", { name: "Auto fit", exact: true }).click();
   await expect(page.locator(".ProseMirror table[data-layout='auto']")).toBeVisible();
 
   await page.getByRole("button", { name: "Back" }).click();
@@ -438,7 +461,7 @@ test("note editor opens color picker without selection and accepts hex color", a
   const caretColor = await page.locator(".ProseMirror").evaluate(node => getComputedStyle(node).caretColor);
   expect(caretColor === "transparent" || caretColor === "rgba(0, 0, 0, 0)").toBeTruthy();
   await page.getByLabel("Text color hex").fill("#93c5fd");
-  await page.getByRole("button", { name: "ok" }).click();
+  await page.locator(".note-color-panel").getByRole("button", { name: "ok", exact: true }).click();
   await page.keyboard.type("Blue text");
 
   await expect(page.locator(".ProseMirror span[data-note-color='#93c5fd']")).toContainText("Blue text");
