@@ -131,7 +131,7 @@ function useActionEntries({
         entry.tags = entryTagList(entry);
         entry.updatedAt = t;
       } else {
-        const nextEntry = normalizeEntry({ type: "note", title: title || "Note", bodyHtml, createdAt: t, updatedAt: t }, node.entries.length);
+        const nextEntry = normalizeEntry({ id: entryId || undefined, type: "note", title: title || "Note", bodyHtml, createdAt: t, updatedAt: t }, node.entries.length);
         savedEntryId = nextEntry.id;
         node.entries.push(nextEntry);
       }

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'idea-box-v104-note-save-hardening';
+const CACHE_NAME = 'idea-box-v105-note-focus-hardening';
 const APP_SHELL = [
   './',
   './index.html',

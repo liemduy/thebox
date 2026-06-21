@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-06-21-note-save-hardening";
-const APP_CACHE_NAME = "idea-box-v104-note-save-hardening";
+const APP_BUILD_ID = "2026-06-21-note-focus-hardening";
+const APP_CACHE_NAME = "idea-box-v105-note-focus-hardening";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -3233,6 +3233,7 @@ function useActionEntries({
         entry.updatedAt = t;
       } else {
         const nextEntry = normalizeEntry({
+          id: entryId || undefined,
           type: "note",
           title: title || "Note",
           bodyHtml,
@@ -6500,6 +6501,7 @@ function ProseMirrorNoteEditor({
   const readyRef = useRef(onReady);
   const toolbarRef = useRef(onToolbarState);
   const changeRef = useRef(onChange);
+  const initialHtmlRef = useRef(initialHtml);
   useEffect(() => {
     readyRef.current = onReady;
     toolbarRef.current = onToolbarState;
@@ -6512,7 +6514,7 @@ function ProseMirrorNoteEditor({
     if (!pm || !schema || !host) return undefined;
     host.innerHTML = "";
     const view = new pm.EditorView(host, {
-      state: createNoteEditorState(schema, initialHtml),
+      state: createNoteEditorState(schema, initialHtmlRef.current),
       handleDOMEvents: {
         focus(view) {
           window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view, {
@@ -6572,7 +6574,7 @@ function ProseMirrorNoteEditor({
       viewRef.current = null;
       host.innerHTML = "";
     };
-  }, [initialHtml]);
+  }, []);
   return React.createElement("div", {
     ref: hostRef,
     className: className
@@ -6742,12 +6744,15 @@ function RichNoteModal({
   const autosaveTimerRef = useRef(null);
   const draftDirtyRef = useRef(false);
   const draftCentralNoteIdRef = useRef(null);
+  const draftActionEntryIdRef = useRef(null);
+  const draftActionTargetRef = useRef("");
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
   const [colorPanel, setColorPanel] = useState(false);
   const [draftColor, setDraftColor] = useState(NOTE_EDITOR_DEFAULT_COLOR);
   const viewportMetrics = useVisualViewportMetrics();
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
+  const isActionNote = modal.type === "actionNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
   const centralNote = isCentralNote ? getNote(state, modal.noteId) : null;
   const day = !isBoxNote && !isCentralNote ? state.actionDays.find(d => d.id === modal.dayId) : null;
@@ -6755,7 +6760,16 @@ function RichNoteModal({
   const entry = actionNode && modal.entryId ? entriesFor(actionNode).find(e => e.id === modal.entryId) : null;
   const initialHtml = isCentralNote ? centralNote?.bodyHtml || "" : isBoxNote ? box?.boxNoteHtml || "" : entry?.bodyHtml || "";
   const initialTitle = isCentralNote ? centralNote?.title || "" : isBoxNote ? box?.boxNoteTitle || "" : entry?.title || "";
-  const editorKey = `${modal.type}-${modal.noteId || modal.boxId || ""}-${modal.dayId || ""}-${modal.nodeId || ""}-${modal.entryId || "new"}`;
+  const draftActionTarget = isActionNote ? `${modal.dayId || ""}-${modal.nodeId || ""}` : "";
+  if (isActionNote && !modal.entryId && (draftActionTargetRef.current !== draftActionTarget || !draftActionEntryIdRef.current)) {
+    draftActionTargetRef.current = draftActionTarget;
+    draftActionEntryIdRef.current = uid("entry");
+  } else if (!isActionNote) {
+    draftActionTargetRef.current = "";
+    draftActionEntryIdRef.current = null;
+  }
+  const actionEntryKey = isActionNote ? modal.entryId || draftActionEntryIdRef.current || "new" : modal.entryId || "new";
+  const editorKey = `${modal.type}-${modal.noteId || modal.boxId || ""}-${modal.dayId || ""}-${modal.nodeId || ""}-${actionEntryKey}`;
   useEffect(() => {
     draftCentralNoteIdRef.current = isCentralNote ? modal.noteId || uid("note") : null;
     draftDirtyRef.current = false;
@@ -6790,7 +6804,7 @@ function RichNoteModal({
     return {
       dayId: modal.dayId,
       nodeId: modal.nodeId,
-      entryId: modal.entryId || null,
+      entryId: modal.entryId || draftActionEntryIdRef.current || null,
       title: title || "Note",
       bodyHtml: html,
       keepOpen

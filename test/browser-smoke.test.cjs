@@ -344,6 +344,29 @@ test("note editor status tick persists the active draft before reload", async ({
   expect(runtimeErrors).toEqual([]);
 });
 
+test("note editor autosave keeps typing focus", async ({ page }) => {
+  const runtimeErrors = [];
+  page.on("pageerror", error => runtimeErrors.push(error.message));
+  page.on("console", message => {
+    if (message.type() === "error") runtimeErrors.push(message.text());
+  });
+
+  await page.goto(`${baseURL}/?local=1#/notes`, { waitUntil: "networkidle" });
+  await page.getByLabel("Create note").click();
+  await page.getByPlaceholder("Title").fill("Autosave focus smoke");
+  const editor = page.locator(".ProseMirror");
+  await editor.click();
+  await page.keyboard.type("Keyboard should stay up");
+  await page.waitForTimeout(1900);
+
+  const editorHasFocus = await editor.evaluate(node => node === document.activeElement || node.contains(document.activeElement));
+  expect(editorHasFocus).toBeTruthy();
+
+  await page.keyboard.type(" after autosave");
+  await expect(editor).toContainText("Keyboard should stay up after autosave");
+  expect(runtimeErrors).toEqual([]);
+});
+
 test("note table auto fit persists after save and reopen", async ({ page }) => {
   const runtimeErrors = [];
   page.on("pageerror", error => runtimeErrors.push(error.message));

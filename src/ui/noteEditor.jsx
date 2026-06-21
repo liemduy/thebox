@@ -1075,6 +1075,7 @@ function ProseMirrorNoteEditor({ initialHtml, className = "", onReady, onToolbar
   const readyRef = useRef(onReady);
   const toolbarRef = useRef(onToolbarState);
   const changeRef = useRef(onChange);
+  const initialHtmlRef = useRef(initialHtml);
 
   useEffect(() => {
     readyRef.current = onReady;
@@ -1090,7 +1091,7 @@ function ProseMirrorNoteEditor({ initialHtml, className = "", onReady, onToolbar
 
     host.innerHTML = "";
     const view = new pm.EditorView(host, {
-      state: createNoteEditorState(schema, initialHtml),
+      state: createNoteEditorState(schema, initialHtmlRef.current),
       handleDOMEvents: {
         focus(view) {
           window.requestAnimationFrame(() => scrollNoteEditorSelectionIntoView(view, { keyboardOnly: true }));
@@ -1147,7 +1148,7 @@ function ProseMirrorNoteEditor({ initialHtml, className = "", onReady, onToolbar
       viewRef.current = null;
       host.innerHTML = "";
     };
-  }, [initialHtml]);
+  }, []);
 
   return <div ref={hostRef} className={className} />;
 }

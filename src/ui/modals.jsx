@@ -63,12 +63,15 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
   const autosaveTimerRef = useRef(null);
   const draftDirtyRef = useRef(false);
   const draftCentralNoteIdRef = useRef(null);
+  const draftActionEntryIdRef = useRef(null);
+  const draftActionTargetRef = useRef("");
   const [toolbarState, setToolbarState] = useState(NOTE_EDITOR_EMPTY_TOOLBAR);
   const [colorPanel, setColorPanel] = useState(false);
   const [draftColor, setDraftColor] = useState(NOTE_EDITOR_DEFAULT_COLOR);
   const viewportMetrics = useVisualViewportMetrics();
   const isBoxNote = modal.type === "boxNote";
   const isCentralNote = modal.type === "centralNote";
+  const isActionNote = modal.type === "actionNote";
   const box = isBoxNote ? getNode(state.boxNodes, modal.boxId) : null;
   const centralNote = isCentralNote ? getNote(state, modal.noteId) : null;
   const day = !isBoxNote && !isCentralNote ? state.actionDays.find(d => d.id === modal.dayId) : null;
@@ -76,7 +79,16 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
   const entry = actionNode && modal.entryId ? entriesFor(actionNode).find(e => e.id === modal.entryId) : null;
   const initialHtml = isCentralNote ? (centralNote?.bodyHtml || "") : isBoxNote ? (box?.boxNoteHtml || "") : (entry?.bodyHtml || "");
   const initialTitle = isCentralNote ? (centralNote?.title || "") : isBoxNote ? (box?.boxNoteTitle || "") : (entry?.title || "");
-  const editorKey = `${modal.type}-${modal.noteId || modal.boxId || ""}-${modal.dayId || ""}-${modal.nodeId || ""}-${modal.entryId || "new"}`;
+  const draftActionTarget = isActionNote ? `${modal.dayId || ""}-${modal.nodeId || ""}` : "";
+  if (isActionNote && !modal.entryId && (draftActionTargetRef.current !== draftActionTarget || !draftActionEntryIdRef.current)) {
+    draftActionTargetRef.current = draftActionTarget;
+    draftActionEntryIdRef.current = uid("entry");
+  } else if (!isActionNote) {
+    draftActionTargetRef.current = "";
+    draftActionEntryIdRef.current = null;
+  }
+  const actionEntryKey = isActionNote ? (modal.entryId || draftActionEntryIdRef.current || "new") : (modal.entryId || "new");
+  const editorKey = `${modal.type}-${modal.noteId || modal.boxId || ""}-${modal.dayId || ""}-${modal.nodeId || ""}-${actionEntryKey}`;
 
   useEffect(() => {
     draftCentralNoteIdRef.current = isCentralNote ? (modal.noteId || uid("note")) : null;
@@ -99,7 +111,7 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
     const keepOpen = Boolean(options.keepOpen);
     if (isCentralNote) return { noteId: modal.noteId || draftCentralNoteIdRef.current || null, title, bodyHtml: html, noteDate: modal.noteDate || centralNote?.noteDate || todayYMD(), link: modal.link || null, keepOpen };
     if (isBoxNote) return { boxId: modal.boxId, title, bodyHtml: html, keepOpen };
-    return { dayId: modal.dayId, nodeId: modal.nodeId, entryId: modal.entryId || null, title: title || "Note", bodyHtml: html, keepOpen };
+    return { dayId: modal.dayId, nodeId: modal.nodeId, entryId: modal.entryId || draftActionEntryIdRef.current || null, title: title || "Note", bodyHtml: html, keepOpen };
   }
 
   function draftHasContent(payload) {
