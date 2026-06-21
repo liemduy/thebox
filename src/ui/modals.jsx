@@ -309,7 +309,17 @@ function RichNoteModal({ modal, state, onSave, syncStatus = "saved", syncLabel =
             <button type="button" disabled={!toolbarState.canUndo} {...toolbarButtonProps(() => runEditorCommand("undo"))} className={topButtonClassName(false)} aria-label="Undo note edit"><Undo2 size={17} /></button>
             <button type="button" disabled={!toolbarState.canRedo} {...toolbarButtonProps(() => runEditorCommand("redo"))} className={topButtonClassName(false)} aria-label="Redo note edit"><Redo2 size={17} /></button>
           </div>
-          <button type="button" onClick={(e) => { e.stopPropagation(); saveDraftInPlace(); }} title={syncLabel || syncText} aria-label={syncLabel || syncText} className="note-sync-button h-10 min-w-8 grid place-items-center transition-transform hover:scale-110 active:scale-95" style={{ color: syncColor }}>
+          <button
+            type="button"
+            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); saveDraftInPlace(); }}
+            onMouseDown={keepToolbarFocus}
+            onClick={(e) => { e.stopPropagation(); if (e.detail === 0) saveDraftInPlace(); }}
+            tabIndex={-1}
+            title={syncLabel || syncText}
+            aria-label={syncLabel || syncText}
+            className="note-sync-button h-10 min-w-8 grid place-items-center transition-transform hover:scale-110 active:scale-95"
+            style={{ color: syncColor }}
+          >
             {syncStatus === "saving" ? <MoreHorizontal size={20} className="animate-pulse" /> : <Check size={20} />}
           </button>
         </div>

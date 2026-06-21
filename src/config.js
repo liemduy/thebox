@@ -6,8 +6,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-06-21-note-focus-hardening";
-const APP_CACHE_NAME = "idea-box-v105-note-focus-hardening";
+const APP_BUILD_ID = "2026-06-21-note-focus-save-button";
+const APP_CACHE_NAME = "idea-box-v106-note-focus-save-button";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = [
   "idea-box-html-v12-stable-ids",

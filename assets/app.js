@@ -555,8 +555,8 @@ const STORAGE_KEY = "idea-box-html-v13-action-notes";
 const STATE_TABLE = "idea_box_states";
 const NOTES_TABLE = "idea_notes";
 const NOTE_LINKS_TABLE = "idea_note_links";
-const APP_BUILD_ID = "2026-06-21-note-focus-hardening";
-const APP_CACHE_NAME = "idea-box-v105-note-focus-hardening";
+const APP_BUILD_ID = "2026-06-21-note-focus-save-button";
+const APP_CACHE_NAME = "idea-box-v106-note-focus-save-button";
 const FORCE_LOCAL_MODE = new URLSearchParams(window.location.search).has("local");
 const LEGACY_KEYS = ["idea-box-html-v12-stable-ids", "idea-box-html-v10-action-days-db", "idea-box-html-v9-supabase", "idea-box-html-v8-supabase", "idea-box-html-v7-supabase", "idea-box-html-v6-actions", "idea-box-html-v4-clean-box", "idea-box-html-v3-inline-delete", "idea-box-html-v2-inline-format"];
 const sb = !FORCE_LOCAL_MODE && window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -7099,10 +7099,17 @@ function RichNoteModal({
     size: 17
   }))), React.createElement("button", {
     type: "button",
-    onClick: e => {
+    onPointerDown: e => {
+      e.preventDefault();
       e.stopPropagation();
       saveDraftInPlace();
     },
+    onMouseDown: keepToolbarFocus,
+    onClick: e => {
+      e.stopPropagation();
+      if (e.detail === 0) saveDraftInPlace();
+    },
+    tabIndex: -1,
     title: syncLabel || syncText,
     "aria-label": syncLabel || syncText,
     className: "note-sync-button h-10 min-w-8 grid place-items-center transition-transform hover:scale-110 active:scale-95",

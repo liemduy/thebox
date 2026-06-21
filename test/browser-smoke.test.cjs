@@ -363,7 +363,12 @@ test("note editor autosave keeps typing focus", async ({ page }) => {
   expect(editorHasFocus).toBeTruthy();
 
   await page.keyboard.type(" after autosave");
-  await expect(editor).toContainText("Keyboard should stay up after autosave");
+  await page.locator(".note-sync-button").click();
+  const focusAfterManualSave = await editor.evaluate(node => node === document.activeElement || node.contains(document.activeElement));
+  expect(focusAfterManualSave).toBeTruthy();
+
+  await page.keyboard.type(" after manual save");
+  await expect(editor).toContainText("Keyboard should stay up after autosave after manual save");
   expect(runtimeErrors).toEqual([]);
 });
 
